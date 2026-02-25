@@ -1,0 +1,971 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
+  <meta name="mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="JivanLog"/>
+  <meta name="theme-color" content="#0a1628"/>
+  <title>JivanLog</title>
+  <link rel="manifest" href="manifest.json"/>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <style>html,body,#root{height:100%;margin:0;padding:0;background:#0a1628}*{-webkit-tap-highlight-color:transparent;box-sizing:border-box}</style>
+</head>
+<body>
+<div id="root"></div>
+
+<!-- Firebase init -->
+<script>
+firebase.initializeApp({
+  apiKey: "AIzaSyDi7Ku6XujAVMyXGKZmfeacn-h7kCU7kmc",
+  authDomain: "jivanlog.firebaseapp.com",
+  databaseURL: "https://jivanlog-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "jivanlog",
+  storageBucket: "jivanlog.firebasestorage.app",
+  messagingSenderId: "533310222939",
+  appId: "1:533310222939:web:9cd1c33ad05556d162057e"
+});
+const fbAuth = firebase.auth();
+const fbDb   = firebase.database();
+const googleProvider = new firebase.auth.GoogleAuthProvider();
+</script>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+// ─── LOGO ─────────────────────────────────────────────────────────────────────
+const LOGO_SVG = `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <rect width="100" height="100" rx="22" fill="url(#bg)"/>
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="30%" r="80%"><stop offset="0%" stop-color="#1a56db"/><stop offset="100%" stop-color="#0a2a7a"/></radialGradient>
+    <radialGradient id="glow" cx="50%" cy="60%" r="60%"><stop offset="0%" stop-color="#00e676" stop-opacity="0.5"/><stop offset="100%" stop-color="#00e676" stop-opacity="0"/></radialGradient>
+  </defs>
+  <ellipse cx="50" cy="72" rx="28" ry="10" fill="url(#glow)"/>
+  <path d="M50 15 L78 28 L78 55 Q78 75 50 88 Q22 75 22 55 L22 28 Z" fill="#00c853" opacity="0.25"/>
+  <path d="M50 20 L74 32 L74 55 Q74 72 50 84 Q26 72 26 55 L26 32 Z" fill="none" stroke="#00e676" stroke-width="2.5" opacity="0.9"/>
+  <text x="50" y="68" text-anchor="middle" font-family="Georgia,serif" font-size="38" font-weight="bold" fill="white" opacity="0.95">J</text>
+  <circle cx="50" cy="55" r="5" fill="white" opacity="0.5"/>
+</svg>`)}`;
+
+// ─── CONSTANTS ────────────────────────────────────────────────────────────────
+const FD = {
+  foodCategories:["Chapati","Chicken Curry","Dal","Egg","Fish Curry","Idli","Paneer Curry","Poha","Rice","Roti","Sambar","Upma","Vegetable Curry","Yogurt / Curd"],
+  exerciseTypes:[
+    {name:"Walking",  subTypes:[],metrics:["distance","time"]},
+    {name:"Running",  subTypes:[],metrics:["distance","time"]},
+    {name:"Seated Exercise",subTypes:["Ankle Circles","Arm Raises","Calf Raises","Knee Extensions","Leg Raises","Shoulder Rolls","Wrist Rotations"],metrics:["count"]},
+  ],
+  medicalPresets:["Sugar","BP","Weight"],
+  medications:["Glycomet 500 SR","Multi-Vitamins","Nexovas 10","Other","Vitamin-D (60K)"],
+};
+const deepClone = o => JSON.parse(JSON.stringify(o));
+
+const FOOD_UNITS    = ["g","ml","count"];
+const MEDICAL_UNITS = {Sugar:"mg/dL",BP:"Sys/Dia",Weight:"kg"};
+const MED_TIMES     = ["Before breakfast","After breakfast","Before lunch","After lunch","Before dinner","After dinner","Bedtime"];
+const MEAL_TYPES    = ["Breakfast","Lunch","Dinner","Snack"];
+const WATER_TEMPS   = ["Cold","Plain","Warm"];
+const REPORT_ROWS   = [
+  {key:"water",label:"Water"},{key:"medication",label:"Medications"},{key:"exercise",label:"Exercise"},
+  {key:"Breakfast",label:"Breakfast"},{key:"Lunch",label:"Lunch"},{key:"Snack",label:"Snack"},{key:"Dinner",label:"Dinner"},
+  {key:"Sugar",label:"Sugar"},{key:"Weight",label:"Weight"},{key:"BP",label:"BP"},
+];
+const MODULE_ITEMS = [
+  ["meal","Meal","🍽️"],["exercise","Exercise","🏃"],["water","Water","💧"],
+  ["medical","Medical Reading","🩺"],["medication","Medication","💊"],
+];
+const THEMES = {
+  dark:{bg:"#0a1628",cardBg:"#112240",navBg:"#0d1e35",inputBg:"#0d1e35",border:"#1e3a5f",text:"#e6edf3",textMuted:"#4a7fa5",textSub:"#7aa0bf",accent:"#00e676",accentBg:"#00897b22",accentBtn:"#00897b",danger:"#ef5350",waterBtn:"#0d2a3d",waterBtnText:"#40c4ff",even:"#0a1628",ok:"#1b5e20",lock:"#060e1a"},
+  light:{bg:"#e8eef5",cardBg:"#ffffff",navBg:"#d0dcea",inputBg:"#f2f6fb",border:"#a8c0d6",text:"#1c2e42",textMuted:"#3d6080",textSub:"#4e7a9a",accent:"#007a6e",accentBg:"#007a6e1a",accentBtn:"#007a6e",danger:"#c62828",waterBtn:"#c5ddf0",waterBtnText:"#1a4f72",even:"#ecf2f8",ok:"#2e7d32",lock:"#c8d8e8"},
+};
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+const genId   = () => Date.now().toString(36)+Math.random().toString(36).slice(2);
+const today   = () => new Date().toISOString().slice(0,10);
+const fmt24   = dt => new Date(dt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",hour12:false});
+const nowTime = () => new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
+const nowHHMM = () => new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",hour12:false});
+const fmtDate = s => { if(!s)return""; const[y,m,d]=s.split("-"); return `${d} ${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+m-1]} ${y}`; };
+const fmtShort= s => { if(!s)return""; const[,m,d]=s.split("-"); return `${d}/${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+m-1]}`; };
+const sysDark = () => window.matchMedia?.("(prefers-color-scheme:dark)").matches;
+const autoMeal= () => { const m=new Date().getHours()*60+new Date().getMinutes(); return m<705?"Breakfast":m<945?"Lunch":m<1125?"Snack":"Dinner"; };
+
+// ─── FIREBASE DB HELPERS ───────────────────────────────────────────────────────
+// All data lives at /users/{uid}/{key}
+const dbRef  = (uid,key) => fbDb.ref(`users/${uid}/${key}`);
+const dbSet  = (uid,key,val) => dbRef(uid,key).set(val);
+const dbGet  = (uid,key) => dbRef(uid,key).get().then(s=>s.exists()?s.val():null);
+const dbDel  = (uid,key) => dbRef(uid,key).remove();
+
+// ─── CSV BUILDERS ─────────────────────────────────────────────────────────────
+function dayReport(dayEntries) {
+  const water=dayEntries.filter(e=>e.type==="water").reduce((s,e)=>s+(+e.ml||0),0);
+  const wt=[...new Set(dayEntries.filter(e=>e.type==="water").map(e=>e.waterTemp).filter(Boolean))];
+  const ex=dayEntries.filter(e=>e.type==="exercise").map(e=>{
+    let s=e.exType; if(e.subType)s+=` ${e.subType}`; if(e.dist)s+=` ${e.dist}km`; if(e.time)s+=` ${e.time}min`; if(e.count)s+=` x${e.count}`; return s;
+  }).join("; ")||"-";
+  const md=dayEntries.filter(e=>e.type==="medication").map(e=>`${e.med} (${e.timing})`).join("; ")||"-";
+  const meals={}; MEAL_TYPES.forEach(mt=>{meals[mt]=dayEntries.filter(e=>e.type==="meal"&&e.mealType===mt).map(e=>e.unit==="count"?`${e.food} ${e.qty}`:`${e.food} ${e.qty}${e.unit}`).join(", ")||"-";});
+  const med={}; ["Sugar","BP","Weight"].forEach(rt=>{med[rt]=dayEntries.filter(e=>e.type==="medical"&&e.readingType===rt).map(e=>`${e.value} ${MEDICAL_UNITS[rt]||""}`).join(", ")||"-";});
+  return {water:water?`${water}ml${wt.length?` (${wt.join("/")})`:""}`:"-",medication:md,exercise:ex,Breakfast:meals.Breakfast,Lunch:meals.Lunch,Snack:meals.Snack,Dinner:meals.Dinner,Sugar:med.Sugar,Weight:med.Weight,BP:med.BP};
+}
+function buildAllCSV(entries) {
+  const hdr=["ID","Date","Time","Type","SubType","Detail1","Detail2","Detail3","Unit","Notes"];
+  const rows=[...entries].sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)).map(e=>{
+    let t="",st="",d1="",d2="",d3="",u="",n=e.notes||"";
+    if(e.type==="meal")      {t="Meal";      st=e.mealType;      d1=e.food;d2=e.qty;u=e.unit;}
+    if(e.type==="exercise")  {t="Exercise";  st=e.exType;        d1=e.subType||"";d2=e.dist||"";d3=e.time||e.count||"";u=e.dist?"km":e.count?"count":"min";}
+    if(e.type==="water")     {t="Water";     st=e.waterTemp||""; d1=e.ml;u="ml";}
+    if(e.type==="medical")   {t="Medical";   st=e.readingType;   d1=e.value;u=e.unit||MEDICAL_UNITS[e.readingType]||"";}
+    if(e.type==="medication"){t="Medication";st=e.med;           d1=e.timing;}
+    return [e.id,e.date,fmt24(e.timestamp),t,st,d1,d2,d3,u,n].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",");
+  });
+  return [hdr.join(","),...rows].join("\n");
+}
+function buildViewCSV(entries,dates) {
+  const hdr=["Category",...dates.map(fmtDate)].join(",");
+  const rows=REPORT_ROWS.map(({label,key})=>{
+    const vals=dates.map(d=>{const r=dayReport(entries.filter(e=>e.date===d));return `"${(r[key]||"-").replace(/"/g,'""')}"`;});
+    return [`"${label}"`,...vals].join(",");
+  });
+  return [hdr,...rows].join("\n");
+}
+
+// ─── DOWNLOAD CSV (real Blob download — works in live browser) ────────────────
+function downloadCSV(csv, filename) {
+  try {
+    const blob = new Blob(["\uFEFF"+csv], {type:"text/csv;charset=utf-8;"});
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href=url; a.setAttribute("download", filename);
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 1000);
+  } catch(e) { alert("Download failed: "+e.message); }
+}
+
+// ─── SMALL SHARED COMPONENTS ──────────────────────────────────────────────────
+function Saver({flash,onClick,T,label="Save",saving=false}) {
+  return (
+    <button onClick={onClick} disabled={saving} style={{flexShrink:0,padding:"7px 14px",fontSize:"0.85rem",borderRadius:8,fontFamily:"inherit",fontWeight:500,cursor:saving?"wait":"pointer",border:"none",background:flash?T.ok:T.accentBtn,color:"#fff",minWidth:52,transition:"all 0.15s",opacity:saving?0.6:1}}>
+      {saving?"…":flash?"✔":label}
+    </button>
+  );
+}
+
+// ─── EXPORT MODAL (fallback clipboard if needed) ──────────────────────────────
+function ExportModal({modal,onClose,T}) {
+  const taRef=useRef();
+  const [status,setStatus]=useState("idle");
+  if(!modal) return null;
+  const doDownload=()=>{
+    downloadCSV(modal.csv, modal.filename);
+    setStatus("done"); setTimeout(()=>setStatus("idle"),2000);
+  };
+  const doCopy=async()=>{
+    try{
+      if(navigator.clipboard?.writeText){ await navigator.clipboard.writeText(modal.csv); setStatus("copied"); setTimeout(()=>setStatus("idle"),2000); return; }
+      if(taRef.current){ taRef.current.select(); document.execCommand("copy"); setStatus("copied"); setTimeout(()=>setStatus("idle"),2000); }
+    }catch(e){ setStatus("error"); }
+  };
+  return (
+    <div style={{position:"fixed",inset:0,background:"#000b",zIndex:9990,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      <div style={{background:T.cardBg,border:`1px solid ${T.border}`,borderRadius:14,padding:16,width:"100%",maxWidth:440,maxHeight:"82vh",display:"flex",flexDirection:"column",gap:10}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div style={{fontWeight:700,fontSize:"0.9rem",color:T.accent}}>📄 {modal.filename}</div>
+          <button onClick={onClose} style={{background:"none",border:"none",color:T.textMuted,fontSize:"1.3rem",cursor:"pointer",lineHeight:1}}>×</button>
+        </div>
+        <textarea ref={taRef} readOnly value={modal.csv} style={{flex:1,minHeight:180,fontSize:"0.68rem",fontFamily:"monospace",resize:"none",background:T.inputBg,color:T.text,border:`1px solid ${T.border}`,borderRadius:8,padding:8,outline:"none"}}/>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={doDownload} style={{flex:2,padding:"8px",borderRadius:8,border:"none",fontFamily:"inherit",fontWeight:600,fontSize:"0.85rem",cursor:"pointer",background:status==="done"?T.ok:T.accentBtn,color:"#fff",transition:"background 0.2s"}}>
+            {status==="done"?"✔ Downloaded!":"⬇️ Download CSV"}
+          </button>
+          <button onClick={doCopy} style={{flex:1,padding:"8px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontFamily:"inherit",cursor:"pointer",fontSize:"0.79rem"}}>
+            {status==="copied"?"✔":"📋 Copy"}
+          </button>
+          <button onClick={onClose} style={{flex:1,padding:"8px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontFamily:"inherit",cursor:"pointer"}}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── LOCK SCREEN ──────────────────────────────────────────────────────────────
+function LockScreen({T,onUnlock}) {
+  return (
+    <div style={{position:"fixed",inset:0,background:T.lock,zIndex:9999,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:20}}>
+      <img src={LOGO_SVG} style={{width:72,height:72,borderRadius:18}} alt="JivanLog"/>
+      <div style={{color:T.accent,fontWeight:700,fontSize:"1.4rem",letterSpacing:"0.05em"}}>JivanLog</div>
+      <div style={{color:T.textMuted,fontSize:"0.85rem"}}>Session locked</div>
+      <button onClick={onUnlock} style={{marginTop:8,padding:"12px 36px",fontSize:"1rem",borderRadius:12,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>
+        🔓 Tap to Unlock
+      </button>
+    </div>
+  );
+}
+
+// ─── LOGIN SCREEN ─────────────────────────────────────────────────────────────
+function LoginScreen({onSignIn,error}) {
+  const [loading,setLoading]=useState(false);
+  const signIn=async()=>{
+    setLoading(true);
+    try{ await fbAuth.signInWithPopup(googleProvider); }
+    catch(e){ setLoading(false); }
+  };
+  return (
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100vh",background:"#0a1628",gap:24,padding:24}}>
+      <img src={LOGO_SVG} style={{width:80,height:80,borderRadius:20}} alt="JivanLog"/>
+      <div style={{textAlign:"center"}}>
+        <div style={{color:"#00e676",fontWeight:700,fontSize:"1.6rem",letterSpacing:"0.04em",fontFamily:"system-ui"}}>JivanLog</div>
+        <div style={{color:"#4a7fa5",fontSize:"0.85rem",marginTop:4}}>Personal health tracker</div>
+      </div>
+      {error&&<div style={{color:"#ef5350",fontSize:"0.8rem",textAlign:"center",padding:"8px 14px",background:"#ef535018",borderRadius:8,border:"1px solid #ef535044"}}>{error}</div>}
+      <button onClick={signIn} disabled={loading} style={{
+        display:"flex",alignItems:"center",gap:12,padding:"14px 28px",borderRadius:12,border:"none",
+        background:"#ffffff",color:"#1c2e42",fontFamily:"system-ui",fontSize:"1rem",fontWeight:600,
+        cursor:loading?"wait":"pointer",opacity:loading?0.7:1,minWidth:220,justifyContent:"center",
+        boxShadow:"0 4px 20px #00000044",transition:"all 0.2s"
+      }}>
+        <svg width="22" height="22" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+        {loading?"Signing in…":"Sign in with Google"}
+      </button>
+      <div style={{color:"#2a4a6a",fontSize:"0.72rem",textAlign:"center",maxWidth:260,lineHeight:1.6}}>
+        Your data is stored privately in Firebase.<br/>Only you can access your entries.
+      </div>
+    </div>
+  );
+}
+
+// ─── LOADING SCREEN ───────────────────────────────────────────────────────────
+function LoadingScreen({message="Loading JivanLog…"}) {
+  return (
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:"#0a1628",flexDirection:"column",gap:16}}>
+      <img src={LOGO_SVG} style={{width:64,height:64,borderRadius:14}} alt="JivanLog"/>
+      <span style={{color:"#00e676",fontSize:"1.05rem",fontFamily:"monospace",letterSpacing:"0.05em"}}>{message}</span>
+      <div style={{width:120,height:3,background:"#1e3a5f",borderRadius:2,overflow:"hidden",marginTop:4}}>
+        <div style={{height:"100%",background:"#00e676",borderRadius:2,animation:"jlb 1.8s ease-in-out infinite"}}/>
+      </div>
+      <style>{"@keyframes jlb{0%{width:0%;margin-left:0}60%{width:80%;margin-left:0}100%{width:0%;margin-left:100%}}"}</style>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// APP
+// ═══════════════════════════════════════════════════════════════════════════════
+function App() {
+  const [authState,setAuthState] = useState("checking"); // checking | out | in
+  const [authError,setAuthError] = useState(null);
+  const [user,setUser]           = useState(null);
+  const [page,setPage]           = useState("home");
+  const [locked,setLocked]       = useState(false);
+  const [entries,setEntries]     = useState([]);
+  const [settings,setSettings]   = useState(deepClone(FD));
+  const [defaults,setDefaults]   = useState(deepClone(FD));
+  const [presets,setPresets]     = useState([deepClone(FD),deepClone(FD),deepClone(FD)]);
+  const [theme,setTheme]         = useState("dark");
+  const [dataLoaded,setDataLoaded] = useState(false);
+  const [clock,setClock]         = useState(nowTime());
+  const [entryTime,setEntryTime] = useState(nowHHMM());
+  const [exportModal,setExportModal] = useState(null);
+  const [syncStatus,setSyncStatus]   = useState("idle"); // idle | saving | saved | error
+
+  const T = theme==="system" ? THEMES[sysDark()?"dark":"light"] : (THEMES[theme]||THEMES.dark);
+
+  // Clock
+  useEffect(()=>{ const t=setInterval(()=>setClock(nowTime()),1000); return()=>clearInterval(t); },[]);
+
+  // Auth listener
+  useEffect(()=>{
+    const unsub = fbAuth.onAuthStateChanged(u=>{
+      if(u){ setUser(u); setAuthState("in"); }
+      else { setUser(null); setAuthState("out"); setDataLoaded(false); }
+    }, e=>{ setAuthError(e.message); setAuthState("out"); });
+    return unsub;
+  },[]);
+
+  // Load data when user signs in
+  useEffect(()=>{
+    if(!user) return;
+    setDataLoaded(false);
+    (async()=>{
+      try{
+        const [ents,sett,defs,pres,th] = await Promise.all([
+          dbGet(user.uid,"entries"),
+          dbGet(user.uid,"settings"),
+          dbGet(user.uid,"defaults"),
+          dbGet(user.uid,"presets"),
+          dbGet(user.uid,"theme"),
+        ]);
+        if(ents)  setEntries(Object.values(ents));
+        if(sett)  setSettings(sett);
+        if(defs)  setDefaults(defs);
+        if(pres)  setPresets([pres[0]||deepClone(FD),pres[1]||deepClone(FD),pres[2]||deepClone(FD)]);
+        if(th)    setTheme(th);
+      } catch(e){ console.error("Load error:",e); }
+      setDataLoaded(true);
+    })();
+  },[user]);
+
+  // ── PERSIST HELPERS ──────────────────────────────────────────────────────────
+  // Entries stored as object keyed by id (Firebase doesn't support arrays)
+  const persistEntries = useCallback(async(arr)=>{
+    if(!user) return;
+    setSyncStatus("saving");
+    try{
+      const obj = arr.reduce((acc,e)=>{acc[e.id]=e;return acc;},{});
+      await dbSet(user.uid,"entries",obj);
+      setSyncStatus("saved"); setTimeout(()=>setSyncStatus("idle"),1500);
+    }catch(e){ setSyncStatus("error"); setTimeout(()=>setSyncStatus("idle"),3000); }
+  },[user]);
+
+  const persistKey = useCallback(async(key,val)=>{
+    if(!user) return;
+    try{ await dbSet(user.uid,key,val); }catch(e){ console.error("Persist error:",key,e); }
+  },[user]);
+
+  // ── STATE SETTERS (update local state + persist) ──────────────────────────
+  const saveEntries  = useCallback(n=>{ setEntries(n);  persistEntries(n);    },[persistEntries]);
+  const saveSettings = useCallback(n=>{ setSettings(n); persistKey("settings",n); },[persistKey]);
+  const saveDefaults = useCallback(n=>{ setDefaults(n); persistKey("defaults",n); },[persistKey]);
+  const savePresets  = useCallback(n=>{ setPresets(n);  persistKey("presets",n);  },[persistKey]);
+  const saveTheme    = useCallback(m=>{ setTheme(m);    persistKey("theme",m);    },[persistKey]);
+
+  // ── ADD ENTRY ─────────────────────────────────────────────────────────────
+  const addEntry = useCallback((entry)=>{
+    const [h,mm] = entryTime.split(":").map(Number);
+    const d = new Date(); d.setHours(h,mm,0,0);
+    const newEntry = {...entry, id:genId(), timestamp:d.toISOString(), date:today()};
+    const next = [...entries, newEntry];
+    saveEntries(next);
+  },[entries,saveEntries,entryTime]);
+
+  const updateEntry = useCallback((id,data)=>saveEntries(entries.map(e=>e.id===id?{...e,...data}:e)),[entries,saveEntries]);
+  const deleteEntry = useCallback(id=>saveEntries(entries.filter(e=>e.id!==id)),[entries,saveEntries]);
+
+  // ── CLEAR ALL ─────────────────────────────────────────────────────────────
+  // Fixed: download happens immediately on confirm, clear happens after
+  const clearAll = useCallback(()=>{
+    if(!confirm("CLEAR ALL DATA?\n\nThis will permanently delete all your entries.\nA CSV backup will download first.\n\nPress OK to continue.")) return;
+    if(!confirm("FINAL CONFIRMATION — are you sure?\n\nPress OK to download backup and clear all data.")) return;
+    // Download backup immediately (before any async operations)
+    downloadCSV(buildAllCSV(entries), `jivanlog-backup-${today()}.csv`);
+    // Clear after short delay to let download initiate
+    setTimeout(async()=>{
+      const next = [];
+      setEntries(next);
+      if(user){ try{ await dbDel(user.uid,"entries"); setSyncStatus("saved"); setTimeout(()=>setSyncStatus("idle"),1500); }catch(e){ setSyncStatus("error"); } }
+    }, 500);
+  },[entries,user]);
+
+  // ── SIGN OUT ──────────────────────────────────────────────────────────────
+  const signOut = async() => {
+    if(!confirm("Sign out of JivanLog?\nYour data is saved to Firebase.")) return;
+    await fbAuth.signOut();
+    setEntries([]); setDataLoaded(false); setLocked(false);
+  };
+
+  // ── RENDER STATES ─────────────────────────────────────────────────────────
+  if(authState==="checking") return <LoadingScreen message="Checking sign-in…"/>;
+  if(authState==="out")      return <LoginScreen onSignIn={()=>{}} error={authError}/>;
+  if(!dataLoaded)            return <LoadingScreen message="Loading your data…"/>;
+
+  const dayStr = new Date().toLocaleDateString("en-IN",{weekday:"short",day:"numeric",month:"short"});
+
+  return (
+    <div style={{maxWidth:480,margin:"0 auto",height:"100dvh",display:"flex",flexDirection:"column",background:T.bg,color:T.text,fontFamily:"'DM Sans',system-ui,sans-serif"}}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap');
+        *{box-sizing:border-box;margin:0;padding:0}
+        ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:${T.border};border-radius:2px}
+        input,select,textarea{background:${T.inputBg};color:${T.text};border:1px solid ${T.border};border-radius:8px;padding:7px 9px;font-family:inherit;font-size:0.83rem;outline:none;width:100%}
+        input:focus,select:focus{border-color:${T.accent}}
+        select option{background:${T.inputBg}}
+        button{cursor:pointer;font-family:inherit}
+        .card{background:${T.cardBg};border:1px solid ${T.border};border-radius:12px;padding:11px;margin-bottom:8px}
+        .slabel{font-size:0.67rem;text-transform:uppercase;letter-spacing:0.09em;color:${T.textMuted};margin-bottom:5px;font-weight:600}
+        .tle{display:flex;align-items:baseline;gap:8px;padding:5px 0;border-bottom:1px solid ${T.border}22}
+        .tle:last-child{border-bottom:none}
+        .tbtn{padding:5px 10px;font-size:0.79rem;border-radius:8px;background:${T.cardBg};color:${T.textMuted};border:1px solid ${T.border};white-space:nowrap;cursor:pointer;font-family:inherit;font-weight:500}
+        .tbtn.on{background:${T.accentBg};color:${T.accent};border-color:${T.accentBtn};font-weight:600}
+        .wbtn{background:${T.waterBtn};color:${T.waterBtnText};border:1px solid ${T.border};padding:7px 12px;border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer}
+        .wbtn:hover{background:${T.accentBtn};color:#fff}
+        .ibtn{background:none;border:none;padding:3px 5px;border-radius:6px;color:${T.textMuted};font-size:0.82rem;cursor:pointer}
+        .ibtn:hover{background:${T.border};color:${T.text}}
+        .ctbl{width:100%;border-collapse:collapse;font-size:0.73rem}
+        .ctbl th{background:${T.navBg};color:${T.textMuted};padding:5px 6px;text-align:left;border:1px solid ${T.border};font-weight:600;white-space:nowrap}
+        .ctbl td{padding:5px 6px;border:1px solid ${T.border};vertical-align:top;word-break:break-word}
+        .ctbl tr:nth-child(even) td{background:${T.even}}
+        input[type=number]::-webkit-inner-spin-button{opacity:0.4}
+        input[type=time]{color-scheme:${theme==="light"?"light":"dark"}}
+      `}</style>
+
+      {locked && <LockScreen T={T} onUnlock={()=>setLocked(false)}/>}
+      {exportModal && <ExportModal modal={exportModal} T={T} onClose={()=>setExportModal(null)}/>}
+
+      {/* HEADER */}
+      <div style={{display:"flex",alignItems:"center",gap:10,padding:"9px 13px 7px",background:T.navBg,borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
+        <img src={LOGO_SVG} style={{width:32,height:32,borderRadius:8}} alt="logo"/>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:700,fontSize:"0.95rem",color:T.accent,lineHeight:1.1}}>JivanLog</div>
+          <div style={{fontSize:"0.68rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",lineHeight:1.2}}>{dayStr}</div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          {/* Sync indicator */}
+          <div title={syncStatus==="saving"?"Saving…":syncStatus==="saved"?"Saved ✓":syncStatus==="error"?"Sync error":"Synced"} style={{fontSize:"0.7rem",color:syncStatus==="saving"?T.textMuted:syncStatus==="saved"?T.accent:syncStatus==="error"?T.danger:T.border}}>
+            {syncStatus==="saving"?"⟳":syncStatus==="saved"?"✓":syncStatus==="error"?"!":"☁"}
+          </div>
+          <div style={{fontFamily:"'DM Mono',monospace",fontSize:"0.88rem",color:T.waterBtnText}}>{clock}</div>
+        </div>
+      </div>
+
+      {/* PAGE */}
+      <div style={{flex:1,overflowY:"auto",padding:"12px 13px"}}>
+        {page==="home"     && <HomePage entries={entries} settings={settings} onAdd={addEntry} entryTime={entryTime} setEntryTime={setEntryTime} T={T}/>}
+        {page==="manage"   && <ManagePage entries={entries} settings={settings} onUpdate={updateEntry} onDelete={deleteEntry} T={T}/>}
+        {page==="reports"  && <ReportsPage entries={entries} T={T} clearAll={clearAll} setModal={setExportModal}/>}
+        {page==="settings" && <SettingsPage settings={settings} defaults={defaults} presets={presets} theme={theme}
+            setSettings={saveSettings} setDefaults={saveDefaults} setPresets={savePresets} setTheme={saveTheme}
+            user={user} onSignOut={signOut} T={T}/>}
+      </div>
+
+      {/* NAV */}
+      <nav style={{display:"flex",background:T.navBg,borderTop:`1px solid ${T.border}`,flexShrink:0}}>
+        {[["home","🏠","Home"],["manage","📋","Manage"],["reports","📊","Reports"],["settings","⚙️","Settings"]].map(([p,ic,lb])=>(
+          <button key={p} title={lb} onClick={()=>setPage(p)} style={{flex:1,padding:"9px 0 7px",textAlign:"center",fontSize:"1.3rem",background:"none",border:"none",color:page===p?T.accent:T.textMuted,borderRadius:0,cursor:"pointer",transition:"color 0.15s"}}>{ic}</button>
+        ))}
+        <button title="Lock Session" onClick={()=>{if(confirm("Lock JivanLog?\nYour data is saved to Firebase.")) setLocked(true);}} style={{flex:1,padding:"9px 0 7px",textAlign:"center",fontSize:"1.3rem",background:"none",border:"none",color:T.textMuted,borderRadius:0,cursor:"pointer"}}>🔒</button>
+      </nav>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// HOME
+// ═══════════════════════════════════════════════════════════════════════════════
+function HomePage({entries,settings,onAdd,entryTime,setEntryTime,T}) {
+  const [active,setActive]=useState("meal");
+  const todayE=entries.filter(e=>e.date===today()).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
+  const switchModule=m=>{ setActive(m); setEntryTime(nowHHMM()); };
+  return (
+    <div>
+      <div style={{display:"flex",gap:5,marginBottom:10,alignItems:"center"}}>
+        <div style={{display:"flex",gap:5,flex:1,overflowX:"auto",paddingBottom:2}}>
+          {MODULE_ITEMS.map(([m,lb,ic])=>(
+            <button key={m} title={lb} onClick={()=>switchModule(m)} style={{flexShrink:0,padding:"6px 10px",borderRadius:9,border:"1px solid",fontSize:"1.05rem",cursor:"pointer",borderColor:active===m?T.accentBtn:T.border,background:active===m?T.accentBg:T.cardBg,color:active===m?T.accent:T.textMuted}}>{ic}</button>
+          ))}
+        </div>
+        <div style={{flexShrink:0,borderLeft:`1px solid ${T.border}`,paddingLeft:8}}>
+          <input type="time" value={entryTime} onChange={e=>setEntryTime(e.target.value)} title="Entry time — edit to backdate"
+            style={{width:84,fontSize:"0.8rem",padding:"4px 5px",fontFamily:"'DM Mono',monospace",background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:7,color:T.text}}/>
+        </div>
+      </div>
+      {active==="meal"       && <MealEntry    settings={settings} onAdd={onAdd} T={T}/>}
+      {active==="exercise"   && <ExerciseEntry settings={settings} onAdd={onAdd} T={T}/>}
+      {active==="water"      && <WaterEntry    onAdd={onAdd} T={T}/>}
+      {active==="medical"    && <MedicalEntry  settings={settings} onAdd={onAdd} T={T}/>}
+      {active==="medication" && <MedEntry      settings={settings} onAdd={onAdd} T={T}/>}
+      <div style={{marginTop:14}}>
+        <div className="slabel">Today's Log</div>
+        {todayE.length===0
+          ? <div style={{color:T.textMuted,fontSize:"0.8rem",textAlign:"center",padding:"18px 0"}}>No entries yet today</div>
+          : <div className="card" style={{padding:"8px 11px"}}>{todayE.map(e=><TLE key={e.id} e={e} T={T}/>)}</div>}
+      </div>
+    </div>
+  );
+}
+
+function MealEntry({settings,onAdd,T}) {
+  const [mt,setMt]=useState(autoMeal);const [food,setFood]=useState("");const [qty,setQty]=useState("");const [unit,setUnit]=useState("g");const [notes,setNotes]=useState("");const [fl,setFl]=useState(false);
+  const save=()=>{ if(!food||!qty)return; onAdd({type:"meal",mealType:mt,food,qty,unit,notes}); setFood("");setQty("");setNotes(""); setFl(true);setTimeout(()=>setFl(false),1200); };
+  return (
+    <div className="card">
+      <div className="slabel">🍽️ Meal</div>
+      <div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}>
+        <select value={mt} onChange={e=>setMt(e.target.value)} style={{flex:"0 0 95px"}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select>
+        <select value={food} onChange={e=>setFood(e.target.value)} style={{flex:"2 1 80px",minWidth:0}}>
+          <option value="">Food item…</option>{settings.foodCategories.sort().map(f=><option key={f}>{f}</option>)}
+        </select>
+        <input type="number" placeholder="Qty" value={qty} onChange={e=>setQty(e.target.value)} style={{flex:"1 0 62px",width:62}}/>
+        <select value={unit} onChange={e=>setUnit(e.target.value)} style={{flex:"1 0 70px",width:70}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select>
+      </div>
+      <div style={{display:"flex",gap:6,alignItems:"center"}}>
+        <input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/>
+        <Saver flash={fl} onClick={save} T={T}/>
+      </div>
+    </div>
+  );
+}
+
+function ExerciseEntry({settings,onAdd,T}) {
+  const [et,setEt]=useState("");const [sub,setSub]=useState("");const [dist,setDist]=useState("");const [min,setMin]=useState("");const [cnt,setCnt]=useState("");const [notes,setNotes]=useState("");const [fl,setFl]=useState(false);
+  const etObj=settings.exerciseTypes.find(e=>e.name===et);
+  const hasSub=etObj?.subTypes?.length>0;const isDT=etObj?.metrics?.includes("distance");const isCnt=etObj?.metrics?.includes("count");
+  const save=()=>{ if(!et||(hasSub&&!sub))return; onAdd({type:"exercise",exType:et,subType:sub,dist,time:min,count:cnt,notes}); setSub("");setDist("");setMin("");setCnt("");setNotes(""); setFl(true);setTimeout(()=>setFl(false),1200); };
+  return (
+    <div className="card">
+      <div className="slabel">🏃 Exercise</div>
+      <div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}>
+        <select value={et} onChange={e=>{setEt(e.target.value);setSub("");}} style={{flex:"1 1 100px",minWidth:0}}>
+          <option value="">Type…</option>{settings.exerciseTypes.map(e=><option key={e.name}>{e.name}</option>)}
+        </select>
+        {hasSub&&<select value={sub} onChange={e=>setSub(e.target.value)} style={{flex:"1 1 110px",minWidth:0}}>
+          <option value="">Sub-type…</option>{etObj.subTypes.map(s=><option key={s}>{s}</option>)}
+        </select>}
+        {isDT&&<><input type="number" placeholder="km" value={dist} onChange={e=>setDist(e.target.value)} style={{flex:"0 0 52px"}}/><input type="number" placeholder="min" value={min} onChange={e=>setMin(e.target.value)} style={{flex:"0 0 52px"}}/></>}
+        {isCnt&&<input type="number" placeholder="count" value={cnt} onChange={e=>setCnt(e.target.value)} style={{flex:"0 0 68px"}}/>}
+      </div>
+      <div style={{display:"flex",gap:6,alignItems:"center"}}>
+        <input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/>
+        <Saver flash={fl} onClick={save} T={T}/>
+      </div>
+    </div>
+  );
+}
+
+function WaterEntry({onAdd,T}) {
+  const [wt,setWt]=useState("Plain");const [pend,setPend]=useState(0);
+  const timer=useRef();const wtR=useRef(wt);wtR.current=wt;
+  const add=ml=>{ setPend(p=>{ const n=p+ml; clearTimeout(timer.current); timer.current=setTimeout(()=>{onAdd({type:"water",ml:n,waterTemp:wtR.current});setPend(0);},30000); return n; }); };
+  const flush=()=>{ clearTimeout(timer.current);if(pend>0){onAdd({type:"water",ml:pend,waterTemp:wtR.current});setPend(0);} };
+  return (
+    <div className="card">
+      <div className="slabel">💧 Water</div>
+      <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+        <select value={wt} onChange={e=>setWt(e.target.value)} style={{flex:"0 0 82px"}}>{WATER_TEMPS.map(t=><option key={t}>{t}</option>)}</select>
+        {[500,250,100,50].map(ml=><button key={ml} className="wbtn" onClick={()=>add(ml)}>+{ml}</button>)}
+      </div>
+      {pend>0&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 9px",background:T.even,borderRadius:8,border:`1px solid ${T.border}`,marginTop:7}}>
+        <span style={{fontSize:"0.82rem",color:T.waterBtnText}}>💧 {wt} {pend}ml (buffering…)</span>
+        <button onClick={flush} style={{marginLeft:"auto",padding:"3px 9px",fontSize:"0.75rem",borderRadius:7,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer"}}>Log now</button>
+      </div>}
+    </div>
+  );
+}
+
+function MedicalEntry({settings,onAdd,T}) {
+  const [rt,setRt]=useState("");const [val,setVal]=useState("");const [notes,setNotes]=useState("");const [fl,setFl]=useState(false);
+  const save=()=>{ if(!rt||!val)return; onAdd({type:"medical",readingType:rt,value:val,unit:MEDICAL_UNITS[rt]||"",notes}); setVal("");setNotes(""); setFl(true);setTimeout(()=>setFl(false),1200); };
+  return (
+    <div className="card">
+      <div className="slabel">🩺 Medical Reading</div>
+      <div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6}}>
+        <select value={rt} onChange={e=>setRt(e.target.value)} style={{flex:"0 0 90px"}}>
+          <option value="">Type…</option>{settings.medicalPresets.map(m=><option key={m}>{m}</option>)}
+        </select>
+        <input placeholder={MEDICAL_UNITS[rt]?`Value (${MEDICAL_UNITS[rt]})`:"Value"} value={val} onChange={e=>setVal(e.target.value)} style={{flex:1}}/>
+      </div>
+      <div style={{display:"flex",gap:6,alignItems:"center"}}>
+        <input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/>
+        <Saver flash={fl} onClick={save} T={T}/>
+      </div>
+    </div>
+  );
+}
+
+function MedEntry({settings,onAdd,T}) {
+  const [med,setMed]=useState("");const [timing,setTiming]=useState("After dinner");const [fl,setFl]=useState(false);
+  const save=()=>{ if(!med)return; onAdd({type:"medication",med,timing}); setMed(""); setFl(true);setTimeout(()=>setFl(false),1200); };
+  return (
+    <div className="card">
+      <div className="slabel">💊 Medication</div>
+      <div style={{display:"flex",gap:5,alignItems:"center"}}>
+        <select value={med} onChange={e=>setMed(e.target.value)} style={{flex:"1 1 140px",minWidth:0}}>
+          <option value="">Medication…</option>{settings.medications.map(m=><option key={m}>{m}</option>)}
+        </select>
+        <select value={timing} onChange={e=>setTiming(e.target.value)} style={{flex:"1 1 120px",minWidth:0}}>{MED_TIMES.map(t=><option key={t}>{t}</option>)}</select>
+        <Saver flash={fl} onClick={save} T={T}/>
+      </div>
+    </div>
+  );
+}
+
+function TLE({e,T}) {
+  const ic={meal:"🍽️",exercise:"🏃",water:"💧",medical:"🩺",medication:"💊"};
+  let m="";
+  if(e.type==="meal")       m=`${e.mealType} · ${e.food} · ${e.unit==="count"?e.qty:e.qty+e.unit}`;
+  if(e.type==="exercise")   {m=e.exType;if(e.subType)m+=` · ${e.subType}`;if(e.dist)m+=` · ${e.dist}km`;if(e.time)m+=` · ${e.time}min`;if(e.count)m+=` · x${e.count}`;}
+  if(e.type==="water")      m=`${e.waterTemp||""} ${e.ml}ml`.trim();
+  if(e.type==="medical")    m=`${e.readingType} · ${e.value} ${e.unit}`;
+  if(e.type==="medication") m=`${e.med} · ${e.timing}`;
+  return (
+    <div className="tle">
+      <span style={{fontSize:"0.68rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:40,flexShrink:0}}>{fmt24(e.timestamp)}</span>
+      <span style={{flexShrink:0}}>{ic[e.type]}</span>
+      <div style={{flex:1,fontSize:"0.83rem",lineHeight:1.45}}>{m}{e.notes&&<span style={{fontSize:"0.74rem",color:T.textSub,fontStyle:"italic"}}> ({e.notes})</span>}</div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// MANAGE
+// ═══════════════════════════════════════════════════════════════════════════════
+function ManagePage({entries,settings,onUpdate,onDelete,T}) {
+  const [sel,setSel]=useState(today());const [eid,setEid]=useState(null);
+  const dates=Array.from({length:10},(_,i)=>{ const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10); });
+  const dayE=entries.filter(e=>e.date===sel).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
+  return (
+    <div>
+      <div style={{fontWeight:600,fontSize:"0.92rem",marginBottom:10}}>📋 Manage Records</div>
+      <select value={sel} onChange={e=>{setSel(e.target.value);setEid(null);}} style={{marginBottom:10}}>
+        {dates.map(d=><option key={d} value={d}>{fmtDate(d)}{d===today()?" (Today)":""}</option>)}
+      </select>
+      {dayE.length===0
+        ? <div style={{color:T.textMuted,fontSize:"0.82rem",textAlign:"center",padding:22}}>No entries for this date</div>
+        : dayE.map(e=>eid===e.id
+            ? <EditEntry key={e.id} entry={e} settings={settings} T={T} onSave={d=>{onUpdate(e.id,d);setEid(null);}} onCancel={()=>setEid(null)}/>
+            : <ManageRow key={e.id} e={e} T={T} onEdit={()=>setEid(e.id)} onDelete={()=>{if(confirm("Delete this entry?"))onDelete(e.id);}}/>)
+      }
+    </div>
+  );
+}
+function ManageRow({e,onEdit,onDelete,T}) {
+  const ic={meal:"🍽️",exercise:"🏃",water:"💧",medical:"🩺",medication:"💊"};
+  let m="";
+  if(e.type==="meal")       m=`${e.mealType} · ${e.food} · ${e.unit==="count"?e.qty:e.qty+e.unit}`;
+  if(e.type==="exercise")   {m=e.exType;if(e.subType)m+=` · ${e.subType}`;if(e.dist)m+=` · ${e.dist}km`;if(e.time)m+=` · ${e.time}min`;if(e.count)m+=` · x${e.count}`;}
+  if(e.type==="water")      m=`${e.waterTemp||""} ${e.ml}ml`.trim();
+  if(e.type==="medical")    m=`${e.readingType} · ${e.value} ${e.unit}`;
+  if(e.type==="medication") m=`${e.med} · ${e.timing}`;
+  return (
+    <div className="card" style={{display:"flex",alignItems:"flex-start",gap:8,padding:"9px 11px",marginBottom:6}}>
+      <span style={{fontSize:"0.66rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:40,paddingTop:2,flexShrink:0}}>{fmt24(e.timestamp)}</span>
+      <span style={{flexShrink:0}}>{ic[e.type]}</span>
+      <div style={{flex:1,fontSize:"0.82rem",lineHeight:1.4}}>{m}{e.notes&&<span style={{fontSize:"0.74rem",color:T.textSub,fontStyle:"italic"}}> ({e.notes})</span>}</div>
+      <div style={{display:"flex",gap:3,flexShrink:0}}>
+        <button className="ibtn" onClick={onEdit}>✏️</button>
+        <button className="ibtn" style={{color:T.danger}} onClick={onDelete}>🗑️</button>
+      </div>
+    </div>
+  );
+}
+function EditEntry({entry,settings,onSave,onCancel,T}) {
+  const [d,setD]=useState(deepClone(entry));const set=(k,v)=>setD(p=>({...p,[k]:v}));
+  const eo=settings.exerciseTypes.find(e=>e.name===d.exType);
+  return (
+    <div className="card" style={{border:`1px solid ${T.accentBtn}55`,marginBottom:8}}>
+      <div className="slabel" style={{color:T.accent,marginBottom:7}}>✏️ Editing</div>
+      {d.type==="meal"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}>
+        <select value={d.mealType} onChange={e=>set("mealType",e.target.value)} style={{width:95}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select>
+        <select value={d.food} onChange={e=>set("food",e.target.value)} style={{flex:"2 1 80px"}}>{settings.foodCategories.sort().map(f=><option key={f}>{f}</option>)}</select>
+        <input type="number" value={d.qty} onChange={e=>set("qty",e.target.value)} style={{width:62}}/>
+        <select value={d.unit} onChange={e=>set("unit",e.target.value)} style={{width:70}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select>
+        <input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100px"}}/>
+      </div>}
+      {d.type==="exercise"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}>
+        <select value={d.exType} onChange={e=>set("exType",e.target.value)} style={{flex:"1 1 100px"}}>{settings.exerciseTypes.map(e=><option key={e.name}>{e.name}</option>)}</select>
+        {eo?.subTypes?.length>0&&<select value={d.subType||""} onChange={e=>set("subType",e.target.value)} style={{flex:"1 1 110px"}}>{eo.subTypes.map(s=><option key={s}>{s}</option>)}</select>}
+        {eo?.metrics?.includes("distance")&&<><input type="number" placeholder="km" value={d.dist||""} onChange={e=>set("dist",e.target.value)} style={{width:52}}/><input type="number" placeholder="min" value={d.time||""} onChange={e=>set("time",e.target.value)} style={{width:52}}/></>}
+        {eo?.metrics?.includes("count")&&<input type="number" placeholder="count" value={d.count||""} onChange={e=>set("count",e.target.value)} style={{width:68}}/>}
+        <input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100px"}}/>
+      </div>}
+      {d.type==="water"&&<div style={{display:"flex",gap:5,marginBottom:7}}>
+        <select value={d.waterTemp||"Plain"} onChange={e=>set("waterTemp",e.target.value)} style={{width:90}}>{WATER_TEMPS.map(t=><option key={t}>{t}</option>)}</select>
+        <input type="number" value={d.ml} onChange={e=>set("ml",+e.target.value)}/>
+      </div>}
+      {d.type==="medical"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}>
+        <select value={d.readingType} onChange={e=>set("readingType",e.target.value)} style={{width:90}}>{settings.medicalPresets.map(m=><option key={m}>{m}</option>)}</select>
+        <input value={d.value} onChange={e=>set("value",e.target.value)} style={{flex:1}}/>
+        <input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100px"}}/>
+      </div>}
+      {d.type==="medication"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}>
+        <select value={d.med} onChange={e=>set("med",e.target.value)} style={{flex:"1 1 130px"}}>{settings.medications.map(m=><option key={m}>{m}</option>)}</select>
+        <select value={d.timing} onChange={e=>set("timing",e.target.value)} style={{flex:"1 1 120px"}}>{MED_TIMES.map(t=><option key={t}>{t}</option>)}</select>
+      </div>}
+      <div style={{display:"flex",gap:6}}>
+        <button onClick={onCancel} style={{flex:1,padding:"7px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+        <button onClick={()=>onSave(d)} style={{flex:1,padding:"7px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Save Changes</button>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// REPORTS
+// ═══════════════════════════════════════════════════════════════════════════════
+function ReportsPage({entries,T,clearAll,setModal}) {
+  const [tab,setTab]=useState("view");const [vd,setVd]=useState(today());
+  const [cd,setCd]=useState([today()]);const [ad,setAd]=useState(today());const [qr,setQr]=useState("");
+  const fileRef=useRef();
+  const d30=Array.from({length:30},(_,i)=>{ const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10); });
+  const rpt=date=>dayReport(entries.filter(e=>e.date===date));
+  const doExport=(csv,fn)=>setModal({filename:fn,csv});
+  const applyQr=v=>{ setQr(v);if(!v)return;const n=parseInt(v);setCd(Array.from({length:n},(_,i)=>{ const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10); })); };
+  const handleImport=e=>{ const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{try{const ls=ev.target.result.split("\n").filter(l=>l.trim());const h=ls[0].split(",").map(x=>x.replace(/"/g,"").trim());if(!h.includes("ID")||!h.includes("Type")){alert("Invalid format.");return;}alert(`Validated — ${ls.length-1} entries found.\nFull import coming in a future version.`);}catch(e){alert("Could not parse CSV.");}};r.readAsText(f);e.target.value=""; };
+  return (
+    <div>
+      <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:10,flexWrap:"wrap"}}>
+        <span style={{fontWeight:700,fontSize:"0.92rem",marginRight:4}}>📊</span>
+        <button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} title="Import JivanLog CSV" onClick={()=>fileRef.current.click()}>⬆️ Import</button>
+        <button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} title="Current view as CSV" onClick={()=>doExport(buildViewCSV(entries,tab==="view"?[vd]:cd),`jivanlog-view-${today()}.csv`)}>⬇️ This View</button>
+        <button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} title="All data flat-file CSV" onClick={()=>doExport(buildAllCSV(entries),`jivanlog-all-${today()}.csv`)}>⬇️ All Data</button>
+        <div style={{flex:1}}/>
+        <button onClick={clearAll} title="Download backup then clear all entries" style={{fontSize:"0.72rem",padding:"4px 8px",fontWeight:700,letterSpacing:"0.04em",background:"none",border:`1px solid ${T.danger}88`,color:T.danger,borderRadius:8,cursor:"pointer",fontFamily:"inherit"}}>CLEAR ALL</button>
+        <input ref={fileRef} type="file" accept=".csv" style={{display:"none"}} onChange={handleImport}/>
+      </div>
+      <div style={{display:"flex",gap:5,marginBottom:9,alignItems:"center"}}>
+        <button className={`tbtn${tab==="view"?" on":""}`} onClick={()=>setTab("view")}>View</button>
+        <button className={`tbtn${tab==="compare"?" on":""}`} onClick={()=>setTab("compare")}>Compare</button>
+        {tab==="view"&&<select value={vd} onChange={e=>setVd(e.target.value)} style={{flex:1,fontSize:"0.79rem",padding:"5px 7px"}}>
+          {d30.map(d=><option key={d} value={d}>{fmtDate(d)}{d===today()?" ★":""}</option>)}
+        </select>}
+        {tab==="compare"&&<>
+          <select value={qr} onChange={e=>applyQr(e.target.value)} style={{flex:"0 0 auto",fontSize:"0.79rem",padding:"5px 6px",width:110}}>
+            <option value="">Quick…</option>{[2,3,4,5,6,7,8,9,10].map(n=><option key={n} value={n}>Last {n} days</option>)}
+          </select>
+          <select value={ad} onChange={e=>setAd(e.target.value)} style={{flex:1,fontSize:"0.79rem",padding:"5px 6px"}}>
+            {d30.map(d=><option key={d} value={d}>{fmtShort(d)}{d===today()?" ★":""}</option>)}
+          </select>
+          <button onClick={()=>{ setQr("");if(!cd.includes(ad)&&cd.length<10)setCd(p=>[...p,ad].sort().reverse()); }} style={{flexShrink:0,padding:"5px 11px",fontSize:"1.1rem",fontWeight:700,lineHeight:1,border:"none",borderRadius:8,background:T.accentBtn,color:"#fff",cursor:"pointer"}}>＋</button>
+        </>}
+      </div>
+      {tab==="compare"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8,alignItems:"center"}}>
+        {cd.map(d=>(
+          <div key={d} style={{display:"flex",alignItems:"center",gap:3,background:T.border,borderRadius:20,padding:"2px 9px",fontSize:"0.73rem"}}>
+            <span>{fmtShort(d)}</span>
+            {cd.length>1&&<button onClick={()=>{setQr("");setCd(p=>p.filter(x=>x!==d));}} style={{background:"none",border:"none",color:T.textMuted,cursor:"pointer",fontSize:"0.85rem",padding:"0 0 0 3px"}}>×</button>}
+          </div>
+        ))}
+        <button className="tbtn" style={{padding:"2px 9px",fontSize:"0.72rem"}} onClick={()=>{setQr("");setCd([today()]);}}>Clear</button>
+      </div>}
+      {tab==="view"&&<div className="card">
+        <div style={{fontWeight:600,fontSize:"0.82rem",marginBottom:8,color:T.accent}}>{fmtDate(vd)}</div>
+        {REPORT_ROWS.map(({label,key})=>{ const v=rpt(vd)[key]||"-";return (
+          <div key={key} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}>
+            <span style={{color:T.textMuted,fontSize:"0.76rem",minWidth:100,flexShrink:0}}>{label}</span>
+            <span style={{textAlign:"right",flex:1,paddingLeft:6,color:v==="-"?T.border:T.text}}>{v}</span>
+          </div>
+        );})}
+      </div>}
+      {tab==="compare"&&<div style={{overflowX:"auto"}}>
+        <table className="ctbl">
+          <thead><tr><th style={{minWidth:90}}>Category</th>{cd.map(d=><th key={d}>{fmtShort(d)}</th>)}</tr></thead>
+          <tbody>{REPORT_ROWS.map(({label,key})=>{ const vals=cd.map(d=>rpt(d)[key]||"-");return (
+            <tr key={key}><td style={{color:T.textMuted,fontWeight:600}}>{label}</td>{vals.map((v,i)=><td key={i} style={{color:v==="-"?T.border:T.text}}>{v}</td>)}</tr>
+          );})}</tbody>
+        </table>
+      </div>}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SETTINGS  — state lives in App, no stale local copies
+// ═══════════════════════════════════════════════════════════════════════════════
+const STABS=[["general","General"],["default","Default"],["p1","Preset 1"],["p2","Preset 2"],["p3","Preset 3"]];
+const CTABS=[["food","🍽️ Food"],["exercise","🏃 Exercise"],["medical","🩺 Medical"],["meds","💊 Meds"]];
+
+function SettingsPage({settings,defaults,presets,theme,setSettings,setDefaults,setPresets,setTheme,user,onSignOut,T}) {
+  const [stab,setStab]=useState("general");
+  const [ctab,setCtab]=useState("food");
+  const [newItem,setNewItem]=useState("");
+  const [applyFlash,setApplyFlash]=useState(false);
+
+  const getActive=()=>{ if(stab==="default")return defaults; const i=parseInt(stab[1])-1; return presets[i]; };
+
+  // updateActive: directly calls the right setter — no local copy, no staleness
+  const updateActive=updater=>{
+    if(stab==="default"){ setDefaults(typeof updater==="function"?updater(defaults):updater); return; }
+    const idx=parseInt(stab[1])-1;
+    const next=deepClone(presets);
+    next[idx]=typeof updater==="function"?updater(presets[idx]):updater;
+    setPresets(next);
+  };
+
+  const applyToCurrent=()=>{
+    const src=getActive(); if(!src) return;
+    const label=stab==="default"?"Default":`Preset ${stab[1]}`;
+    if(!confirm(`Apply ${label} to Current Settings?\n\nEntry forms will immediately use this config.`)) return;
+    setSettings(deepClone(src));
+    setApplyFlash(true); setTimeout(()=>setApplyFlash(false),1800);
+  };
+
+  const resetCurrent=()=>{
+    if(!confirm("Reset Current Settings → Default?\n\nThis replaces what entry forms use right now.")) return;
+    setSettings(deepClone(defaults));
+  };
+
+  const resetAllPresets=()=>{
+    if(!confirm("Reset ALL Presets → Default?\n\nPresets 1, 2 & 3 will all revert to Default.")) return;
+    setPresets([deepClone(defaults),deepClone(defaults),deepClone(defaults)]);
+  };
+
+  const addItem=key=>{ if(!newItem.trim())return; updateActive(p=>({...p,[key]:[...(p[key]||[]),newItem.trim()].sort()})); setNewItem(""); };
+  const removeItem=(key,item)=>updateActive(p=>({...p,[key]:(p[key]||[]).filter(x=>x!==item)}));
+  const active=getActive();
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+        <div style={{fontWeight:600,fontSize:"0.92rem"}}>⚙️ Settings</div>
+        {stab!=="general"&&active&&(
+          <button onClick={applyToCurrent} style={{padding:"5px 12px",borderRadius:8,border:"none",background:applyFlash?T.ok:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:600,fontSize:"0.79rem",cursor:"pointer",transition:"background 0.3s"}}>
+            {applyFlash?"✔ Applied!":"Apply to Current ▶"}
+          </button>
+        )}
+      </div>
+
+      <div style={{display:"flex",gap:4,marginBottom:10,overflowX:"auto",paddingBottom:2}}>
+        {STABS.map(([k,l])=>(
+          <button key={k} onClick={()=>{setStab(k);setNewItem("");}} className={`tbtn${stab===k?" on":""}`} style={{flexShrink:0}}>{l}</button>
+        ))}
+      </div>
+
+      {/* GENERAL */}
+      {stab==="general"&&<>
+        {/* User info */}
+        <div className="card" style={{display:"flex",alignItems:"center",gap:12,padding:"10px 13px"}}>
+          {user.photoURL&&<img src={user.photoURL} style={{width:38,height:38,borderRadius:"50%",border:`2px solid ${T.accentBtn}`}} alt="avatar"/>}
+          <div style={{flex:1}}>
+            <div style={{fontWeight:600,fontSize:"0.88rem"}}>{user.displayName||"User"}</div>
+            <div style={{fontSize:"0.72rem",color:T.textMuted}}>{user.email}</div>
+          </div>
+          <button onClick={onSignOut} style={{padding:"5px 10px",borderRadius:7,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}>Sign out</button>
+        </div>
+
+        <div className="card">
+          <div className="slabel">🎨 Theme</div>
+          <div style={{display:"flex",gap:6}}>
+            {[["dark","🌙 Dark"],["light","☀️ Light"],["system","💻 System"]].map(([m,l])=>(
+              <button key={m} onClick={()=>setTheme(m)} style={{flex:1,padding:"7px 4px",borderRadius:8,border:"1px solid",fontSize:"0.78rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit",borderColor:theme===m?T.accentBtn:T.border,background:theme===m?T.accentBg:T.cardBg,color:theme===m?T.accent:T.textMuted}}>{l}</button>
+            ))}
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="slabel">🔄 Reset</div>
+          {[
+            ["Reset Current → Default","Replaces entry-form config with Default",resetCurrent],
+            ["Reset All Presets → Default","Sets Presets 1, 2 & 3 to match Default",resetAllPresets],
+          ].map(([title,sub,fn])=>(
+            <div key={title} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${T.border}`}}>
+              <div><div style={{fontSize:"0.82rem",fontWeight:500}}>{title}</div><div style={{fontSize:"0.71rem",color:T.textMuted}}>{sub}</div></div>
+              <button onClick={fn} style={{flexShrink:0,marginLeft:10,padding:"4px 12px",borderRadius:7,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontFamily:"inherit",fontSize:"0.77rem"}}>Reset</button>
+            </div>
+          ))}
+        </div>
+
+        <div style={{padding:"8px 10px",background:T.even,borderRadius:8,border:`1px solid ${T.border}`,fontSize:"0.72rem",color:T.textMuted,lineHeight:1.75}}>
+          <b style={{color:T.textSub}}>How Settings work:</b><br/>
+          • <b>Default</b> tab — edit your baseline. Persists to Firebase immediately.<br/>
+          • <b>Preset 1–3</b> — independent configs (e.g. travel, recovery, normal).<br/>
+          • <b>Apply to Current ▶</b> on any tab pushes it to the entry forms instantly.<br/>
+          • <b>Reset</b> above restores Current or all Presets from Default.
+        </div>
+      </>}
+
+      {/* DEFAULT / PRESET editing */}
+      {stab!=="general"&&active&&<>
+        <div style={{padding:"6px 10px",background:T.accentBg,borderRadius:7,border:`1px solid ${T.accentBtn}44`,marginBottom:8,fontSize:"0.74rem",color:T.accent,fontWeight:500}}>
+          {stab==="default"?"Editing Default — baseline for Reset":"Editing "+STABS.find(([k])=>k===stab)?.[1]+" — independent config slot"}
+          <span style={{color:T.textMuted,fontWeight:400,marginLeft:6}}>· saves to Firebase instantly</span>
+        </div>
+        <div style={{display:"flex",gap:4,marginBottom:9,overflowX:"auto"}}>
+          {CTABS.map(([k,l])=>(
+            <button key={k} onClick={()=>{setCtab(k);setNewItem("");}} className={`tbtn${ctab===k?" on":""}`} style={{flexShrink:0,fontSize:"0.75rem"}}>{l}</button>
+          ))}
+        </div>
+        {ctab==="food"    &&<EList items={active.foodCategories||[]} onRemove={i=>removeItem("foodCategories",i)} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("foodCategories")} T={T}/>}
+        {ctab==="medical" &&<EList items={active.medicalPresets||[]} onRemove={i=>removeItem("medicalPresets",i)} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("medicalPresets")} T={T}/>}
+        {ctab==="meds"    &&<EList items={active.medications||[]} onRemove={i=>removeItem("medications",i)} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("medications")} T={T}/>}
+        {ctab==="exercise"&&<ExerciseSetting types={active.exerciseTypes||[]} onChange={et=>updateActive(p=>({...p,exerciseTypes:et}))} T={T}/>}
+        <div style={{marginTop:6,fontSize:"0.71rem",color:T.textMuted,fontStyle:"italic",textAlign:"right"}}>
+          All changes save to Firebase instantly · Apply to Current ▶ to use in entry forms
+        </div>
+      </>}
+    </div>
+  );
+}
+
+function EList({items,onRemove,newItem,setNew,onAdd,T}) {
+  return (
+    <div className="card">
+      <div style={{display:"flex",gap:7,marginBottom:9}}>
+        <input placeholder="Add new item…" value={newItem} onChange={e=>setNew(e.target.value)} onKeyDown={e=>e.key==="Enter"&&onAdd()}/>
+        <button onClick={onAdd} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button>
+      </div>
+      {[...(items||[])].sort().map(item=>(
+        <div key={item} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}>
+          <span>{item}</span>
+          <button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(item)}>🗑️</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ExerciseSetting({types,onChange,T}) {
+  const [ei,setEi]=useState(null);const [nn,setNn]=useState("");
+  const add=()=>{ if(!nn.trim())return; onChange([...types,{name:nn.trim(),subTypes:[],metrics:["distance","time"]}]); setNn(""); };
+  const rem=i=>onChange(types.filter((_,x)=>x!==i));
+  const addSub=(i,s)=>{ if(!s.trim())return; onChange(types.map((t,x)=>x===i?{...t,subTypes:[...t.subTypes,s.trim()].sort()}:t)); };
+  const remSub=(i,s)=>onChange(types.map((t,x)=>x===i?{...t,subTypes:t.subTypes.filter(v=>v!==s)}:t));
+  const togM=(i,m)=>onChange(types.map((t,x)=>{ if(x!==i)return t; const h=t.metrics.includes(m); return {...t,metrics:h?t.metrics.filter(v=>v!==m):[...t.metrics,m]}; }));
+  return (
+    <div>
+      <div className="card" style={{marginBottom:7}}>
+        <div style={{display:"flex",gap:7}}>
+          <input placeholder="New exercise type…" value={nn} onChange={e=>setNn(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/>
+          <button onClick={add} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button>
+        </div>
+      </div>
+      {types.map((t,i)=>(
+        <div key={t.name} className="card" style={{marginBottom:7}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}}>
+            <span style={{fontWeight:600,fontSize:"0.85rem"}}>{t.name}</span>
+            <div style={{display:"flex",gap:5}}>
+              <button className="ibtn" onClick={()=>setEi(ei===i?null:i)}>{ei===i?"✖️":"✏️"}</button>
+              <button className="ibtn" style={{color:T.danger}} onClick={()=>rem(i)}>🗑️</button>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:3}}>
+            {["distance","time","count"].map(m=>(
+              <button key={m} onClick={()=>togM(i,m)} style={{padding:"2px 9px",borderRadius:20,fontSize:"0.72rem",border:"1px solid",cursor:"pointer",borderColor:t.metrics.includes(m)?T.accentBtn:T.border,background:t.metrics.includes(m)?T.accentBg:"transparent",color:t.metrics.includes(m)?T.accent:T.textMuted}}>{m}</button>
+            ))}
+          </div>
+          {ei===i&&<div style={{marginTop:7}}>
+            <div className="slabel">Sub-types</div>
+            {t.subTypes.map(s=>(
+              <div key={s} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:"0.8rem",padding:"4px 0",borderBottom:`1px solid ${T.border}`}}>
+                <span>{s}</span><button className="ibtn" style={{color:T.danger}} onClick={()=>remSub(i,s)}>🗑️</button>
+              </div>
+            ))}
+            <AddInline placeholder="Add sub-type…" onAdd={s=>addSub(i,s)} T={T}/>
+          </div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AddInline({placeholder,onAdd,T}) {
+  const [v,setV]=useState("");
+  return (
+    <div style={{display:"flex",gap:6,marginTop:6}}>
+      <input placeholder={placeholder} value={v} onChange={e=>setV(e.target.value)} onKeyDown={e=>{ if(e.key==="Enter"){onAdd(v);setV("");} }} style={{fontSize:"0.78rem"}}/>
+      <button onClick={()=>{onAdd(v);setV("");}} style={{flexShrink:0,padding:"5px 9px",fontSize:"0.78rem",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button>
+    </div>
+  );
+}
+
+// Mount
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App/>);
+</script>
+
+<!-- Service Worker -->
+<script>
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('sw.js').catch(e=>console.log('SW:',e));
+  });
+}
+</script>
+</body>
+</html>
