@@ -20,12 +20,14 @@
 </head>
 <body>
 <div id="root"></div>
+
 <script>
 firebase.initializeApp({
   apiKey:"AIzaSyDi7Ku6XujAVMyXGKZmfeacn-h7kCU7kmc",
   authDomain:"jivanlog.firebaseapp.com",
   databaseURL:"https://jivanlog-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId:"jivanlog",storageBucket:"jivanlog.firebasestorage.app",
+  projectId:"jivanlog",
+  storageBucket:"jivanlog.firebasestorage.app",
   messagingSenderId:"533310222939",
   appId:"1:533310222939:web:9cd1c33ad05556d162057e"
 });
@@ -33,224 +35,162 @@ const fbAuth=firebase.auth();
 const fbDb=firebase.database();
 const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
+
 <script type="text/babel">
 const{useState,useEffect,useRef,useCallback}=React;
 
-const LOGO=`data:image/svg+xml;utf8,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="22" fill="url(#bg)"/><defs><radialGradient id="bg" cx="50%" cy="30%" r="80%"><stop offset="0%" stop-color="#1a56db"/><stop offset="100%" stop-color="#0a2a7a"/></radialGradient></defs><path d="M50 20 L74 32 L74 55 Q74 72 50 84 Q26 72 26 55 L26 32 Z" fill="none" stroke="#00e676" stroke-width="2.5" opacity="0.9"/><text x="50" y="68" text-anchor="middle" font-family="Georgia,serif" font-size="38" font-weight="bold" fill="white" opacity="0.95">J</text></svg>')}`;
+// ── LOGO ──────────────────────────────────────────────────────────────────────
+const LOGO_SVG=`data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="22" fill="url(#bg)"/><defs><radialGradient id="bg" cx="50%" cy="30%" r="80%"><stop offset="0%" stop-color="#1a56db"/><stop offset="100%" stop-color="#0a2a7a"/></radialGradient><radialGradient id="glow" cx="50%" cy="60%" r="60%"><stop offset="0%" stop-color="#00e676" stop-opacity="0.5"/><stop offset="100%" stop-color="#00e676" stop-opacity="0"/></radialGradient></defs><ellipse cx="50" cy="72" rx="28" ry="10" fill="url(#glow)"/><path d="M50 15 L78 28 L78 55 Q78 75 50 88 Q22 75 22 55 L22 28 Z" fill="#00c853" opacity="0.25"/><path d="M50 20 L74 32 L74 55 Q74 72 50 84 Q26 72 26 55 L26 32 Z" fill="none" stroke="#00e676" stroke-width="2.5" opacity="0.9"/><text x="50" y="68" text-anchor="middle" font-family="Georgia,serif" font-size="38" font-weight="bold" fill="white" opacity="0.95">J</text><circle cx="50" cy="55" r="5" fill="white" opacity="0.5"/></svg>`)}`;
 
-// ── FACTORY DEFAULTS (exhaustive lists from 6 weeks of diary) ─────────────────
+// ── CONSTANTS ─────────────────────────────────────────────────────────────────
 const FD={
-  foodCategories:[
-    "Airline Meal","Alfam Chicken","Almonds","Apple","Avial","Beans Thoran",
-    "Beetroot Thoran","Black Channa","Boiled Egg","Broccoli","Chapati",
-    "Coconut Chicken","Coconut Gravy","Coconut Masala","Curd","Curd + ACV",
-    "Dal","Fish (Plain)","Fish Curry","Fish Fry","Green Gram in Coconut",
-    "Haryali Chicken","Idli","Kabuli Channa","Karela-Onion Saute",
-    "Ladies Finger Saute","Lettuce Salad","Minced Salad","Mixed Veg in Coconut",
-    "Omelette","Orange","Palak Paneer","Paneer","Paneer Tikka","Pear","Poha",
-    "Pumpkin + Kabuli Channa","Pumpkin Seeds","Rajma","Red Amaranthus","Rice",
-    "Roti","Salad (Cucumber)","Salad (Lettuce+Broccoli)","Sambar","Soya Chunks",
-    "Stuffed Omelette","Upma","Walnuts","Yogurt / Curd",
+  foodCategories:["Airline Meal","Alfam Chicken","Almonds","Apple","Avial","Beans Thoran","Beetroot Thoran","Black Channa","Boiled Egg","Broccoli","Chapati","Coconut Chicken","Coconut Gravy","Coconut Masala","Curd","Curd + ACV","Dal","Fish (Plain)","Fish Curry","Fish Fry","Green Gram in Coconut","Haryali Chicken","Idli","Kabuli Channa","Karela-Onion Saute","Ladies Finger Saute","Lettuce Salad","Minced Salad","Mixed Veg in Coconut","Omelette","Orange","Palak Paneer","Paneer","Paneer Tikka","Pear","Poha","Pumpkin + Kabuli Channa","Pumpkin Seeds","Rajma","Red Amaranthus","Rice","Roti","Salad (Cucumber)","Salad (Lettuce+Broccoli)","Sambar","Soya Chunks","Stuffed Omelette","Upma","Walnuts","Yogurt / Curd"],
+  liquidTypes:["Warm Water","Plain Water","Cold Water","--------","Morning Drink","Morning Coffee","Milk Tea","Green Tea","Tulsi Mulethi Tea","Tulsi Ginger Tea","Black Coffee","Black Tea","Coconut Water","Buttermilk","Herbal Tea","Lemon Water","Turmeric Milk"],
+  exerciseTypes:[{name:"Morning Walk",subTypes:[],metrics:["time"]},{name:"Evening Walk",subTypes:[],metrics:["time"]},{name:"Additional Walk",subTypes:[],metrics:["time"]},{name:"Legs Up the Wall",subTypes:[],metrics:["time"]},{name:"Legs Up the Pillow",subTypes:[],metrics:["time"]},{name:"Seated Calf Raise",subTypes:[],metrics:["count"]},{name:"Seated Ankle Circles",subTypes:[],metrics:["count"]},{name:"Seated Knee Extension",subTypes:[],metrics:["count"]},{name:"Short Arc Quad",subTypes:[],metrics:["count"]},{name:"Straight Leg Raise",subTypes:[],metrics:["count"]},{name:"Sole-to-Sole",subTypes:[],metrics:["count"]},{name:"Running",subTypes:[],metrics:["distance","time"]},{name:"Cycling",subTypes:[],metrics:["distance","time"]}],metrics:["distance","time"]},
+    {name:"Running",subTypes:[],metrics:["distance","time"]},
+    {name:"Legs Up the Wall",subTypes:[],metrics:["time"]},
+    {name:"Seated Exercise",subTypes:["Ankle Circles","Arm Raises","Calf Raises","Knee Extensions","Leg Raises","Shoulder Rolls","Wrist Rotations"],metrics:["count"]},
   ],
-  // Sentinel "──────────" divides water types from drinks in the dropdown
-  liquidTypes:[
-    "Warm Water","Plain Water","Cold Water",
-    "──────────",
-    "Morning Drink","Morning Coffee","Milk Tea","Green Tea",
-    "Tulsi Mulethi Tea","Tulsi Ginger Tea","Black Coffee","Black Tea",
-    "Coconut Water","Buttermilk","Herbal Tea","Lemon Water","Turmeric Milk",
-  ],
-  exerciseTypes:[
-    {name:"Morning Walk",           subTypes:[],metrics:["time"]},
-    {name:"Evening Walk",           subTypes:[],metrics:["time"]},
-    {name:"Additional Walk",        subTypes:[],metrics:["time"]},
-    {name:"Legs Up the Wall",       subTypes:[],metrics:["time"]},
-    {name:"Legs Up the Pillow",     subTypes:[],metrics:["time"]},
-    {name:"Seated Calf Raise",      subTypes:[],metrics:["count"]},
-    {name:"Seated Ankle Circles",   subTypes:[],metrics:["count"]},
-    {name:"Seated Knee Extension",  subTypes:[],metrics:["count"]},
-    {name:"Short Arc Quad",         subTypes:[],metrics:["count"]},
-    {name:"Straight Leg Raise",     subTypes:[],metrics:["count"]},
-    {name:"Sole-to-Sole",           subTypes:[],metrics:["count"]},
-    {name:"Running",                subTypes:[],metrics:["distance","time"]},
-    {name:"Cycling",                subTypes:[],metrics:["distance","time"]},
-  ],
-  // Units travel with preset — shown as placeholder in value field
-  medicalPresets:[
-    {name:"Sugar",  unit:"mg/dL"},
-    {name:"BP",     unit:"Sys/Dia"},
-    {name:"Weight", unit:"kg"},
-    {name:"Height", unit:"cm"},
-  ],
-  medications:[
-    "Glycomet 500 SR","Nexovas 10","Multi-Vitamins","Vitamin D (60K / Lumia)","Other",
-  ],
-  // 4 Day Template slots
-  dayTemplates:[
-    {name:"Home Day",   icon:"🏠",entries:[]},
-    {name:"Office Day", icon:"🏢",entries:[]},
-    {name:"Outing",     icon:"🌆",entries:[]},
-    {name:"Travel Day", icon:"✈️",entries:[]},
+  // ── Medical presets now carry unit — fixes issue #1 ───────────────────────
+  medicalPresets:[{name:"Sugar",unit:"mg/dL"},{name:"BP",unit:"Sys/Dia"},{name:"Weight",unit:"kg"},{name:"Height",unit:"cm"}],
+  medications:["Glycomet 500 SR","Nexovas 10","Multi-Vitamins","Vitamin D (60K / Lumia)","Other"],
+  // ── 3 named day templates (empty until user saves) ────────────────────────
+  templates:[
+    {name:"Home Day",  icon:"🏠",entries:[]},
+    {name:"Office Day",icon:"🏢",entries:[]},
+    {name:"Travel Day",icon:"✈️",entries:[]},
   ],
 };
-
 const deepClone=o=>JSON.parse(JSON.stringify(o));
 
-// Pre-built Home Day starter template derived from diary patterns
-// Uses epoch date 1970-01-01 as a neutral base — times are shifted on load
-const TPL_HOME=[
-  {id:"h01",type:"medical",  readingType:"Weight",  value:"",unit:"kg",   notes:"Wake-up weight",  timestamp:"1970-01-01T07:21:00.000Z"},
-  {id:"h02",type:"liquid",   liquidType:"Warm Water",ml:1000,notes:"",                              timestamp:"1970-01-01T07:22:00.000Z"},
-  {id:"h03",type:"medical",  readingType:"Sugar",   value:"",unit:"mg/dL",notes:"Fasting",          timestamp:"1970-01-01T07:25:00.000Z"},
-  {id:"h04",type:"meal",     mealType:"Breakfast",  food:"Almonds",    qty:"20", unit:"g",notes:"", timestamp:"1970-01-01T07:42:00.000Z"},
-  {id:"h05",type:"liquid",   liquidType:"Morning Drink",ml:350,notes:"Warm Water+Lemon+Honey+Pepper+Turmeric", timestamp:"1970-01-01T07:55:00.000Z"},
-  {id:"h06",type:"exercise", exType:"Legs Up the Wall",time:"20",notes:"",                          timestamp:"1970-01-01T08:00:00.000Z"},
-  {id:"h07",type:"liquid",   liquidType:"Morning Coffee",ml:300,notes:"60ml milk+stevia",           timestamp:"1970-01-01T08:45:00.000Z"},
-  {id:"h08",type:"meal",     mealType:"Breakfast",  food:"Walnuts",    qty:"30", unit:"g",notes:"", timestamp:"1970-01-01T10:05:00.000Z"},
-  {id:"h09",type:"medication",med:"Nexovas 10",     timing:"After breakfast",notes:"",              timestamp:"1970-01-01T10:15:00.000Z"},
-  {id:"h10",type:"medication",med:"Multi-Vitamins", timing:"After breakfast",notes:"",              timestamp:"1970-01-01T10:15:00.000Z"},
-  {id:"h11",type:"medication",med:"Vitamin D (60K / Lumia)",timing:"After breakfast",notes:"",     timestamp:"1970-01-01T10:16:00.000Z"},
-  {id:"h12",type:"meal",     mealType:"Breakfast",  food:"Apple",      qty:"150",unit:"g",notes:"", timestamp:"1970-01-01T10:50:00.000Z"},
-  {id:"h13",type:"medical",  readingType:"Sugar",   value:"",unit:"mg/dL",notes:"Post-breakfast",   timestamp:"1970-01-01T12:54:00.000Z"},
-  {id:"h14",type:"medication",med:"Glycomet 500 SR",timing:"Before lunch",notes:"",                 timestamp:"1970-01-01T12:55:00.000Z"},
-  {id:"h15",type:"meal",     mealType:"Lunch",      food:"Curd + ACV", qty:"200",unit:"g",notes:"+ 20g Pumpkin Seeds", timestamp:"1970-01-01T13:00:00.000Z"},
-  {id:"h16",type:"meal",     mealType:"Lunch",      food:"Fish Curry",  qty:"125",unit:"g",notes:"", timestamp:"1970-01-01T13:40:00.000Z"},
-  {id:"h17",type:"meal",     mealType:"Lunch",      food:"Beetroot Thoran",qty:"60",unit:"g",notes:"", timestamp:"1970-01-01T13:45:00.000Z"},
-  {id:"h18",type:"liquid",   liquidType:"Milk Tea",ml:300,notes:"ginger+cardamom+stevia",           timestamp:"1970-01-01T17:00:00.000Z"},
-  {id:"h19",type:"medical",  readingType:"Sugar",   value:"",unit:"mg/dL",notes:"Evening",          timestamp:"1970-01-01T18:00:00.000Z"},
-  {id:"h20",type:"medication",med:"Glycomet 500 SR",timing:"Before dinner",notes:"",                timestamp:"1970-01-01T19:28:00.000Z"},
-  {id:"h21",type:"meal",     mealType:"Dinner",     food:"Curd + ACV", qty:"200",unit:"g",notes:"", timestamp:"1970-01-01T19:30:00.000Z"},
-  {id:"h22",type:"meal",     mealType:"Dinner",     food:"Salad (Cucumber)",qty:"130",unit:"g",notes:"", timestamp:"1970-01-01T20:05:00.000Z"},
-  {id:"h23",type:"medical",  readingType:"Sugar",   value:"",unit:"mg/dL",notes:"Post-dinner",      timestamp:"1970-01-01T23:00:00.000Z"},
-  {id:"h24",type:"medical",  readingType:"Weight",  value:"",unit:"kg",  notes:"Pre-sleep weight",  timestamp:"1970-01-01T23:30:00.000Z"},
-];
+const FOOD_UNITS=["g","ml","count"];
+const MED_TIMES=["Before breakfast","After breakfast","Before lunch","After lunch","Before dinner","After dinner","Bedtime"];
+const MEAL_TYPES=["Breakfast","Lunch","Dinner","Snack"];
+const WATER_TEMPS=["Cold","Plain","Warm"];
+const TEMPLATE_SUPPORTED=["meal","drinks","water","medical","medication"];
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
-const genId   =()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const genId   =()=>Date.now().toString(36)+Math.random().toString(36).slice(2);
 const today   =()=>new Date().toISOString().slice(0,10);
-const fmt24   =dt=>{try{return new Date(dt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",hour12:false});}catch{return"--:--";}};
+const fmt24   =dt=>new Date(dt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",hour12:false});
 const nowTime =()=>new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
 const nowHHMM =()=>new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",hour12:false});
 const fmtDate =s=>{if(!s)return"";const[y,m,d]=s.split("-");return`${d} ${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+m-1]} ${y}`;};
 const fmtShort=s=>{if(!s)return"";const[,m,d]=s.split("-");return`${d}/${["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][+m-1]}`;};
 const sysDark =()=>window.matchMedia?.("(prefers-color-scheme:dark)").matches;
-const autoMeal=()=>{const h=new Date().getHours()*60+new Date().getMinutes();return h<705?"Breakfast":h<945?"Lunch":h<1125?"Snack":"Dinner";};
-const makeTS  =(dateStr,timeStr)=>{try{const[y,mo,d]=dateStr.split("-").map(Number);const[h,mi]=(timeStr||"00:00").split(":").map(Number);return new Date(y,mo-1,d,h,mi,0,0).toISOString();}catch{return new Date().toISOString();}};
-// Fix #2: sanitise text time input HH:MM
-const sanitiseTime=v=>{let s=v.replace(/[^0-9:]/g,"");if(s.length===4&&!s.includes(":"))s=s.slice(0,2)+":"+s.slice(2);return s.slice(0,5);};
+const autoMeal=()=>{const m=new Date().getHours()*60+new Date().getMinutes();return m<705?"Breakfast":m<945?"Lunch":m<1125?"Snack":"Dinner";};
+const makeTS  =(dateStr,timeStr)=>{const[y,mo,d]=dateStr.split("-").map(Number);const[h,mi]=(timeStr||"00:00").split(":").map(Number);return new Date(y,mo-1,d,h,mi,0,0).toISOString();};
 
 const THEMES={
-  dark:{bg:"#0a1628",cardBg:"#112240",navBg:"#0d1e35",inputBg:"#0d1e35",border:"#1e3a5f",text:"#e6edf3",textMuted:"#4a7fa5",textSub:"#7aa0bf",accent:"#00e676",accentBg:"#00897b22",accentBtn:"#00897b",danger:"#ef5350",wbtn:"#0d2a3d",wbtnTxt:"#40c4ff",even:"#0a1628",ok:"#1b5e20",lock:"#060e1a"},
-  light:{bg:"#e8eef5",cardBg:"#ffffff",navBg:"#d0dcea",inputBg:"#f2f6fb",border:"#a8c0d6",text:"#1c2e42",textMuted:"#3d6080",textSub:"#4e7a9a",accent:"#007a6e",accentBg:"#007a6e1a",accentBtn:"#007a6e",danger:"#c62828",wbtn:"#c5ddf0",wbtnTxt:"#1a4f72",even:"#ecf2f8",ok:"#2e7d32",lock:"#c8d8e8"},
+  dark:{bg:"#0a1628",cardBg:"#112240",navBg:"#0d1e35",inputBg:"#0d1e35",border:"#1e3a5f",text:"#e6edf3",textMuted:"#4a7fa5",textSub:"#7aa0bf",accent:"#00e676",accentBg:"#00897b22",accentBtn:"#00897b",danger:"#ef5350",waterBtn:"#0d2a3d",waterBtnText:"#40c4ff",even:"#0a1628",ok:"#1b5e20",lock:"#060e1a"},
+  light:{bg:"#e8eef5",cardBg:"#ffffff",navBg:"#d0dcea",inputBg:"#f2f6fb",border:"#a8c0d6",text:"#1c2e42",textMuted:"#3d6080",textSub:"#4e7a9a",accent:"#007a6e",accentBg:"#007a6e1a",accentBtn:"#007a6e",danger:"#c62828",waterBtn:"#c5ddf0",waterBtnText:"#1a4f72",even:"#ecf2f8",ok:"#2e7d32",lock:"#c8d8e8"},
 };
-const FOOD_UNITS=["g","ml","count"];
-const MED_TIMES=["Before breakfast","After breakfast","Before lunch","After lunch","Before dinner","After dinner","Bedtime"];
-const MEAL_TYPES=["Breakfast","Lunch","Dinner","Snack"];
-const WATER_TYPES=["Warm Water","Plain Water","Cold Water"];
 
-const dbSet=(uid,k,v)=>fbDb.ref(`users/${uid}/${k}`).set(v);
-const dbDel=(uid,k)=>fbDb.ref(`users/${uid}/${k}`).remove();
+// ── FIREBASE ──────────────────────────────────────────────────────────────────
+const dbRef=(uid,key)=>fbDb.ref(`users/${uid}/${key}`);
+const dbSet=(uid,key,val)=>dbRef(uid,key).set(val);
+const dbDel=(uid,key)=>dbRef(uid,key).remove();
 
-// ── REPORTS ───────────────────────────────────────────────────────────────────
-function dayReport(dayE,medPresets){
-  const mp=medPresets||FD.medicalPresets;
-  const liqs=dayE.filter(e=>e.type==="liquid");
-  const waters=liqs.filter(e=>WATER_TYPES.includes(e.liquidType));
-  const drinks=liqs.filter(e=>!WATER_TYPES.includes(e.liquidType));
+// ── REPORT HELPERS ────────────────────────────────────────────────────────────
+function dayReport(dayEntries,medPresets){
+  const mp=medPresets||FD.medicalPresets||[];
+  const WTYP=["Warm Water","Plain Water","Cold Water"];
+  const liqs=dayEntries.filter(e=>e.type==="liquid");
+  const waters=liqs.filter(e=>WTYP.includes(e.liquidType));
+  const nonW=liqs.filter(e=>!WTYP.includes(e.liquidType));
   const totalW=waters.reduce((s,e)=>s+(+e.ml||0),0);
-  const waterStr=totalW?`${totalW}ml (${[...new Set(waters.map(e=>e.liquidType))].join("/")})`:"-";
-  const drinksStr=drinks.map(e=>`${e.liquidType}${e.ml?" "+e.ml+"ml":""}${e.notes?" ("+e.notes+")":""}`).join("; ")||"-";
-  const exStr=dayE.filter(e=>e.type==="exercise").map(e=>{let s=e.exType;if(e.dist)s+=` ${e.dist}km`;if(e.time)s+=` ${e.time}min`;if(e.count)s+=` ×${e.count}`;return s;}).join("; ")||"-";
-  const medStr=dayE.filter(e=>e.type==="medication").map(e=>`${e.med}(${e.timing})`).join("; ")||"-";
-  const meals={};MEAL_TYPES.forEach(mt=>{meals[mt]=dayE.filter(e=>e.type==="meal"&&e.mealType===mt).map(e=>e.unit==="count"?`${e.food} ${e.qty}`:`${e.food} ${e.qty}${e.unit}`).join(", ")||"-";});
-  const med={};mp.forEach(p=>{const nm=p.name||p;med[nm]=dayE.filter(e=>e.type==="medical"&&e.readingType===nm).map(e=>`${e.value}${e.unit?" "+e.unit:""}`).join(", ")||"-";});
-  return{water:waterStr,drinks:drinksStr,medication:medStr,exercise:exStr,...meals,...med};
+  const waterStr=totalW?`${totalW}ml (${[...new Set(waters.map(e=>e.liquidType))].join("/")})`:`-`;
+  const drinksStr=nonW.map(e=>`${e.liquidType}${e.ml?" "+e.ml+"ml":""}${e.notes?" ("+e.notes+")":""}`).join("; ")||"-";
+  const ex=dayEntries.filter(e=>e.type==="exercise").map(e=>{let s=e.exType;if(e.dist)s+=` ${e.dist}km`;if(e.time)s+=` ${e.time}min`;if(e.count)s+=` x${e.count}`;return s;}).join("; ")||"-";
+  const meds=dayEntries.filter(e=>e.type==="medication").map(e=>`${e.med}(${e.timing})`).join("; ")||"-";
+  const meals={};["Breakfast","Lunch","Dinner","Snack"].forEach(mt=>{meals[mt]=dayEntries.filter(e=>e.type==="meal"&&e.mealType===mt).map(e=>e.unit==="count"?`${e.food} ${e.qty}`:`${e.food} ${e.qty}${e.unit}`).join(", ")||"-";});
+  const medR={};mp.forEach(p=>{const nm=p.name||p;medR[nm]=dayEntries.filter(e=>e.type==="medical"&&e.readingType===nm).map(e=>`${e.value}${e.unit?" "+e.unit:""}`).join(", ")||"-";});
+  return{water:waterStr,drinks:drinksStr,medication:meds,exercise:ex,...meals,...medR};
 }
+
 function buildAllCSV(entries){
-  const hdr=["ID","Date","Time","Type","SubType","Detail1","Detail2","Unit","Notes"];
+  const hdr=["ID","Date","Time","Type","SubType","Detail1","Detail2","Detail3","Unit","Notes"];
   const rows=[...entries].sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)).map(e=>{
-    let t="",st="",d1="",d2="",u="",n=e.notes||"";
+    let t="",st="",d1="",d2="",d3="",u="",n=e.notes||"";
     if(e.type==="meal")      {t="Meal";st=e.mealType;d1=e.food;d2=e.qty;u=e.unit;}
-    if(e.type==="liquid")    {t="Liquid";st=e.liquidType||"";d1=e.ml||"";u="ml";}
-    if(e.type==="exercise")  {t="Exercise";st=e.exType;d1=e.dist||"";d2=e.time||e.count||"";}
+    if(e.type==="liquid")    {t="Drinks";st=e.liquidType||"";d1=e.ml||"";u="ml";}
+    if(e.type==="exercise")  {t="Exercise";st=e.exType;d1=e.subType||"";d2=e.dist||"";d3=e.time||e.count||"";u=e.dist?"km":e.count?"count":"min";}
+    if(e.type==="liquid" && ["Warm Water","Plain Water","Cold Water"].includes(e.liquidType))     {t="Water";st=e.waterTemp||"";d1=e.ml;u="ml";}
     if(e.type==="medical")   {t="Medical";st=e.readingType;d1=e.value;u=e.unit||"";}
     if(e.type==="medication"){t="Medication";st=e.med;d1=e.timing;}
-    return[e.id,e.date,fmt24(e.timestamp),t,st,d1,d2,u,n].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",");
+    return[e.id,e.date,fmt24(e.timestamp),t,st,d1,d2,d3,u,n].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",");
   });
   return[hdr.join(","),...rows].join("\n");
 }
-function buildViewCSV(entries,dates,mp){
-  const medNames=(mp||FD.medicalPresets).map(p=>p.name||p);
-  const ROWS=[{k:"water",l:"Water"},{k:"drinks",l:"Drinks"},{k:"medication",l:"Medications"},{k:"exercise",l:"Exercise"},{k:"Breakfast",l:"Breakfast"},{k:"Lunch",l:"Lunch"},{k:"Snack",l:"Snack"},{k:"Dinner",l:"Dinner"},...medNames.map(n=>({k:n,l:n}))];
-  return["Category",...dates.map(fmtDate)].join(",")+"\n"+ROWS.map(({l,k})=>[`"${l}"`,...dates.map(d=>{const r=dayReport(entries.filter(e=>e.date===d),mp);return`"${(r[k]||"-").replace(/"/g,'""')}"`; })].join(",")).join("\n");
+function buildViewCSV(entries,dates,medPresets){
+  const medNames=(medPresets||FD.medicalPresets).map(p=>typeof p==="string"?p:p.name);
+  const rows=[
+    {key:"water",label:"Water"},{key:"drinks",label:"Drinks"},{key:"medication",label:"Medications"},{key:"exercise",label:"Exercise"},
+    {key:"Breakfast",label:"Breakfast"},{key:"Lunch",label:"Lunch"},{key:"Snack",label:"Snack"},{key:"Dinner",label:"Dinner"},
+    ...medNames.map(n=>({key:n,label:n})),
+  ];
+  const hdr=["Category",...dates.map(fmtDate)].join(",");
+  const dataRows=rows.map(({label,key})=>{const vals=dates.map(d=>{const r=dayReport(entries.filter(e=>e.date===d),medPresets);return`"${(r[key]||"-").replace(/"/g,'""')}"`;});return[`"${label}"`,...vals].join(",");});
+  return[hdr,...dataRows].join("\n");
 }
-function parseCSV(txt,existing){
-  const lines=txt.split("\n").map(l=>l.trim()).filter(Boolean);
+
+// ── CSV IMPORT ────────────────────────────────────────────────────────────────
+function parseAndMergeCSV(csvText,existingEntries){
+  const lines=csvText.split("\n").map(l=>l.trim()).filter(Boolean);
   if(lines.length<2)throw new Error("Empty file");
   const hdrs=lines[0].split(",").map(h=>h.replace(/^"|"$/g,"").trim());
-  ["ID","Date","Time","Type"].forEach(r=>{if(!hdrs.includes(r))throw new Error(`Missing: ${r}`);});
+  ["ID","Date","Time","Type"].forEach(r=>{if(!hdrs.includes(r))throw new Error(`Missing column: ${r}`);});
   const col=k=>hdrs.indexOf(k);
   const cell=(row,k)=>{const v=row[col(k)]||"";return v.replace(/^"|"$/g,"").replace(/""/g,'"').trim();};
-  const existIds=new Set(existing.map(e=>e.id));
-  const out=[];
+  const existingIds=new Set(existingEntries.map(e=>e.id));
+  const imported=[];
   for(let i=1;i<lines.length;i++){
     const row=[];let cur="",inQ=false;
     for(const ch of lines[i]+","){if(ch==='"'){inQ=!inQ;}else if(ch===","&&!inQ){row.push(cur);cur="";}else cur+=ch;}
-    const id=cell(row,"ID");if(!id||existIds.has(id))continue;
-    const dateStr=cell(row,"Date"),timeStr=cell(row,"Time")||"00:00";
+    const id=cell(row,"ID");if(!id||existingIds.has(id))continue;
+    const dateStr=cell(row,"Date");const timeStr=cell(row,"Time")||"00:00";
     const type=cell(row,"Type").toLowerCase();
-    const st=cell(row,"SubType"),d1=cell(row,"Detail1"),d2=cell(row,"Detail2"),u=cell(row,"Unit"),n=cell(row,"Notes");
-    const ts=makeTS(dateStr,timeStr);
-    let entry={id,date:dateStr,timestamp:ts,notes:n};
-    if(type==="meal")        entry={...entry,type:"meal",mealType:st,food:d1,qty:d2,unit:u};
-    else if(type==="liquid") entry={...entry,type:"liquid",liquidType:st,ml:d1};
-    else if(type==="water")  entry={...entry,type:"liquid",liquidType:st||"Warm Water",ml:d1};
-    else if(type==="drinks") entry={...entry,type:"liquid",liquidType:st,ml:d1};
-    else if(type==="exercise")entry={...entry,type:"exercise",exType:st,dist:d1,time:d2};
-    else if(type==="medical")entry={...entry,type:"medical",readingType:st,value:d1,unit:u};
-    else if(type==="medication")entry={...entry,type:"medication",med:st,timing:d1};
+    const subType=cell(row,"SubType");const d1=cell(row,"Detail1");const d2=cell(row,"Detail2");const d3=cell(row,"Detail3");const unit=cell(row,"Unit");const notes=cell(row,"Notes");
+    const parsedDate=dateStr.replace(/(\d+) (\w+) (\d+)/,(m,d,mo,y)=>{const mi=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].indexOf(mo);return`${y}-${String(mi+1).padStart(2,"0")}-${d.padStart(2,"0")}`;});
+    const ts=makeTS(parsedDate,timeStr);
+    let entry={id,date:parsedDate,timestamp:ts,notes};
+    if(type==="meal")       entry={...entry,type:"meal",mealType:subType,food:d1,qty:d2,unit};
+    else if(type==="drinks_legacy")entry={...entry,type:"drinks",drinkType:subType,ml:d1};
+    else if(type==="exercise")entry={...entry,type:"exercise",exType:subType,subType:d1,dist:d2,time:d3,count:d3,unit};
+    else if(type==="water"||type==="liquid") entry={...entry,type:"water",waterTemp:subType,ml:d1};
+    else if(type==="medical")entry={...entry,type:"medical",readingType:subType,value:d1,unit};
+    else if(type==="medication")entry={...entry,type:"medication",med:subType,timing:d1};
     else continue;
-    out.push(entry);
+    imported.push(entry);
   }
-  return out;
+  return imported;
 }
-function dlCSV(csv,fn){
-  try{const b=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download=fn;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(u);a.remove();},1000);}catch(e){alert("Download failed: "+e.message);}
+
+// ── DOWNLOAD ──────────────────────────────────────────────────────────────────
+function downloadCSV(csv,filename){
+  try{const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.setAttribute("download",filename);document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},1000);}catch(e){alert("Download failed: "+e.message);}
 }
 
 // ── SHARED COMPONENTS ─────────────────────────────────────────────────────────
-// Fix #1+#2: 68px wide text input avoids Android clock picker
-function TimeInput({value,onChange,style={}}){
-  return<input type="text" inputMode="numeric" value={value} placeholder="HH:MM" maxLength={5}
-    onChange={e=>onChange(sanitiseTime(e.target.value))}
-    style={{fontFamily:"'DM Mono',monospace",fontSize:"0.8rem",padding:"5px 6px",width:68,...style}}/>;
-}
 function Saver({flash,onClick,T,label="Save"}){
   return<button onClick={onClick} style={{flexShrink:0,padding:"7px 14px",fontSize:"0.85rem",borderRadius:8,fontFamily:"inherit",fontWeight:500,cursor:"pointer",border:"none",background:flash?T.ok:T.accentBtn,color:"#fff",minWidth:52,transition:"all 0.15s"}}>{flash?"✔":label}</button>;
 }
 function ExportModal({modal,onClose,T}){
-  const ta=useRef();const[st,setSt]=useState("idle");if(!modal)return null;
-  const dl=()=>{dlCSV(modal.csv,modal.fn);setSt("done");setTimeout(()=>setSt("idle"),2000);};
-  const cp=async()=>{try{await navigator.clipboard?.writeText(modal.csv);setSt("copied");}catch{ta.current?.select();document.execCommand("copy");setSt("copied");}setTimeout(()=>setSt("idle"),2000);};
-  return<div style={{position:"fixed",inset:0,background:"#000b",zIndex:9990,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}><div style={{background:T.cardBg,border:`1px solid ${T.border}`,borderRadius:14,padding:16,width:"100%",maxWidth:440,maxHeight:"82vh",display:"flex",flexDirection:"column",gap:10}}><div style={{display:"flex",justifyContent:"space-between"}}><div style={{fontWeight:700,fontSize:"0.9rem",color:T.accent}}>📄 {modal.fn}</div><button onClick={onClose} style={{background:"none",border:"none",color:T.textMuted,fontSize:"1.3rem",cursor:"pointer"}}>×</button></div><textarea ref={ta} readOnly value={modal.csv} style={{flex:1,minHeight:180,fontSize:"0.68rem",fontFamily:"monospace",resize:"none",background:T.inputBg,color:T.text,border:`1px solid ${T.border}`,borderRadius:8,padding:8,outline:"none"}}/><div style={{display:"flex",gap:8}}><button onClick={dl} style={{flex:2,padding:"8px",borderRadius:8,border:"none",fontFamily:"inherit",fontWeight:600,cursor:"pointer",background:st==="done"?T.ok:T.accentBtn,color:"#fff"}}>{st==="done"?"✔ Downloaded!":"⬇️ Download CSV"}</button><button onClick={cp} style={{flex:1,padding:"8px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontFamily:"inherit",cursor:"pointer",fontSize:"0.79rem"}}>{st==="copied"?"✔":"📋 Copy"}</button><button onClick={onClose} style={{flex:1,padding:"8px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontFamily:"inherit",cursor:"pointer"}}>Close</button></div></div></div>;
+  const taRef=useRef();const[status,setStatus]=useState("idle");if(!modal)return null;
+  const doDownload=()=>{downloadCSV(modal.csv,modal.filename);setStatus("done");setTimeout(()=>setStatus("idle"),2000);};
+  const doCopy=async()=>{try{if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(modal.csv);setStatus("copied");setTimeout(()=>setStatus("idle"),2000);return;}if(taRef.current){taRef.current.select();document.execCommand("copy");setStatus("copied");setTimeout(()=>setStatus("idle"),2000);}}catch(e){setStatus("error");}};
+  return(<div style={{position:"fixed",inset:0,background:"#000b",zIndex:9990,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}><div style={{background:T.cardBg,border:`1px solid ${T.border}`,borderRadius:14,padding:16,width:"100%",maxWidth:440,maxHeight:"82vh",display:"flex",flexDirection:"column",gap:10}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={{fontWeight:700,fontSize:"0.9rem",color:T.accent}}>📄 {modal.filename}</div><button onClick={onClose} style={{background:"none",border:"none",color:T.textMuted,fontSize:"1.3rem",cursor:"pointer",lineHeight:1}}>×</button></div><textarea ref={taRef} readOnly value={modal.csv} style={{flex:1,minHeight:180,fontSize:"0.68rem",fontFamily:"monospace",resize:"none",background:T.inputBg,color:T.text,border:`1px solid ${T.border}`,borderRadius:8,padding:8,outline:"none"}}/><div style={{display:"flex",gap:8}}><button onClick={doDownload} style={{flex:2,padding:"8px",borderRadius:8,border:"none",fontFamily:"inherit",fontWeight:600,fontSize:"0.85rem",cursor:"pointer",background:status==="done"?T.ok:T.accentBtn,color:"#fff",transition:"background 0.2s"}}>{status==="done"?"✔ Downloaded!":"⬇️ Download CSV"}</button><button onClick={doCopy} style={{flex:1,padding:"8px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontFamily:"inherit",cursor:"pointer",fontSize:"0.79rem"}}>{status==="copied"?"✔":"📋 Copy"}</button><button onClick={onClose} style={{flex:1,padding:"8px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontFamily:"inherit",cursor:"pointer"}}>Close</button></div></div></div>);
 }
-function LockScreen({T,onUnlock}){return<div style={{position:"fixed",inset:0,background:T.lock,zIndex:9999,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:20}}><img src={LOGO} style={{width:72,height:72,borderRadius:18}} alt=""/><div style={{color:T.accent,fontWeight:700,fontSize:"1.4rem"}}>JivanLog</div><div style={{color:T.textMuted,fontSize:"0.85rem"}}>Session locked</div><button onClick={onUnlock} style={{marginTop:8,padding:"12px 36px",fontSize:"1rem",borderRadius:12,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>🔓 Tap to Unlock</button></div>;}
+function LockScreen({T,onUnlock}){
+  return(<div style={{position:"fixed",inset:0,background:T.lock,zIndex:9999,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:20}}><img src={LOGO_SVG} style={{width:72,height:72,borderRadius:18}} alt="JivanLog"/><div style={{color:T.accent,fontWeight:700,fontSize:"1.4rem",letterSpacing:"0.05em"}}>JivanLog</div><div style={{color:T.textMuted,fontSize:"0.85rem"}}>Session locked</div><button onClick={onUnlock} style={{marginTop:8,padding:"12px 36px",fontSize:"1rem",borderRadius:12,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>🔓 Tap to Unlock</button></div>);
+}
 function LoginScreen({error}){
   const[loading,setLoading]=useState(false);
-  const go=async()=>{setLoading(true);try{await fbAuth.signInWithPopup(googleProvider);}catch{setLoading(false);}};
-  return<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100vh",background:"#0a1628",gap:24,padding:24}}><img src={LOGO} style={{width:80,height:80,borderRadius:20}} alt=""/><div style={{textAlign:"center"}}><div style={{color:"#00e676",fontWeight:700,fontSize:"1.6rem",fontFamily:"system-ui"}}>JivanLog</div><div style={{color:"#4a7fa5",fontSize:"0.85rem",marginTop:4}}>Personal health tracker</div></div>{error&&<div style={{color:"#ef5350",fontSize:"0.8rem",padding:"8px 14px",background:"#ef535018",borderRadius:8}}>{error}</div>}<button onClick={go} disabled={loading} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 28px",borderRadius:12,border:"none",background:"#fff",color:"#1c2e42",fontFamily:"system-ui",fontSize:"1rem",fontWeight:600,cursor:loading?"wait":"pointer",opacity:loading?0.7:1,minWidth:220,justifyContent:"center",boxShadow:"0 4px 20px #00000044"}}><svg width="22" height="22" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>{loading?"Signing in…":"Sign in with Google"}</button></div>;
+  const signIn=async()=>{setLoading(true);try{await fbAuth.signInWithPopup(googleProvider);}catch(e){setLoading(false);}};
+  return(<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100vh",background:"#0a1628",gap:24,padding:24}}><img src={LOGO_SVG} style={{width:80,height:80,borderRadius:20}} alt="JivanLog"/><div style={{textAlign:"center"}}><div style={{color:"#00e676",fontWeight:700,fontSize:"1.6rem",letterSpacing:"0.04em",fontFamily:"system-ui"}}>JivanLog</div><div style={{color:"#4a7fa5",fontSize:"0.85rem",marginTop:4}}>Personal health tracker</div></div>{error&&<div style={{color:"#ef5350",fontSize:"0.8rem",textAlign:"center",padding:"8px 14px",background:"#ef535018",borderRadius:8,border:"1px solid #ef535044"}}>{error}</div>}<button onClick={signIn} disabled={loading} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 28px",borderRadius:12,border:"none",background:"#ffffff",color:"#1c2e42",fontFamily:"system-ui",fontSize:"1rem",fontWeight:600,cursor:loading?"wait":"pointer",opacity:loading?0.7:1,minWidth:220,justifyContent:"center",boxShadow:"0 4px 20px #00000044"}}><svg width="22" height="22" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>{loading?"Signing in…":"Sign in with Google"}</button><div style={{color:"#2a4a6a",fontSize:"0.72rem",textAlign:"center",maxWidth:260,lineHeight:1.6}}>Your data is stored privately in Firebase.<br/>Only you can access your entries.</div></div>);
 }
-function LoadingScreen({message="Loading…"}){return<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:"#0a1628",flexDirection:"column",gap:16}}><img src={LOGO} style={{width:64,height:64,borderRadius:14}} alt=""/><span style={{color:"#00e676",fontSize:"1rem",fontFamily:"monospace"}}>{message}</span><div style={{width:120,height:3,background:"#1e3a5f",borderRadius:2,overflow:"hidden",marginTop:4}}><div style={{height:"100%",background:"#00e676",animation:"jlb 1.8s ease-in-out infinite"}}/></div><style>{"@keyframes jlb{0%{width:0%;margin-left:0}60%{width:80%;margin-left:0}100%{width:0%;margin-left:100%}}"}</style></div>;}
-
-// ── ENTRY DISPLAY HELPERS (shared by TLE, ManageRow, DayTemplatePanel) ────────
-const TYPE_ICON={meal:"🍽️",liquid:"💧",exercise:"🏃",medical:"🩺",medication:"💊"};
-function entryLabel(e){
-  if(e.type==="meal")        return`${e.mealType} · ${e.food}${e.qty?` · ${e.qty}${e.unit==="count"?"":e.unit}`:""}`;
-  if(e.type==="liquid")      return`${e.liquidType||""}${e.ml?` · ${e.ml}ml`:""}`;
-  if(e.type==="exercise")    {let s=e.exType;if(e.dist)s+=` · ${e.dist}km`;if(e.time)s+=` · ${e.time}min`;if(e.count)s+=` · ×${e.count}`;return s;}
-  if(e.type==="medical")     return`${e.readingType} · ${e.value||"—"}${e.unit?" "+e.unit:""}`;
-  if(e.type==="medication")  return`${e.med} · ${e.timing}`;
-  return e.type;
+function LoadingScreen({message="Loading JivanLog…"}){
+  return(<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:"#0a1628",flexDirection:"column",gap:16}}><img src={LOGO_SVG} style={{width:64,height:64,borderRadius:14}} alt="JivanLog"/><span style={{color:"#00e676",fontSize:"1.05rem",fontFamily:"monospace",letterSpacing:"0.05em"}}>{message}</span><div style={{width:120,height:3,background:"#1e3a5f",borderRadius:2,overflow:"hidden",marginTop:4}}><div style={{height:"100%",background:"#00e676",borderRadius:2,animation:"jlb 1.8s ease-in-out infinite"}}/></div><style>{"@keyframes jlb{0%{width:0%;margin-left:0}60%{width:80%;margin-left:0}100%{width:0%;margin-left:100%}}"}</style></div>);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -265,97 +205,119 @@ function App(){
   const[entries,setEntries]=useState([]);
   const[settings,setSettings]=useState(deepClone(FD));
   const[defaults,setDefaults]=useState(deepClone(FD));
-  const[dayTemplates,setDayTemplates]=useState(deepClone(FD.dayTemplates));
+  const[presets,setPresets]=useState([deepClone(FD),deepClone(FD),deepClone(FD)]);
+  const[templates,setTemplates]=useState(deepClone(FD.templates));
   const[theme,setTheme]=useState("dark");
   const[dataLoaded,setDataLoaded]=useState(false);
   const[clock,setClock]=useState(nowTime());
   const[entryTime,setEntryTime]=useState(nowHHMM());
   const[exportModal,setExportModal]=useState(null);
   const[syncStatus,setSyncStatus]=useState("idle");
-  const eRef=useRef(null);
+  const entriesRef=useRef(null);
+
   const T=theme==="system"?THEMES[sysDark()?"dark":"light"]:(THEMES[theme]||THEMES.dark);
 
   useEffect(()=>{const t=setInterval(()=>setClock(nowTime()),1000);return()=>clearInterval(t);},[]);
+
+  // Auth listener
   useEffect(()=>{
-    const u=fbAuth.onAuthStateChanged(u=>{
+    const unsub=fbAuth.onAuthStateChanged(u=>{
       if(u){setUser(u);setAuthState("in");}
       else{setUser(null);setAuthState("out");setDataLoaded(false);setEntries([]);}
     },e=>{setAuthError(e.message);setAuthState("out");});
-    return u;
+    return unsub;
   },[]);
+
   // Real-time entries listener
   useEffect(()=>{
-    if(!user){if(eRef.current){eRef.current();eRef.current=null;}return;}
+    if(!user){if(entriesRef.current){entriesRef.current();entriesRef.current=null;}return;}
     const ref=fbDb.ref(`users/${user.uid}/entries`);
-    const h=snap=>{setEntries(snap.val()?Object.values(snap.val()):[]);setDataLoaded(true);};
-    ref.on("value",h);eRef.current=()=>ref.off("value",h);
-    return()=>{ref.off("value",h);eRef.current=null;};
+    const handler=snap=>{setEntries(snap.val()?Object.values(snap.val()):[]);setDataLoaded(true);};
+    ref.on("value",handler);
+    entriesRef.current=()=>ref.off("value",handler);
+    return()=>{ref.off("value",handler);entriesRef.current=null;};
   },[user]);
-  // Load settings once on sign-in
+
+  // Load settings/templates once on sign-in
   useEffect(()=>{
     if(!user)return;
     (async()=>{
       try{
-        const[s,d,th,dt]=await Promise.all([
+        const[sett,defs,pres,th,tmpl]=await Promise.all([
           fbDb.ref(`users/${user.uid}/settings`).get(),
           fbDb.ref(`users/${user.uid}/defaults`).get(),
+          fbDb.ref(`users/${user.uid}/presets`).get(),
           fbDb.ref(`users/${user.uid}/theme`).get(),
-          fbDb.ref(`users/${user.uid}/dayTemplates`).get(),
+          fbDb.ref(`users/${user.uid}/templates`).get(),
         ]);
-        if(s.exists())setSettings(s.val());
-        if(d.exists())setDefaults(d.val());
+        if(sett.exists())setSettings(sett.val());
+        if(defs.exists())setDefaults(defs.val());
+        if(pres.exists()){const p=pres.val();setPresets([p[0]||deepClone(FD),p[1]||deepClone(FD),p[2]||deepClone(FD)]);}
         if(th.exists())setTheme(th.val());
-        if(dt.exists()){
-          const saved=dt.val();
-          const merged=FD.dayTemplates.map((fd,i)=>saved[i]?{...fd,...saved[i]}:fd);
-          setDayTemplates(merged);
-        } else {
-          // First time: pre-fill Home Day with starter template
-          const init=deepClone(FD.dayTemplates);
-          init[0].entries=TPL_HOME.map(e=>({...deepClone(e),id:genId()}));
-          setDayTemplates(init);
-          dbSet(user.uid,"dayTemplates",init).catch(()=>{});
+        if(tmpl.exists()){
+          const t=tmpl.val();
+          // Merge saved templates with FD structure to preserve names/icons
+          const merged=FD.templates.map((fd,i)=>t[i]?{...fd,...t[i]}:fd);
+          setTemplates(merged);
         }
-      }catch(e){console.error("Load:",e);}
+      }catch(e){console.error("Settings load:",e);}
     })();
   },[user]);
 
+  // Persist helpers
   const persistEntries=useCallback(async arr=>{
-    if(!user)return;setSyncStatus("saving");
+    if(!user)return;
+    setSyncStatus("saving");
     try{
-      const obj=arr.reduce((a,e)=>{a[e.id]=e;return a;},{});
+      const obj=arr.reduce((acc,e)=>{acc[e.id]=e;return acc;},{});
       await fbDb.ref(`users/${user.uid}/entries`).set(arr.length?obj:null);
       setSyncStatus("saved");setTimeout(()=>setSyncStatus("idle"),1500);
-    }catch{setSyncStatus("error");setTimeout(()=>setSyncStatus("idle"),3000);}
+    }catch(e){setSyncStatus("error");setTimeout(()=>setSyncStatus("idle"),3000);}
   },[user]);
-  const pk=useCallback((k,v)=>{if(user)dbSet(user.uid,k,v).catch(e=>console.error(k,e));},[user]);
 
-  const saveEntries    =useCallback(n=>persistEntries(n),[persistEntries]);
-  const saveSettings   =useCallback(n=>{setSettings(n);pk("settings",n);},[pk]);
-  const saveDefaults   =useCallback(n=>{setDefaults(n);pk("defaults",n);},[pk]);
-  const saveDayTemplates=useCallback(n=>{setDayTemplates(n);pk("dayTemplates",n);},[pk]);
-  const saveTheme      =useCallback(m=>{setTheme(m);pk("theme",m);},[pk]);
+  const persistKey=useCallback(async(key,val)=>{
+    if(!user)return;
+    try{await dbSet(user.uid,key,val);}catch(e){console.error("Persist:",key,e);}
+  },[user]);
+
+  const saveEntries  =useCallback(n=>{persistEntries(n);},[persistEntries]);
+  const saveSettings =useCallback(n=>{setSettings(n);persistKey("settings",n);},[persistKey]);
+  const saveDefaults =useCallback(n=>{setDefaults(n);persistKey("defaults",n);},[persistKey]);
+  const savePresets  =useCallback(n=>{setPresets(n); persistKey("presets",n);},[persistKey]);
+  const saveTemplates=useCallback(n=>{setTemplates(n);persistKey("templates",n);},[persistKey]);
+  const saveTheme    =useCallback(m=>{setTheme(m);   persistKey("theme",m);},[persistKey]);
 
   const addEntry=useCallback(entry=>{
     const[h,mm]=entryTime.split(":").map(Number);
     const d=new Date();d.setHours(h,mm,0,0);
     saveEntries([...entries,{...entry,id:genId(),timestamp:d.toISOString(),date:today()}]);
   },[entries,saveEntries,entryTime]);
-  const addBatch=useCallback(batch=>saveEntries([...entries,...batch]),[entries,saveEntries]);
+
+  const addBatchEntries=useCallback(batch=>{saveEntries([...entries,...batch]);},[entries,saveEntries]);
   const updateEntry=useCallback((id,data)=>saveEntries(entries.map(e=>e.id===id?{...e,...data}:e)),[entries,saveEntries]);
   const deleteEntry=useCallback(id=>saveEntries(entries.filter(e=>e.id!==id)),[entries,saveEntries]);
 
   const clearAll=useCallback(()=>{
-    if(!confirm("CLEAR ALL DATA?\n\nBackup CSV will download first.\n\nPress OK to continue."))return;
-    if(!confirm("FINAL CONFIRMATION — Press OK."))return;
-    dlCSV(buildAllCSV(entries),`jivanlog-backup-${today()}.csv`);
-    setTimeout(async()=>{if(user)try{await dbDel(user.uid,"entries");}catch{}},500);
+    if(!confirm("CLEAR ALL DATA?\n\nAll entries permanently deleted.\nBackup CSV downloads first.\n\nPress OK to continue."))return;
+    if(!confirm("FINAL CONFIRMATION\n\nPress OK to download backup then clear."))return;
+    downloadCSV(buildAllCSV(entries),`jivanlog-backup-${today()}.csv`);
+    setTimeout(async()=>{if(user)try{await dbDel(user.uid,"entries");}catch(e){}},500);
   },[entries,user]);
-  const handleImport=useCallback(async txt=>{
-    try{const imp=parseCSV(txt,entries);if(!imp.length){alert("No new entries found.");return;}if(!confirm(`Import ${imp.length} entries?`))return;saveEntries([...entries,...imp]);alert(`✓ Imported ${imp.length} entries.`);}
-    catch(e){alert("Import failed: "+e.message);}
+
+  const handleImport=useCallback(async csvText=>{
+    try{
+      const imported=parseAndMergeCSV(csvText,entries);
+      if(!imported.length){alert("No new entries found — all IDs already exist.");return;}
+      if(!confirm(`Import ${imported.length} new entries?\nDuplicates are skipped.\nPress OK to merge.`))return;
+      saveEntries([...entries,...imported]);
+      alert(`✓ Imported ${imported.length} entries.`);
+    }catch(e){alert("Import failed: "+e.message);}
   },[entries,saveEntries]);
-  const signOut=async()=>{if(!confirm("Sign out?\nData saved to Firebase."))return;await fbAuth.signOut();setEntries([]);setDataLoaded(false);setLocked(false);};
+
+  const signOut=async()=>{
+    if(!confirm("Sign out of JivanLog?\nYour data is saved to Firebase."))return;
+    await fbAuth.signOut();setEntries([]);setDataLoaded(false);setLocked(false);
+  };
 
   if(authState==="checking")return<LoadingScreen message="Checking sign-in…"/>;
   if(authState==="out")return<LoginScreen error={authError}/>;
@@ -366,7 +328,7 @@ function App(){
   return(
     <div style={{maxWidth:480,margin:"0 auto",height:"100dvh",display:"flex",flexDirection:"column",background:T.bg,color:T.text,fontFamily:"'DM Sans',system-ui,sans-serif"}}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap');
         *{box-sizing:border-box;margin:0;padding:0}
         ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:${T.border};border-radius:2px}
         input,select,textarea{background:${T.inputBg};color:${T.text};border:1px solid ${T.border};border-radius:8px;padding:7px 9px;font-family:inherit;font-size:0.83rem;outline:none;width:100%}
@@ -379,8 +341,8 @@ function App(){
         .tle:last-child{border-bottom:none}
         .tbtn{padding:5px 10px;font-size:0.79rem;border-radius:8px;background:${T.cardBg};color:${T.textMuted};border:1px solid ${T.border};white-space:nowrap;cursor:pointer;font-family:inherit;font-weight:500}
         .tbtn.on{background:${T.accentBg};color:${T.accent};border-color:${T.accentBtn};font-weight:600}
-        .lbtn{background:${T.wbtn};color:${T.wbtnTxt};border:1px solid ${T.border};padding:6px 10px;border-radius:8px;font-size:0.82rem;font-weight:600;cursor:pointer;flex-shrink:0}
-        .lbtn:active{background:${T.accentBtn};color:#fff}
+        .wbtn{background:${T.waterBtn};color:${T.waterBtnText};border:1px solid ${T.border};padding:7px 12px;border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer}
+        .wbtn:hover{background:${T.accentBtn};color:#fff}
         .ibtn{background:none;border:none;padding:3px 5px;border-radius:6px;color:${T.textMuted};font-size:0.82rem;cursor:pointer}
         .ibtn:hover{background:${T.border};color:${T.text}}
         .ctbl{width:100%;border-collapse:collapse;font-size:0.73rem}
@@ -388,61 +350,65 @@ function App(){
         .ctbl td{padding:5px 6px;border:1px solid ${T.border};vertical-align:top;word-break:break-word}
         .ctbl tr:nth-child(even) td{background:${T.even}}
         input[type=number]::-webkit-inner-spin-button{opacity:0.4}
+        input[type=time]{color-scheme:${theme==="light"?"light":"dark"}}
         input[type=date]{color-scheme:${theme==="light"?"light":"dark"}}
+        .tpl-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid ${T.border}22;font-size:0.82rem}
+        .tpl-row:last-child{border-bottom:none}
         .tpl-chk{width:18px;height:18px;accent-color:${T.accentBtn};flex-shrink:0;cursor:pointer}
       `}</style>
 
       {locked&&<LockScreen T={T} onUnlock={()=>setLocked(false)}/>}
       {exportModal&&<ExportModal modal={exportModal} T={T} onClose={()=>setExportModal(null)}/>}
 
-      {/* HEADER */}
       <div style={{display:"flex",alignItems:"center",gap:10,padding:"9px 13px 7px",background:T.navBg,borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
-        <img src={LOGO} style={{width:32,height:32,borderRadius:8}} alt=""/>
-        <div style={{flex:1}}><div style={{fontWeight:700,fontSize:"0.95rem",color:T.accent,lineHeight:1.1}}>JivanLog</div><div style={{fontSize:"0.68rem",color:T.textMuted,fontFamily:"'DM Mono',monospace"}}>{dayStr}</div></div>
+        <img src={LOGO_SVG} style={{width:32,height:32,borderRadius:8}} alt="logo"/>
+        <div style={{flex:1}}>
+          <div style={{fontWeight:700,fontSize:"0.95rem",color:T.accent,lineHeight:1.1}}>JivanLog</div>
+          <div style={{fontSize:"0.68rem",color:T.textMuted,fontFamily:"'DM Mono',monospace"}}>{dayStr}</div>
+        </div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:"0.8rem",color:syncStatus==="saving"?T.textMuted:syncStatus==="saved"?T.accent:syncStatus==="error"?T.danger:T.border}}>{syncStatus==="saving"?"⟳":syncStatus==="saved"?"✓":syncStatus==="error"?"!":"☁"}</span>
-          <span style={{fontFamily:"'DM Mono',monospace",fontSize:"0.88rem",color:T.wbtnTxt}}>{clock}</span>
+          <div title={syncStatus==="saving"?"Saving…":syncStatus==="saved"?"Saved ✓":syncStatus==="error"?"Sync error":"Synced"} style={{fontSize:"0.8rem",color:syncStatus==="saving"?T.textMuted:syncStatus==="saved"?T.accent:syncStatus==="error"?T.danger:T.border,transition:"color 0.3s"}}>
+            {syncStatus==="saving"?"⟳":syncStatus==="saved"?"✓":syncStatus==="error"?"!":"☁"}
+          </div>
+          <div style={{fontFamily:"'DM Mono',monospace",fontSize:"0.88rem",color:T.waterBtnText}}>{clock}</div>
         </div>
       </div>
 
-      {/* PAGE */}
       <div style={{flex:1,overflowY:"auto",padding:"12px 13px"}}>
         {page==="home"    &&<HomePage entries={entries} settings={settings} onAdd={addEntry} entryTime={entryTime} setEntryTime={setEntryTime} T={T}/>}
         {page==="manage"  &&<ManagePage entries={entries} settings={settings} onUpdate={updateEntry} onDelete={deleteEntry} T={T}/>}
         {page==="reports" &&<ReportsPage entries={entries} settings={settings} T={T} clearAll={clearAll} setModal={setExportModal} onImport={handleImport}/>}
-        {page==="settings"&&<SettingsPage settings={settings} defaults={defaults} dayTemplates={dayTemplates} theme={theme} setSettings={saveSettings} setDefaults={saveDefaults} setDayTemplates={saveDayTemplates} setTheme={saveTheme} user={user} onSignOut={signOut} todayEntries={entries.filter(e=>e.date===today())} onLoadTemplate={addBatch} T={T}/>}
+        {page==="settings"&&<SettingsPage settings={settings} defaults={defaults} presets={presets} templates={templates} theme={theme} setSettings={saveSettings} setDefaults={saveDefaults} setPresets={savePresets} setTemplates={saveTemplates} setTheme={saveTheme} user={user} onSignOut={signOut} todayEntries={entries.filter(e=>e.date===today())} onLoadTemplate={addBatchEntries} T={T}/>}
       </div>
 
-      {/* NAV */}
       <nav style={{display:"flex",background:T.navBg,borderTop:`1px solid ${T.border}`,flexShrink:0}}>
-        {[["home","🏠"],["manage","📋"],["reports","📊"],["settings","⚙️"]].map(([p,ic])=>(
-          <button key={p} onClick={()=>setPage(p)} style={{flex:1,padding:"9px 0 7px",textAlign:"center",fontSize:"1.3rem",background:"none",border:"none",color:page===p?T.accent:T.textMuted,borderRadius:0,cursor:"pointer"}}>{ic}</button>
+        {[["home","🏠","Home"],["manage","📋","Manage"],["reports","📊","Reports"],["settings","⚙️","Settings"]].map(([p,ic,lb])=>(
+          <button key={p} title={lb} onClick={()=>setPage(p)} style={{flex:1,padding:"9px 0 7px",textAlign:"center",fontSize:"1.3rem",background:"none",border:"none",color:page===p?T.accent:T.textMuted,borderRadius:0,cursor:"pointer",transition:"color 0.15s"}}>{ic}</button>
         ))}
-        <button onClick={()=>{if(confirm("Lock JivanLog?"))setLocked(true);}} style={{flex:1,padding:"9px 0 7px",textAlign:"center",fontSize:"1.3rem",background:"none",border:"none",color:T.textMuted,borderRadius:0,cursor:"pointer"}}>🔒</button>
+        <button title="Lock Session" onClick={()=>{if(confirm("Lock JivanLog?\nYour data is saved."))setLocked(true);}} style={{flex:1,padding:"9px 0 7px",textAlign:"center",fontSize:"1.3rem",background:"none",border:"none",color:T.textMuted,borderRadius:0,cursor:"pointer"}}>🔒</button>
       </nav>
     </div>
   );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// HOME PAGE
+// HOME
 // ═══════════════════════════════════════════════════════════════════════════════
-const MODULE_ITEMS=[["meal","Meal","🍽️"],["liquid","Liquids","💧"],["exercise","Exercise","🏃"],["medical","Medical","🩺"],["medication","Medication","💊"]];
-
 function HomePage({entries,settings,onAdd,entryTime,setEntryTime,T}){
   const[active,setActive]=useState("meal");
   const todayE=entries.filter(e=>e.date===today()).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
+  const switchModule=m=>{setActive(m);setEntryTime(nowHHMM());};
+  const MODULE_ITEMS=[["meal","Meal","🍽️"],["liquid","Liquids","💧"],["exercise","Exercise","🏃"],["medical","Medical","🩺"],["medication","Medication","💊"]];
   return(
     <div>
       <div style={{display:"flex",gap:5,marginBottom:10,alignItems:"center"}}>
         <div style={{display:"flex",gap:5,flex:1,overflowX:"auto",paddingBottom:2}}>
           {MODULE_ITEMS.map(([m,lb,ic])=>(
-            <button key={m} title={lb} onClick={()=>{setActive(m);setEntryTime(nowHHMM());}} style={{flexShrink:0,padding:"6px 10px",borderRadius:9,border:"1px solid",fontSize:"1.05rem",borderColor:active===m?T.accentBtn:T.border,background:active===m?T.accentBg:T.cardBg,color:active===m?T.accent:T.textMuted}}>{ic}</button>
+            <button key={m} title={lb} onClick={()=>switchModule(m)} style={{flexShrink:0,padding:"6px 10px",borderRadius:9,border:"1px solid",fontSize:"1.05rem",cursor:"pointer",borderColor:active===m?T.accentBtn:T.border,background:active===m?T.accentBg:T.cardBg,color:active===m?T.accent:T.textMuted}}>{ic}</button>
           ))}
         </div>
-        {/* Fix #1: 68px text input; Fix #2: no clock popup */}
         <div style={{flexShrink:0,borderLeft:`1px solid ${T.border}`,paddingLeft:8}}>
-          <TimeInput value={entryTime} onChange={setEntryTime} style={{background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:7,color:T.text}}/>
+          <input type="text" inputMode="numeric" value={entryTime} onChange={e=>{let v=e.target.value.replace(/[^0-9:]/g,"");if(v.length===4&&!v.includes(":"))v=v.slice(0,2)+":"+v.slice(2);setEntryTime(v.slice(0,5));}} placeholder="HH:MM" maxLength={5} style={{width:68,fontSize:"0.8rem",padding:"4px 5px",fontFamily:"'DM Mono',monospace",background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:7,color:T.text}}/>
         </div>
       </div>
       {active==="meal"      &&<MealEntry settings={settings} onAdd={onAdd} T={T}/>}
@@ -452,9 +418,7 @@ function HomePage({entries,settings,onAdd,entryTime,setEntryTime,T}){
       {active==="medication"&&<MedEntry settings={settings} onAdd={onAdd} T={T}/>}
       <div style={{marginTop:14}}>
         <div className="slabel">Today's Log</div>
-        {!todayE.length
-          ?<div style={{color:T.textMuted,fontSize:"0.8rem",textAlign:"center",padding:"18px 0"}}>No entries yet today</div>
-          :<div className="card" style={{padding:"8px 11px"}}>{todayE.map(e=><TLE key={e.id} e={e} T={T}/>)}</div>}
+        {todayE.length===0?<div style={{color:T.textMuted,fontSize:"0.8rem",textAlign:"center",padding:"18px 0"}}>No entries yet today</div>:<div className="card" style={{padding:"8px 11px"}}>{todayE.map(e=><TLE key={e.id} e={e} T={T}/>)}</div>}
       </div>
     </div>
   );
@@ -463,13 +427,11 @@ function HomePage({entries,settings,onAdd,entryTime,setEntryTime,T}){
 function MealEntry({settings,onAdd,T}){
   const[mt,setMt]=useState(autoMeal);const[food,setFood]=useState("");const[qty,setQty]=useState("");const[unit,setUnit]=useState("g");const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
   const save=()=>{if(!food||!qty)return;onAdd({type:"meal",mealType:mt,food,qty,unit,notes});setFood("");setQty("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
-  return(<div className="card"><div className="slabel">🍽️ Meal</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={mt} onChange={e=>setMt(e.target.value)} style={{flex:"0 0 95px"}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select><select value={food} onChange={e=>setFood(e.target.value)} style={{flex:"2 1 80px",minWidth:0}}><option value="">Food item…</option>{(settings.foodCategories||FD.foodCategories).sort().map(f=><option key={f}>{f}</option>)}</select><input type="number" placeholder="Qty" value={qty} onChange={e=>setQty(e.target.value)} style={{flex:"0 0 58px",width:58}}/><select value={unit} onChange={e=>setUnit(e.target.value)} style={{flex:"0 0 66px"}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select></div><div style={{display:"flex",gap:6,alignItems:"center"}}><input placeholder="Notes" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
+  return(<div className="card"><div className="slabel">🍽️ Meal</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={mt} onChange={e=>setMt(e.target.value)} style={{flex:"0 0 95px"}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select><select value={food} onChange={e=>setFood(e.target.value)} style={{flex:"2 1 80px",minWidth:0}}><option value="">Food item…</option>{(settings.foodCategories||[]).sort().map(f=><option key={f}>{f}</option>)}</select><input type="number" placeholder="Qty" value={qty} onChange={e=>setQty(e.target.value)} style={{flex:"1 0 62px",width:62}}/><select value={unit} onChange={e=>setUnit(e.target.value)} style={{flex:"1 0 70px",width:70}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select></div><div style={{display:"flex",gap:6,alignItems:"center"}}><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
 }
-
-// Fix #3: Merged Water+Drinks → Liquids. Defaults to Warm Water. Quick-add buttons.
 function LiquidEntry({settings,onAdd,T}){
-  const allTypes=(settings.liquidTypes||FD.liquidTypes);
-  const displayTypes=allTypes.filter(t=>t!=="──────────");
+  const WATER=["Warm Water","Plain Water","Cold Water"];
+  const allTypes=(settings.liquidTypes||["Warm Water","Plain Water","Cold Water","--------","Morning Drink","Morning Coffee","Milk Tea","Green Tea","Tulsi Mulethi Tea","Black Coffee","Coconut Water"]);
   const[liqType,setLiqType]=useState("Warm Water");
   const[ml,setMl]=useState("");
   const[notes,setNotes]=useState("");
@@ -477,85 +439,72 @@ function LiquidEntry({settings,onAdd,T}){
   const[fl,setFl]=useState(false);
   const timerRef=useRef();
   const liqRef=useRef(liqType);liqRef.current=liqType;
-  const isWater=WATER_TYPES.includes(liqType);
-
+  const isWater=WATER.includes(liqType);
   const quickAdd=amt=>{
-    if(isWater){
-      setPending(p=>{const n=p+amt;clearTimeout(timerRef.current);timerRef.current=setTimeout(()=>{onAdd({type:"liquid",liquidType:liqRef.current,ml:n,notes:""});setPending(0);},30000);return n;});
-    } else {
-      setMl(String((+ml||0)+amt));
-    }
+    if(isWater){setPending(p=>{const n=p+amt;clearTimeout(timerRef.current);timerRef.current=setTimeout(()=>{onAdd({type:"liquid",liquidType:liqRef.current,ml:n,notes:""});setPending(0);},30000);return n;});}
+    else{setMl(String((+ml||0)+amt));}
   };
   const flushPending=()=>{clearTimeout(timerRef.current);if(pending>0){onAdd({type:"liquid",liquidType:liqType,ml:pending,notes:""});setPending(0);}};
-  const save=()=>{
-    if(pending>0){flushPending();return;}
-    if(!ml)return;
-    onAdd({type:"liquid",liquidType:liqType,ml:+ml,notes});
-    setMl("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);
-  };
-
-  return(<div className="card">
-    <div className="slabel">💧 Liquids</div>
+  const save=()=>{if(pending>0){flushPending();return;}if(!ml)return;onAdd({type:"liquid",liquidType:liqType,ml:+ml,notes});setMl("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
+  return(<div className="card"><div className="slabel">💧 Liquids</div>
     <div style={{display:"flex",gap:5,marginBottom:7,alignItems:"center"}}>
       <select value={liqType} onChange={e=>{setLiqType(e.target.value);setPending(0);clearTimeout(timerRef.current);}} style={{flex:"2 1 130px",minWidth:0}}>
-        {allTypes.map((t,i)=>t==="──────────"
-          ?<option key={i} disabled>──── Drinks ────</option>
-          :<option key={t}>{t}</option>)}
+        {allTypes.map((t,i)=>t==="--------"?<option key={i} disabled>---- Drinks ----</option>:<option key={t}>{t}</option>)}
       </select>
       <input type="number" placeholder="ml" value={ml} onChange={e=>setMl(e.target.value)} style={{flex:"0 0 68px"}}/>
     </div>
     <div style={{display:"flex",gap:5,marginBottom:7,flexWrap:"wrap"}}>
-      {[500,350,300,250,200,100].map(amt=>(
-        <button key={amt} className="lbtn" onClick={()=>quickAdd(amt)}>+{amt}</button>
-      ))}
+      {[500,350,300,250,200,100].map(amt=><button key={amt} className="lbtn" onClick={()=>quickAdd(amt)}>{"+"+amt}</button>)}
     </div>
-    {pending>0&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 9px",background:T.even,borderRadius:8,border:`1px solid ${T.border}`,marginBottom:7}}>
-      <span style={{fontSize:"0.82rem",color:T.wbtnTxt}}>💧 {liqType} · {pending}ml pending…</span>
+    {pending>0&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 9px",background:T.even,borderRadius:8,border:"1px solid "+T.border,marginBottom:7}}>
+      <span style={{fontSize:"0.82rem",color:T.wbtnTxt}}>💧 {liqType} {pending}ml pending</span>
       <button onClick={flushPending} style={{marginLeft:"auto",padding:"3px 9px",fontSize:"0.75rem",borderRadius:7,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer"}}>Log now</button>
     </div>}
     <div style={{display:"flex",gap:6,alignItems:"center"}}>
       <input placeholder={isWater?"Notes (optional)":"Notes e.g. 60ml milk+stevia"} value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/>
-      <Saver flash={fl} onClick={save} T={T}/>
+      <button onClick={save} style={{flexShrink:0,padding:"7px 14px",fontSize:"0.85rem",borderRadius:8,fontFamily:"inherit",fontWeight:500,cursor:"pointer",border:"none",background:fl?T.ok:T.accentBtn,color:"#fff",minWidth:52}}>{fl?"✔":"Save"}</button>
     </div>
   </div>);
 }
-
 function ExerciseEntry({settings,onAdd,T}){
-  const[et,setEt]=useState("");const[dist,setDist]=useState("");const[min,setMin]=useState("");const[cnt,setCnt]=useState("");const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
-  const etObj=(settings.exerciseTypes||FD.exerciseTypes).find(e=>e.name===et);
-  const hasDist=etObj?.metrics?.includes("distance");const hasTime=etObj?.metrics?.includes("time");const hasCnt=etObj?.metrics?.includes("count");
-  const save=()=>{if(!et)return;onAdd({type:"exercise",exType:et,dist,time:min,count:cnt,notes});setDist("");setMin("");setCnt("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
-  return(<div className="card"><div className="slabel">🏃 Exercise</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={et} onChange={e=>setEt(e.target.value)} style={{flex:"1 1 140px",minWidth:0}}><option value="">Type…</option>{(settings.exerciseTypes||FD.exerciseTypes).map(e=><option key={e.name}>{e.name}</option>)}</select>{hasDist&&<input type="number" placeholder="km" value={dist} onChange={e=>setDist(e.target.value)} style={{flex:"0 0 52px"}}/>}{(hasDist||hasTime)&&<input type="number" placeholder="min" value={min} onChange={e=>setMin(e.target.value)} style={{flex:"0 0 52px"}}/>}{hasCnt&&<input type="number" placeholder="×" value={cnt} onChange={e=>setCnt(e.target.value)} style={{flex:"0 0 52px"}}/>}</div><div style={{display:"flex",gap:6,alignItems:"center"}}><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
+  const[et,setEt]=useState("");const[sub,setSub]=useState("");const[dist,setDist]=useState("");const[min,setMin]=useState("");const[cnt,setCnt]=useState("");const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
+  const etObj=settings.exerciseTypes?.find(e=>e.name===et);
+  const hasSub=etObj?.subTypes?.length>0;const hasDist=etObj?.metrics?.includes("distance");const hasTime=etObj?.metrics?.includes("time");const hasCnt=etObj?.metrics?.includes("count");
+  const save=()=>{if(!et||(hasSub&&!sub))return;onAdd({type:"exercise",exType:et,subType:sub,dist,time:min,count:cnt,notes});setSub("");setDist("");setMin("");setCnt("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
+  return(<div className="card"><div className="slabel">🏃 Exercise</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={et} onChange={e=>{setEt(e.target.value);setSub("");}} style={{flex:"1 1 100px",minWidth:0}}><option value="">Type…</option>{(settings.exerciseTypes||[]).map(e=><option key={e.name}>{e.name}</option>)}</select>{hasSub&&<select value={sub} onChange={e=>setSub(e.target.value)} style={{flex:"1 1 110px",minWidth:0}}><option value="">Sub-type…</option>{etObj.subTypes.map(s=><option key={s}>{s}</option>)}</select>}{hasDist&&<input type="number" placeholder="km" value={dist} onChange={e=>setDist(e.target.value)} style={{flex:"0 0 52px"}}/>}{(hasDist||hasTime)&&<input type="number" placeholder="min" value={min} onChange={e=>setMin(e.target.value)} style={{flex:"0 0 52px"}}/>}{hasCnt&&<input type="number" placeholder="count" value={cnt} onChange={e=>setCnt(e.target.value)} style={{flex:"0 0 68px"}}/>}</div><div style={{display:"flex",gap:6,alignItems:"center"}}><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
 }
 
-// Fix #4: unit as grey placeholder in value field — no separate unit input
 function MedicalEntry({settings,onAdd,T}){
   const[rt,setRt]=useState("");const[val,setVal]=useState("");const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
-  const presets=settings.medicalPresets||FD.medicalPresets;
+  const presets=settings.medicalPresets||FD.medicalPresets||[];
   const unit=(presets.find(p=>(p.name||p)===rt)||{}).unit||"";
   const save=()=>{if(!rt||!val)return;onAdd({type:"medical",readingType:rt,value:val,unit,notes});setVal("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
   return(<div className="card"><div className="slabel">🩺 Medical Reading</div>
     <div style={{display:"flex",gap:5,marginBottom:6}}>
-      <select value={rt} onChange={e=>{setRt(e.target.value);setVal("");}} style={{flex:"0 0 90px"}}><option value="">Type…</option>{presets.map(p=>{const n=p.name||p;return<option key={n}>{n}</option>;})}</select>
+      <select value={rt} onChange={e=>{setRt(e.target.value);setVal("");}} style={{flex:"0 0 90px"}}><option value="">Type...</option>{presets.map(p=>{const n=p.name||p;return<option key={n}>{n}</option>;})}</select>
       <div style={{flex:1,position:"relative"}}>
-        <input value={val} onChange={e=>setVal(e.target.value)} placeholder={unit||"Value"}
-          style={{width:"100%",paddingRight:unit&&!val?`${unit.length*8+12}px`:"9px"}}/>
+        <input value={val} onChange={e=>setVal(e.target.value)} placeholder={unit||"Value"} style={{width:"100%",paddingRight:unit&&!val?(unit.length*8+12)+"px":"9px"}}/>
         {unit&&!val&&<span style={{position:"absolute",right:9,top:"50%",transform:"translateY(-50%)",fontSize:"0.74rem",color:T.textMuted,pointerEvents:"none",fontFamily:"'DM Mono',monospace"}}>{unit}</span>}
       </div>
     </div>
-    <div style={{display:"flex",gap:6}}><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div>
+    <div style={{display:"flex",gap:6}}><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><button onClick={save} style={{flexShrink:0,padding:"7px 14px",fontSize:"0.85rem",borderRadius:8,fontFamily:"inherit",fontWeight:500,cursor:"pointer",border:"none",background:fl?T.ok:T.accentBtn,color:"#fff",minWidth:52}}>{fl?"✔":"Save"}</button></div>
   </div>);
 }
-
 function MedEntry({settings,onAdd,T}){
   const[med,setMed]=useState("");const[timing,setTiming]=useState("After dinner");const[fl,setFl]=useState(false);
   const save=()=>{if(!med)return;onAdd({type:"medication",med,timing});setMed("");setFl(true);setTimeout(()=>setFl(false),1200);};
-  return(<div className="card"><div className="slabel">💊 Medication</div><div style={{display:"flex",gap:5}}><select value={med} onChange={e=>setMed(e.target.value)} style={{flex:"1 1 130px",minWidth:0}}><option value="">Medication…</option>{(settings.medications||FD.medications).map(m=><option key={m}>{m}</option>)}</select><select value={timing} onChange={e=>setTiming(e.target.value)} style={{flex:"1 1 110px",minWidth:0}}>{MED_TIMES.map(t=><option key={t}>{t}</option>)}</select><Saver flash={fl} onClick={save} T={T}/></div></div>);
+  return(<div className="card"><div className="slabel">💊 Medication</div><div style={{display:"flex",gap:5,alignItems:"center"}}><select value={med} onChange={e=>setMed(e.target.value)} style={{flex:"1 1 140px",minWidth:0}}><option value="">Medication…</option>{(settings.medications||[]).map(m=><option key={m}>{m}</option>)}</select><select value={timing} onChange={e=>setTiming(e.target.value)} style={{flex:"1 1 120px",minWidth:0}}>{MED_TIMES.map(t=><option key={t}>{t}</option>)}</select><Saver flash={fl} onClick={save} T={T}/></div></div>);
 }
-
 function TLE({e,T}){
-  const m=entryLabel(e);
-  return(<div className="tle"><span style={{fontSize:"0.68rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:40,flexShrink:0}}>{fmt24(e.timestamp)}</span><span style={{flexShrink:0}}>{TYPE_ICON[e.type]||"•"}</span><div style={{flex:1,fontSize:"0.83rem",lineHeight:1.45}}>{m}{e.notes&&<span style={{fontSize:"0.74rem",color:T.textSub,fontStyle:"italic"}}> ({e.notes})</span>}</div></div>);
+  const ic={meal:"🍽️",drinks:"☕",exercise:"🏃",water:"💧",medical:"🩺",medication:"💊"};
+  let m="";
+  if(e.type==="meal")       m=`${e.mealType} · ${e.food} · ${e.unit==="count"?e.qty:e.qty+e.unit}`;
+  if(e.type==="liquid")     m=`${e.liquidType}${e.ml?" · "+e.ml+"ml":""}`;
+  if(e.type==="exercise")   {m=e.exType;if(e.subType)m+=` · ${e.subType}`;if(e.dist)m+=` · ${e.dist}km`;if(e.time)m+=` · ${e.time}min`;if(e.count)m+=` · x${e.count}`;}
+  if(e.type==="liquid" && ["Warm Water","Plain Water","Cold Water"].includes(e.liquidType))      m=`${e.waterTemp||""} ${e.ml}ml`.trim();
+  if(e.type==="medical")    m=`${e.readingType} · ${e.value}${e.unit?" "+e.unit:""}`;
+  if(e.type==="medication") m=`${e.med} · ${e.timing}`;
+  return(<div className="tle"><span style={{fontSize:"0.68rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:40,flexShrink:0}}>{fmt24(e.timestamp)}</span><span style={{flexShrink:0}}>{ic[e.type]||"•"}</span><div style={{flex:1,fontSize:"0.83rem",lineHeight:1.45}}>{m}{e.notes&&<span style={{fontSize:"0.74rem",color:T.textSub,fontStyle:"italic"}}> ({e.notes})</span>}</div></div>);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -563,35 +512,30 @@ function TLE({e,T}){
 // ═══════════════════════════════════════════════════════════════════════════════
 function ManagePage({entries,settings,onUpdate,onDelete,T}){
   const[sel,setSel]=useState(today());const[eid,setEid]=useState(null);
-  const dates=Array.from({length:14},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);});
+  const dates=Array.from({length:10},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);});
   const dayE=entries.filter(e=>e.date===sel).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
-  return(<div><div style={{fontWeight:600,fontSize:"0.92rem",marginBottom:10}}>📋 Manage Records</div><select value={sel} onChange={e=>{setSel(e.target.value);setEid(null);}} style={{marginBottom:10}}>{dates.map(d=><option key={d} value={d}>{fmtDate(d)}{d===today()?" (Today)":""}</option>)}</select>{!dayE.length?<div style={{color:T.textMuted,fontSize:"0.82rem",textAlign:"center",padding:22}}>No entries for this date</div>:dayE.map(e=>eid===e.id?<EditEntry key={e.id} entry={e} settings={settings} T={T} onSave={d=>{onUpdate(e.id,d);setEid(null);}} onCancel={()=>setEid(null)}/>:<ManageRow key={e.id} e={e} T={T} onEdit={()=>setEid(e.id)} onDelete={()=>{if(confirm("Delete this entry?"))onDelete(e.id);}}/>)}</div>);
+  return(<div><div style={{fontWeight:600,fontSize:"0.92rem",marginBottom:10}}>📋 Manage Records</div><select value={sel} onChange={e=>{setSel(e.target.value);setEid(null);}} style={{marginBottom:10}}>{dates.map(d=><option key={d} value={d}>{fmtDate(d)}{d===today()?" (Today)":""}</option>)}</select>{dayE.length===0?<div style={{color:T.textMuted,fontSize:"0.82rem",textAlign:"center",padding:22}}>No entries for this date</div>:dayE.map(e=>eid===e.id?<EditEntry key={e.id} entry={e} settings={settings} T={T} onSave={d=>{onUpdate(e.id,d);setEid(null);}} onCancel={()=>setEid(null)}/>:<ManageRow key={e.id} e={e} T={T} onEdit={()=>setEid(e.id)} onDelete={()=>{if(confirm("Delete this entry?"))onDelete(e.id);}}/>)}</div>);
 }
 function ManageRow({e,onEdit,onDelete,T}){
-  return(<div className="card" style={{display:"flex",alignItems:"flex-start",gap:8,padding:"9px 11px",marginBottom:6}}><span style={{fontSize:"0.66rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:40,paddingTop:2,flexShrink:0}}>{fmt24(e.timestamp)}</span><span style={{flexShrink:0}}>{TYPE_ICON[e.type]||"•"}</span><div style={{flex:1,fontSize:"0.82rem",lineHeight:1.4}}>{entryLabel(e)}{e.notes&&<span style={{fontSize:"0.74rem",color:T.textSub,fontStyle:"italic"}}> ({e.notes})</span>}</div><div style={{display:"flex",gap:3,flexShrink:0}}><button className="ibtn" onClick={onEdit}>✏️</button><button className="ibtn" style={{color:T.danger}} onClick={onDelete}>🗑️</button></div></div>);
+  const ic={meal:"🍽️",drinks:"☕",exercise:"🏃",water:"💧",medical:"🩺",medication:"💊"};
+  let m="";
+  if(e.type==="meal")       m=`${e.mealType} · ${e.food} · ${e.unit==="count"?e.qty:e.qty+e.unit}`;
+  if(e.type==="liquid")     m=`${e.liquidType}${e.ml?" · "+e.ml+"ml":""}`;
+  if(e.type==="exercise")   {m=e.exType;if(e.subType)m+=` · ${e.subType}`;if(e.dist)m+=` · ${e.dist}km`;if(e.time)m+=` · ${e.time}min`;if(e.count)m+=` · x${e.count}`;}
+  if(e.type==="liquid" && ["Warm Water","Plain Water","Cold Water"].includes(e.liquidType))      m=`${e.waterTemp||""} ${e.ml}ml`.trim();
+  if(e.type==="medical")    m=`${e.readingType} · ${e.value}${e.unit?" "+e.unit:""}`;
+  if(e.type==="medication") m=`${e.med} · ${e.timing}`;
+  return(<div className="card" style={{display:"flex",alignItems:"flex-start",gap:8,padding:"9px 11px",marginBottom:6}}><span style={{fontSize:"0.66rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:40,paddingTop:2,flexShrink:0}}>{fmt24(e.timestamp)}</span><span style={{flexShrink:0}}>{ic[e.type]||"•"}</span><div style={{flex:1,fontSize:"0.82rem",lineHeight:1.4}}>{m}{e.notes&&<span style={{fontSize:"0.74rem",color:T.textSub,fontStyle:"italic"}}> ({e.notes})</span>}</div><div style={{display:"flex",gap:3,flexShrink:0}}><button className="ibtn" onClick={onEdit}>✏️</button><button className="ibtn" style={{color:T.danger}} onClick={onDelete}>🗑️</button></div></div>);
 }
 function EditEntry({entry,settings,onSave,onCancel,T}){
   const[d,setD]=useState(deepClone(entry));const set=(k,v)=>setD(p=>({...p,[k]:v}));
   const[editDate,setEditDate]=useState(entry.date||today());
   const[editTime,setEditTime]=useState(fmt24(entry.timestamp));
-  const eo=(settings.exerciseTypes||FD.exerciseTypes).find(e=>e.name===d.exType);
+  const eo=settings.exerciseTypes?.find(e=>e.name===d.exType);
   const hasDist=eo?.metrics?.includes("distance");const hasTime=eo?.metrics?.includes("time");const hasCnt=eo?.metrics?.includes("count");
-  const mp=settings.medicalPresets||FD.medicalPresets;
-  const liqTypes=(settings.liquidTypes||FD.liquidTypes).filter(t=>t!=="──────────");
+  const medPresets=settings.medicalPresets||FD.medicalPresets;
   const doSave=()=>onSave({...d,date:editDate,timestamp:makeTS(editDate,editTime)});
-  return(<div className="card" style={{border:`1px solid ${T.accentBtn}55`,marginBottom:8}}>
-    <div className="slabel" style={{color:T.accent,marginBottom:7}}>✏️ Editing</div>
-    <div style={{display:"flex",gap:5,marginBottom:8}}>
-      <input type="date" value={editDate} onChange={e=>setEditDate(e.target.value)} style={{flex:1,fontSize:"0.8rem",padding:"5px 7px"}}/>
-      <TimeInput value={editTime} onChange={setEditTime} style={{background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:8,color:T.text}}/>
-    </div>
-    {d.type==="meal"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}><select value={d.mealType} onChange={e=>set("mealType",e.target.value)} style={{width:95}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select><select value={d.food} onChange={e=>set("food",e.target.value)} style={{flex:"2 1 80px"}}><option value="">Food…</option>{(settings.foodCategories||FD.foodCategories).sort().map(f=><option key={f}>{f}</option>)}</select><input type="number" value={d.qty} onChange={e=>set("qty",e.target.value)} style={{width:58}}/><select value={d.unit} onChange={e=>set("unit",e.target.value)} style={{width:66}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select><input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100%"}}/></div>}
-    {d.type==="liquid"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}><select value={d.liquidType||""} onChange={e=>set("liquidType",e.target.value)} style={{flex:"2 1 130px"}}>{liqTypes.map(t=><option key={t}>{t}</option>)}</select><input type="number" placeholder="ml" value={d.ml||""} onChange={e=>set("ml",e.target.value)} style={{width:72}}/><input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100%"}}/></div>}
-    {d.type==="exercise"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}><select value={d.exType} onChange={e=>set("exType",e.target.value)} style={{flex:"1 1 130px"}}>{(settings.exerciseTypes||FD.exerciseTypes).map(e=><option key={e.name}>{e.name}</option>)}</select>{hasDist&&<input type="number" placeholder="km" value={d.dist||""} onChange={e=>set("dist",e.target.value)} style={{width:52}}/>}{(hasDist||hasTime)&&<input type="number" placeholder="min" value={d.time||""} onChange={e=>set("time",e.target.value)} style={{width:52}}/>}{hasCnt&&<input type="number" placeholder="×" value={d.count||""} onChange={e=>set("count",e.target.value)} style={{width:52}}/><input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100%"}}/></div>}
-    {d.type==="medical"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}><select value={d.readingType} onChange={e=>set("readingType",e.target.value)} style={{flex:"0 0 90px"}}>{mp.map(p=>{const n=p.name||p;return<option key={n}>{n}</option>;})}</select><input value={d.value} onChange={e=>set("value",e.target.value)} placeholder={(mp.find(p=>(p.name||p)===d.readingType)||{}).unit||""} style={{flex:1}}/><input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100%"}}/></div>}
-    {d.type==="medication"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}><select value={d.med} onChange={e=>set("med",e.target.value)} style={{flex:"1 1 130px"}}>{(settings.medications||FD.medications).map(m=><option key={m}>{m}</option>)}</select><select value={d.timing} onChange={e=>set("timing",e.target.value)} style={{flex:"1 1 110px"}}>{MED_TIMES.map(t=><option key={t}>{t}</option>)}</select></div>}
-    <div style={{display:"flex",gap:6}}><button onClick={onCancel} style={{flex:1,padding:"7px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer"}}>Cancel</button><button onClick={doSave} style={{flex:1,padding:"7px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontWeight:600}}>Save Changes</button></div>
-  </div>);
+  return(<div className="card" style={{border:`1px solid ${T.accentBtn}55`,marginBottom:8}}><div className="slabel" style={{color:T.accent,marginBottom:7}}>✏️ Editing</div><div style={{display:"flex",gap:5,marginBottom:8,alignItems:"center"}}><input type="date" value={editDate} onChange={e=>setEditDate(e.target.value)} style={{flex:1,fontSize:"0.8rem",padding:"5px 7px"}}/><input type="text" inputMode="numeric" value={editTime} onChange={e=>{let v=e.target.value.replace(/[^0-9:]/g,"");if(v.length===4&&!v.includes(":"))v=v.slice(0,2)+":"+v.slice(2);setEditTime(v.slice(0,5));}} placeholder="HH:MM" maxLength={5} style={{flex:"0 0 72px",fontSize:"0.8rem",padding:"5px 7px",fontFamily:"'DM Mono',monospace"}}/></div>{d.type==="meal"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}><select value={d.mealType} onChange={e=>set("mealType",e.target.value)} style={{width:95}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select><select value={d.food} onChange={e=>set("food",e.target.value)} style={{flex:"2 1 80px"}}>{(settings.foodCategories||[]).sort().map(f=><option key={f}>{f}</option>)}</select><input type="number" value={d.qty} onChange={e=>set("qty",e.target.value)} style={{width:62}}/><select value={d.unit} onChange={e=>set("unit",e.target.value)} style={{width:70}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select><input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100px"}}/></div>}{d.type==="liquid"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}><select value={d.liquidType||""} onChange={e=>set("drinkType",e.target.value)} style={{flex:"2 1 120px"}}>{(settings.liquidTypes||FD.liquidTypes).sort().map(dk=><option key={dk}>{dk}</option>)}</select><input type="number" placeholder="ml" value={d.ml||""} onChange={e=>set("ml",e.target.value)} style={{width:72}}/><input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100px"}}/></div>}{d.type==="exercise"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}><select value={d.exType} onChange={e=>set("exType",e.target.value)} style={{flex:"1 1 100px"}}>{(settings.exerciseTypes||[]).map(e=><option key={e.name}>{e.name}</option>)}</select>{eo?.subTypes?.length>0&&<select value={d.subType||""} onChange={e=>set("subType",e.target.value)} style={{flex:"1 1 110px"}}>{eo.subTypes.map(s=><option key={s}>{s}</option>)}</select>}{hasDist&&<input type="number" placeholder="km" value={d.dist||""} onChange={e=>set("dist",e.target.value)} style={{width:52}}/>}{(hasDist||hasTime)&&<input type="number" placeholder="min" value={d.time||""} onChange={e=>set("time",e.target.value)} style={{width:52}}/>}{hasCnt&&<input type="number" placeholder="count" value={d.count||""} onChange={e=>set("count",e.target.value)} style={{width:68}}/>}<input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100px"}}/></div>}{d.type==="water"&&<div style={{display:"flex",gap:5,marginBottom:7}}><select value={d.waterTemp||"Plain"} onChange={e=>set("waterTemp",e.target.value)} style={{width:90}}>{WATER_TEMPS.map(t=><option key={t}>{t}</option>)}</select><input type="number" value={d.ml} onChange={e=>set("ml",+e.target.value)}/></div>}{d.type==="medical"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}><select value={d.readingType} onChange={e=>set("readingType",e.target.value)} style={{flex:"0 0 90px"}}>{medPresets.map(p=>{const nm=typeof p==="string"?p:p.name;return<option key={nm}>{nm}</option>;})}</select><input value={d.value} onChange={e=>set("value",e.target.value)} style={{flex:1}}/><input placeholder="unit" value={d.unit||""} onChange={e=>set("unit",e.target.value)} style={{flex:"0 0 60px"}}/><input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100px"}}/></div>}{d.type==="medication"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}><select value={d.med} onChange={e=>set("med",e.target.value)} style={{flex:"1 1 130px"}}>{(settings.medications||[]).map(m=><option key={m}>{m}</option>)}</select><select value={d.timing} onChange={e=>set("timing",e.target.value)} style={{flex:"1 1 120px"}}>{MED_TIMES.map(t=><option key={t}>{t}</option>)}</select></div>}<div style={{display:"flex",gap:6}}><button onClick={onCancel} style={{flex:1,padding:"7px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button><button onClick={doSave} style={{flex:1,padding:"7px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Save Changes</button></div></div>);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -602,274 +546,211 @@ function ReportsPage({entries,settings,T,clearAll,setModal,onImport}){
   const[cd,setCd]=useState([today()]);const[ad,setAd]=useState(today());const[qr,setQr]=useState("");
   const fileRef=useRef();
   const d30=Array.from({length:30},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);});
-  const mp=settings.medicalPresets||FD.medicalPresets;
-  const medNames=mp.map(p=>p.name||p);
-  const rpt=date=>dayReport(entries.filter(e=>e.date===date),mp);
-  const ROWS=[{k:"water",l:"Water"},{k:"drinks",l:"Drinks"},{k:"medication",l:"Medications"},{k:"exercise",l:"Exercise"},{k:"Breakfast",l:"Breakfast"},{k:"Lunch",l:"Lunch"},{k:"Snack",l:"Snack"},{k:"Dinner",l:"Dinner"},...medNames.map(n=>({k:n,l:n}))];
-  const applyQr=v=>{setQr(v);if(!v)return;setCd(Array.from({length:+v},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);}));};
-  const handleFile=e=>{const f=e.target.files[0];if(!f)return;new FileReader().onload=ev=>onImport(ev.target.result);new FileReader().readAsText(f);const r=new FileReader();r.onload=ev=>onImport(ev.target.result);r.readAsText(f);e.target.value="";};
-  return(<div>
-    <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:10,flexWrap:"wrap"}}>
-      <span style={{fontWeight:700,fontSize:"0.92rem",marginRight:4}}>📊</span>
-      <button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} onClick={()=>fileRef.current.click()}>⬆️ Import</button>
-      <button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} onClick={()=>setModal({fn:`jivanlog-view-${today()}.csv`,csv:buildViewCSV(entries,tab==="view"?[vd]:cd,mp)})}>⬇️ This View</button>
-      <button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} onClick={()=>setModal({fn:`jivanlog-all-${today()}.csv`,csv:buildAllCSV(entries)})}>⬇️ All Data</button>
-      <div style={{flex:1}}/>
-      <button onClick={clearAll} style={{fontSize:"0.72rem",padding:"4px 8px",fontWeight:700,background:"none",border:`1px solid ${T.danger}88`,color:T.danger,borderRadius:8,cursor:"pointer",fontFamily:"inherit"}}>CLEAR ALL</button>
-      <input ref={fileRef} type="file" accept=".csv" style={{display:"none"}} onChange={handleFile}/>
-    </div>
-    <div style={{display:"flex",gap:5,marginBottom:9,alignItems:"center"}}>
-      <button className={`tbtn${tab==="view"?" on":""}`} onClick={()=>setTab("view")}>View</button>
-      <button className={`tbtn${tab==="compare"?" on":""}`} onClick={()=>setTab("compare")}>Compare</button>
-      {tab==="view"&&<select value={vd} onChange={e=>setVd(e.target.value)} style={{flex:1,fontSize:"0.79rem",padding:"5px 7px"}}>{d30.map(d=><option key={d} value={d}>{fmtDate(d)}{d===today()?" ★":""}</option>)}</select>}
-      {tab==="compare"&&<><select value={qr} onChange={e=>applyQr(e.target.value)} style={{flex:"0 0 110px",fontSize:"0.79rem"}}><option value="">Quick…</option>{[2,3,5,7,10].map(n=><option key={n} value={n}>Last {n} days</option>)}</select><select value={ad} onChange={e=>setAd(e.target.value)} style={{flex:1,fontSize:"0.79rem"}}>{d30.map(d=><option key={d} value={d}>{fmtShort(d)}{d===today()?" ★":""}</option>)}</select><button onClick={()=>{setQr("");if(!cd.includes(ad)&&cd.length<10)setCd(p=>[...p,ad].sort().reverse());}} style={{flexShrink:0,padding:"5px 11px",fontSize:"1.1rem",fontWeight:700,border:"none",borderRadius:8,background:T.accentBtn,color:"#fff",cursor:"pointer"}}>＋</button></>}
-    </div>
-    {tab==="compare"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8}}>{cd.map(d=><div key={d} style={{display:"flex",alignItems:"center",gap:3,background:T.border,borderRadius:20,padding:"2px 9px",fontSize:"0.73rem"}}><span>{fmtShort(d)}</span>{cd.length>1&&<button onClick={()=>{setQr("");setCd(p=>p.filter(x=>x!==d));}} style={{background:"none",border:"none",color:T.textMuted,cursor:"pointer",fontSize:"0.85rem",padding:"0 0 0 3px"}}>×</button>}</div>)}<button className="tbtn" style={{padding:"2px 9px",fontSize:"0.72rem"}} onClick={()=>{setQr("");setCd([today()]);}}>Clear</button></div>}
-    {tab==="view"&&<div className="card"><div style={{fontWeight:600,fontSize:"0.82rem",marginBottom:8,color:T.accent}}>{fmtDate(vd)}</div>{ROWS.map(({l,k})=>{const v=rpt(vd)[k]||"-";return<div key={k} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}><span style={{color:T.textMuted,fontSize:"0.76rem",minWidth:100,flexShrink:0}}>{l}</span><span style={{textAlign:"right",flex:1,paddingLeft:6,color:v==="-"?T.border:T.text}}>{v}</span></div>;})} </div>}
-    {tab==="compare"&&<div style={{overflowX:"auto"}}><table className="ctbl"><thead><tr><th style={{minWidth:90}}>Category</th>{cd.map(d=><th key={d}>{fmtShort(d)}</th>)}</tr></thead><tbody>{ROWS.map(({l,k})=>{const vals=cd.map(d=>rpt(d)[k]||"-");return<tr key={k}><td style={{color:T.textMuted,fontWeight:600}}>{l}</td>{vals.map((v,i)=><td key={i} style={{color:v==="-"?T.border:T.text}}>{v}</td>)}</tr>;})}</tbody></table></div>}
-  </div>);
+  const medPresets=settings.medicalPresets||FD.medicalPresets;
+  const medNames=medPresets.map(p=>typeof p==="string"?p:p.name);
+  const rpt=date=>dayReport(entries.filter(e=>e.date===date),medPresets);
+  const allRows=[{key:"water",label:"Water"},{key:"drinks",label:"Drinks"},{key:"medication",label:"Medications"},{key:"exercise",label:"Exercise"},{key:"Breakfast",label:"Breakfast"},{key:"Lunch",label:"Lunch"},{key:"Snack",label:"Snack"},{key:"Dinner",label:"Dinner"},...medNames.map(n=>({key:n,label:n}))];
+  const doExport=(csv,fn)=>setModal({filename:fn,csv});
+  const applyQr=v=>{setQr(v);if(!v)return;const n=parseInt(v);setCd(Array.from({length:n},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);}));};
+  const handleFile=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{onImport(ev.target.result);};r.readAsText(f);e.target.value="";};
+  return(<div><div style={{display:"flex",alignItems:"center",gap:4,marginBottom:10,flexWrap:"wrap"}}><span style={{fontWeight:700,fontSize:"0.92rem",marginRight:4}}>📊</span><button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} onClick={()=>fileRef.current.click()}>⬆️ Import</button><button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} onClick={()=>doExport(buildViewCSV(entries,tab==="view"?[vd]:cd,medPresets),`jivanlog-view-${today()}.csv`)}>⬇️ This View</button><button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} onClick={()=>doExport(buildAllCSV(entries),`jivanlog-all-${today()}.csv`)}>⬇️ All Data</button><div style={{flex:1}}/><button onClick={clearAll} style={{fontSize:"0.72rem",padding:"4px 8px",fontWeight:700,background:"none",border:`1px solid ${T.danger}88`,color:T.danger,borderRadius:8,cursor:"pointer",fontFamily:"inherit"}}>CLEAR ALL</button><input ref={fileRef} type="file" accept=".csv" style={{display:"none"}} onChange={handleFile}/></div><div style={{display:"flex",gap:5,marginBottom:9,alignItems:"center"}}><button className={`tbtn${tab==="view"?" on":""}`} onClick={()=>setTab("view")}>View</button><button className={`tbtn${tab==="compare"?" on":""}`} onClick={()=>setTab("compare")}>Compare</button>{tab==="view"&&<select value={vd} onChange={e=>setVd(e.target.value)} style={{flex:1,fontSize:"0.79rem",padding:"5px 7px"}}>{d30.map(d=><option key={d} value={d}>{fmtDate(d)}{d===today()?" ★":""}</option>)}</select>}{tab==="compare"&&<><select value={qr} onChange={e=>applyQr(e.target.value)} style={{flex:"0 0 auto",fontSize:"0.79rem",padding:"5px 6px",width:110}}><option value="">Quick…</option>{[2,3,4,5,6,7,8,9,10].map(n=><option key={n} value={n}>Last {n} days</option>)}</select><select value={ad} onChange={e=>setAd(e.target.value)} style={{flex:1,fontSize:"0.79rem",padding:"5px 6px"}}>{d30.map(d=><option key={d} value={d}>{fmtShort(d)}{d===today()?" ★":""}</option>)}</select><button onClick={()=>{setQr("");if(!cd.includes(ad)&&cd.length<10)setCd(p=>[...p,ad].sort().reverse());}} style={{flexShrink:0,padding:"5px 11px",fontSize:"1.1rem",fontWeight:700,lineHeight:1,border:"none",borderRadius:8,background:T.accentBtn,color:"#fff",cursor:"pointer"}}>＋</button></>}</div>{tab==="compare"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8,alignItems:"center"}}>{cd.map(d=>(<div key={d} style={{display:"flex",alignItems:"center",gap:3,background:T.border,borderRadius:20,padding:"2px 9px",fontSize:"0.73rem"}}><span>{fmtShort(d)}</span>{cd.length>1&&<button onClick={()=>{setQr("");setCd(p=>p.filter(x=>x!==d));}} style={{background:"none",border:"none",color:T.textMuted,cursor:"pointer",fontSize:"0.85rem",padding:"0 0 0 3px"}}>×</button>}</div>))}<button className="tbtn" style={{padding:"2px 9px",fontSize:"0.72rem"}} onClick={()=>{setQr("");setCd([today()]);}} >Clear</button></div>}{tab==="view"&&<div className="card"><div style={{fontWeight:600,fontSize:"0.82rem",marginBottom:8,color:T.accent}}>{fmtDate(vd)}</div>{allRows.map(({label,key})=>{const v=rpt(vd)[key]||"-";return(<div key={key} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}><span style={{color:T.textMuted,fontSize:"0.76rem",minWidth:100,flexShrink:0}}>{label}</span><span style={{textAlign:"right",flex:1,paddingLeft:6,color:v==="-"?T.border:T.text}}>{v}</span></div>);})}</div>}{tab==="compare"&&<div style={{overflowX:"auto"}}><table className="ctbl"><thead><tr><th style={{minWidth:90}}>Category</th>{cd.map(d=><th key={d}>{fmtShort(d)}</th>)}</tr></thead><tbody>{allRows.map(({label,key})=>{const vals=cd.map(d=>rpt(d)[key]||"-");return(<tr key={key}><td style={{color:T.textMuted,fontWeight:600}}>{label}</td>{vals.map((v,i)=><td key={i} style={{color:v==="-"?T.border:T.text}}>{v}</td>)}</tr>);})}</tbody></table></div>}</div>);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SETTINGS — simplified to Current + Default only (Fix #5a)
+// SETTINGS
 // ═══════════════════════════════════════════════════════════════════════════════
-const CTABS=[["food","🍽️ Food"],["liquids","💧 Liquids"],["exercise","🏃 Exercise"],["medical","🩺 Medical"],["meds","💊 Meds"]];
+const STABS=[["general","General"],["current","Current"],["default","Default"],["daytpl","📋 Day Templates"]];
+const CTABS=[["food","🍽️ Food"],["drinks","☕ Drinks"],["exercise","🏃 Exercise"],["medical","🩺 Medical"],["meds","💊 Meds"]];
 
-function SettingsPage({settings,defaults,dayTemplates,theme,setSettings,setDefaults,setDayTemplates,setTheme,user,onSignOut,todayEntries,onLoadTemplate,T}){
-  const[stab,setStab]=useState("general");
-  const[ctab,setCtab]=useState("food");
-  const[newItem,setNewItem]=useState("");
-  const[applyFlash,setApplyFlash]=useState(false);
-
-  const isDefault=stab==="default";
-  const active=isDefault?defaults:settings;
-  const updateActive=updater=>{const n=typeof updater==="function"?updater(active):updater;isDefault?setDefaults(n):setSettings(n);};
-
+function SettingsPage({settings,defaults,presets,templates,theme,setSettings,setDefaults,setPresets,setTemplates,setTheme,user,onSignOut,todayEntries,onLoadTemplate,T}){
+  const[stab,setStab]=useState("general");const[ctab,setCtab]=useState("food");const[newItem,setNewItem]=useState("");const[applyFlash,setApplyFlash]=useState(false);
+  const getActive=()=>{if(stab==="default")return defaults;const i=parseInt(stab[1])-1;return presets[i];};
+  const updateActive=updater=>{
+    if(stab==="default"){setDefaults(typeof updater==="function"?updater(defaults):updater);return;}
+    const idx=parseInt(stab[1])-1;const next=deepClone(presets);next[idx]=typeof updater==="function"?updater(presets[idx]):updater;setPresets(next);
+  };
+  const applyToCurrent=()=>{const src=getActive();if(!src)return;const label=stab==="default"?"Default":`Preset ${stab[1]}`;if(!confirm(`Apply ${label} to Current Settings?\n\nEntry forms will immediately use this config.`))return;setSettings(deepClone(src));setApplyFlash(true);setTimeout(()=>setApplyFlash(false),1800);};
+  const resetCurrent=()=>{if(!confirm("Reset Current Settings → Default?"))return;setSettings(deepClone(defaults));};
+  const resetAllPresets=()=>{if(!confirm("Reset ALL Presets → Default?"))return;setPresets([deepClone(defaults),deepClone(defaults),deepClone(defaults)]);};
   const addItem=key=>{if(!newItem.trim())return;updateActive(p=>({...p,[key]:[...(p[key]||[]),newItem.trim()].sort()}));setNewItem("");};
   const removeItem=(key,item)=>updateActive(p=>({...p,[key]:(p[key]||[]).filter(x=>x!==item)}));
-  const addMedPreset=(name,unit)=>{if(!name.trim())return;const ex=active.medicalPresets||[];if(ex.some(p=>(p.name||p)===name.trim()))return;updateActive(p=>({...p,medicalPresets:[...(p.medicalPresets||[]),{name:name.trim(),unit:unit.trim()}]}));};
-  const removeMedPreset=name=>updateActive(p=>({...p,medicalPresets:(p.medicalPresets||[]).filter(x=>(x.name||x)!==name)}));
-  const applyCurrent=()=>{if(!confirm("Apply Default → Current?\n\nEntry forms will use Default config immediately."))return;setSettings(deepClone(defaults));setApplyFlash(true);setTimeout(()=>setApplyFlash(false),1800);};
-  const resetToDef=()=>{if(!confirm("Reset Current → Default?"))return;setSettings(deepClone(defaults));};
-  const resetToFact=()=>{if(!confirm("Reset Default → Factory settings?\n\nRestores all original built-in lists."))return;setDefaults(deepClone(FD));};
-
+  const addMedPreset=(name,unit)=>{if(!name.trim())return;const ex=getActive()?.medicalPresets||[];if(ex.some(p=>(typeof p==="string"?p:p.name)===name.trim()))return;updateActive(p=>({...p,medicalPresets:[{name:"Sugar",unit:"mg/dL"},{name:"BP",unit:"Sys/Dia"},{name:"Weight",unit:"kg"},{name:"Height",unit:"cm"}]),{name:name.trim(),unit:unit.trim()}]}));};
+  const removeMedPreset=name=>updateActive(p=>({...p,medicalPresets:(p.medicalPresets||[]).filter(x=>(typeof x==="string"?x:x.name)!==name)}));
+  const active=getActive();
   return(<div>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
       <div style={{fontWeight:600,fontSize:"0.92rem"}}>⚙️ Settings</div>
-      {stab==="default"&&<button onClick={applyCurrent} style={{padding:"5px 12px",borderRadius:8,border:"none",background:applyFlash?T.ok:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:600,fontSize:"0.79rem",cursor:"pointer",transition:"background 0.3s"}}>{applyFlash?"✔ Applied!":"Apply to Current ▶"}</button>}
+      {stab!=="general"&&stab!=="tpl"&&active&&<button onClick={applyToCurrent} style={{padding:"5px 12px",borderRadius:8,border:"none",background:applyFlash?T.ok:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:600,fontSize:"0.79rem",cursor:"pointer",transition:"background 0.3s"}}>{applyFlash?"✔ Applied!":"Apply to Current ▶"}</button>}
     </div>
-    <div style={{display:"flex",gap:4,marginBottom:10,overflowX:"auto"}}>
-      {[["general","General"],["current","Current"],["default","Default"],["daytpl","📋 Day Templates"]].map(([k,l])=>(
-        <button key={k} onClick={()=>{setStab(k);setNewItem("");}} className={`tbtn${stab===k?" on":""}`} style={{flexShrink:0,fontSize:"0.75rem"}}>{l}</button>
-      ))}
+    <div style={{display:"flex",gap:4,marginBottom:10,overflowX:"auto",paddingBottom:2}}>
+      {STABS.map(([k,l])=><button key={k} onClick={()=>{setStab(k);setNewItem("");}} className={`tbtn${stab===k?" on":""}`} style={{flexShrink:0,fontSize:"0.75rem"}}>{l}</button>)}
     </div>
 
     {stab==="general"&&<>
       <div className="card" style={{display:"flex",alignItems:"center",gap:12,padding:"10px 13px"}}>
-        {user.photoURL&&<img src={user.photoURL} style={{width:38,height:38,borderRadius:"50%",border:`2px solid ${T.accentBtn}`}} alt=""/>}
+        {user.photoURL&&<img src={user.photoURL} style={{width:38,height:38,borderRadius:"50%",border:`2px solid ${T.accentBtn}`}} alt="avatar"/>}
         <div style={{flex:1}}><div style={{fontWeight:600,fontSize:"0.88rem"}}>{user.displayName||"User"}</div><div style={{fontSize:"0.72rem",color:T.textMuted}}>{user.email}</div></div>
-        <button onClick={onSignOut} style={{padding:"5px 10px",borderRadius:7,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontSize:"0.75rem",cursor:"pointer"}}>Sign out</button>
+        <button onClick={onSignOut} style={{padding:"5px 10px",borderRadius:7,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}>Sign out</button>
       </div>
       <div className="card"><div className="slabel">🎨 Theme</div><div style={{display:"flex",gap:6}}>{[["dark","🌙 Dark"],["light","☀️ Light"],["system","💻 System"]].map(([m,l])=><button key={m} onClick={()=>setTheme(m)} style={{flex:1,padding:"7px 4px",borderRadius:8,border:"1px solid",fontSize:"0.78rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit",borderColor:theme===m?T.accentBtn:T.border,background:theme===m?T.accentBg:T.cardBg,color:theme===m?T.accent:T.textMuted}}>{l}</button>)}</div></div>
-      <div className="card"><div className="slabel">🔄 Resets</div>
-        {[["Reset Current → Default","Entry-form lists revert to Default",resetToDef],["Reset Default → Factory","Restores all original built-in lists",resetToFact]].map(([t,s,fn])=>(
-          <div key={t} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${T.border}`}}>
-            <div><div style={{fontSize:"0.82rem",fontWeight:500}}>{t}</div><div style={{fontSize:"0.71rem",color:T.textMuted}}>{s}</div></div>
-            <button onClick={fn} style={{flexShrink:0,marginLeft:10,padding:"4px 12px",borderRadius:7,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontSize:"0.77rem"}}>Reset</button>
-          </div>
-        ))}
-      </div>
+      <div className="card"><div className="slabel">🔄 Reset</div>{[["Reset Current → Default","Replaces entry-form config with Default",resetCurrent],["Reset All Presets → Default","Sets Presets 1, 2 & 3 to match Default",resetAllPresets]].map(([title,sub,fn])=>(<div key={title} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${T.border}`}}><div><div style={{fontSize:"0.82rem",fontWeight:500}}>{title}</div><div style={{fontSize:"0.71rem",color:T.textMuted}}>{sub}</div></div><button onClick={fn} style={{flexShrink:0,marginLeft:10,padding:"4px 12px",borderRadius:7,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontFamily:"inherit",fontSize:"0.77rem"}}>Reset</button></div>))}</div>
       <div style={{padding:"8px 10px",background:T.even,borderRadius:8,border:`1px solid ${T.border}`,fontSize:"0.72rem",color:T.textMuted,lineHeight:1.75}}>
         <b style={{color:T.textSub}}>How it works:</b><br/>
-        • <b>Current</b> — lists used by entry forms right now<br/>
-        • <b>Default</b> — baseline; edit here then Apply to Current<br/>
-        • <b>Day Templates</b> — build and load full day schedules
+        • <b>Default</b> — edit baseline. Saves instantly.<br/>
+        • <b>Preset 1–3</b> — independent configs.<br/>
+        • <b>Apply to Current ▶</b> — pushes preset to entry forms.<br/>
+        • <b>📋 Templates</b> — save/load full day schedules.
       </div>
     </>}
 
-    {(stab==="current"||stab==="default")&&active&&<>
+    {stab!=="general"&&stab!=="tpl"&&active&&<>
       <div style={{padding:"6px 10px",background:T.accentBg,borderRadius:7,border:`1px solid ${T.accentBtn}44`,marginBottom:8,fontSize:"0.74rem",color:T.accent,fontWeight:500}}>
-        {isDefault?"Editing Default — baseline config":"Editing Current — live entry-form lists"}
+        {stab==="default"?"Editing Default":"Editing "+STABS.find(([k])=>k===stab)?.[1]}
         <span style={{color:T.textMuted,fontWeight:400,marginLeft:6}}>· saves instantly</span>
       </div>
       <div style={{display:"flex",gap:4,marginBottom:9,overflowX:"auto"}}>
         {CTABS.map(([k,l])=><button key={k} onClick={()=>{setCtab(k);setNewItem("");}} className={`tbtn${ctab===k?" on":""}`} style={{flexShrink:0,fontSize:"0.75rem"}}>{l}</button>)}
       </div>
-      {ctab==="food"    &&<EList items={active.foodCategories||FD.foodCategories} onRemove={i=>removeItem("foodCategories",i)} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("foodCategories")} T={T}/>}
-      {ctab==="liquids" &&<LiquidTypesSetting types={active.liquidTypes||FD.liquidTypes} onChange={lt=>updateActive(p=>({...p,liquidTypes:lt}))} T={T}/>}
-      {ctab==="meds"    &&<EList items={active.medications||FD.medications} onRemove={i=>removeItem("medications",i)} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("medications")} T={T}/>}
-      {ctab==="exercise"&&<ExerciseSetting types={active.exerciseTypes||FD.exerciseTypes} onChange={et=>updateActive(p=>({...p,exerciseTypes:et}))} T={T}/>}
-      {ctab==="medical" &&<MedPresetSetting presets={active.medicalPresets||FD.medicalPresets} onAdd={addMedPreset} onRemove={removeMedPreset} T={T}/>}
+      {ctab==="food"    &&<EList items={active.foodCategories||[]} onRemove={i=>removeItem("foodCategories",i)} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("foodCategories")} T={T}/>}
+      {ctab==="drinks"  &&<EList items={active.liquidTypes||FD.liquidTypes} onRemove={i=>removeItem("liquidTypes",i)} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("liquidTypes")} T={T}/>}
+      {ctab==="meds"    &&<EList items={active.medications||[]} onRemove={i=>removeItem("medications",i)} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("medications")} T={T}/>}
+      {ctab==="exercise"&&<ExerciseSetting types={active.exerciseTypes||[]} onChange={et=>updateActive(p=>({...p,exerciseTypes:et}))} T={T}/>}
+      {ctab==="medical" &&<MedicalPresetSetting presets={active.medicalPresets||FD.medicalPresets} onAdd={addMedPreset} onRemove={removeMedPreset} T={T}/>}
+      <div style={{marginTop:6,fontSize:"0.71rem",color:T.textMuted,fontStyle:"italic",textAlign:"right"}}>Changes save instantly · Apply to Current ▶ to use in entry forms</div>
     </>}
 
-    {stab==="daytpl"&&<DayTemplatesPanel dayTemplates={dayTemplates} setDayTemplates={setDayTemplates} settings={settings} todayEntries={todayEntries} onLoadTemplate={onLoadTemplate} T={T}/>}
+    {stab==="daytpl"&&<TemplatesPanel templates={templates} setTemplates={setTemplates} todayEntries={todayEntries} onLoadTemplate={onLoadTemplate} T={T}/>}
   </div>);
 }
 
-// Settings sub-components
-function LiquidTypesSetting({types,onChange,T}){
-  const[nm,setNm]=useState("");const[isW,setIsW]=useState(false);
-  const add=()=>{if(!nm.trim())return;const divIdx=types.indexOf("──────────");let next;if(isW){next=divIdx>=0?[...types.slice(0,divIdx),nm.trim(),...types.slice(divIdx)]:[nm.trim(),...types];}else{next=[...types,nm.trim()];}onChange(next);setNm("");};
-  const rem=name=>onChange(types.filter(t=>t!==name));
-  const waterTypes=types.filter((t,i)=>{const d=types.indexOf("──────────");return t!=="──────────"&&(d<0||i<d);});
-  const drinkTypes=types.filter((t,i)=>{const d=types.indexOf("──────────");return t!=="──────────"&&d>=0&&i>d;});
-  return(<div className="card">
-    <div style={{display:"flex",gap:5,marginBottom:9,flexWrap:"wrap"}}>
-      <input placeholder="New liquid name…" value={nm} onChange={e=>setNm(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()} style={{flex:2}}/>
-      <button onClick={()=>setIsW(v=>!v)} style={{flexShrink:0,padding:"6px 10px",borderRadius:8,border:"1px solid",fontSize:"0.75rem",cursor:"pointer",borderColor:isW?T.accentBtn:T.border,background:isW?T.accentBg:"transparent",color:isW?T.accent:T.textMuted}}>{isW?"💧 Water":"☕ Drink"}</button>
-      <button onClick={add} style={{flexShrink:0,padding:"7px 12px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button>
-    </div>
-    <div className="slabel">💧 Water types</div>
-    {waterTypes.map(t=><div key={t} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}><span>{t}</span><button className="ibtn" style={{color:T.danger}} onClick={()=>rem(t)}>🗑️</button></div>)}
-    <div className="slabel" style={{marginTop:8}}>☕ Drinks</div>
-    {drinkTypes.map(t=><div key={t} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}><span>{t}</span><button className="ibtn" style={{color:T.danger}} onClick={()=>rem(t)}>🗑️</button></div>)}
-  </div>);
-}
-function MedPresetSetting({presets,onAdd,onRemove,T}){
-  const[nm,setNm]=useState("");const[ut,setUt]=useState("");
-  const add=()=>{onAdd(nm,ut);setNm("");setUt("");};
-  return(<div className="card"><div style={{display:"flex",gap:5,marginBottom:9}}><input placeholder="Name e.g. SpO2" value={nm} onChange={e=>setNm(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()} style={{flex:2}}/><input placeholder="Unit e.g. %" value={ut} onChange={e=>setUt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()} style={{flex:1}}/><button onClick={add} style={{flexShrink:0,padding:"7px 12px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div>{(presets||[]).map(p=>{const n=p.name||p,u=p.unit||"";return<div key={n} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}><span>{n}{u&&<span style={{color:T.textMuted,fontSize:"0.75rem",marginLeft:6}}>({u})</span>}</span><button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(n)}>🗑️</button></div>;})} </div>);
-}
-function EList({items,onRemove,newItem,setNew,onAdd,T}){
-  return(<div className="card"><div style={{display:"flex",gap:7,marginBottom:9}}><input placeholder="Add item…" value={newItem} onChange={e=>setNew(e.target.value)} onKeyDown={e=>e.key==="Enter"&&onAdd()}/><button onClick={onAdd} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div>{[...(items||[])].sort().map(item=><div key={item} style={{display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}><span>{item}</span><button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(item)}>🗑️</button></div>)}</div>);
-}
-function ExerciseSetting({types,onChange,T}){
-  const[ei,setEi]=useState(null);const[nn,setNn]=useState("");
-  const add=()=>{if(!nn.trim())return;onChange([...types,{name:nn.trim(),subTypes:[],metrics:["time"]}]);setNn("");};
-  const rem=i=>onChange(types.filter((_,x)=>x!==i));
-  const togM=(i,m)=>onChange(types.map((t,x)=>{if(x!==i)return t;const h=t.metrics.includes(m);return{...t,metrics:h?t.metrics.filter(v=>v!==m):[...t.metrics,m]};}));
-  return(<div><div className="card" style={{marginBottom:7}}><div style={{display:"flex",gap:7}}><input placeholder="New exercise type…" value={nn} onChange={e=>setNn(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button onClick={add} style={{flexShrink:0,padding:"7px 12px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div></div>{types.map((t,i)=><div key={t.name} className="card" style={{marginBottom:7}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}}><span style={{fontWeight:600,fontSize:"0.85rem"}}>{t.name}</span><div style={{display:"flex",gap:5}}><button className="ibtn" onClick={()=>setEi(ei===i?null:i)}>{ei===i?"✖":"✏️"}</button><button className="ibtn" style={{color:T.danger}} onClick={()=>rem(i)}>🗑️</button></div></div><div style={{display:"flex",gap:5,flexWrap:"wrap"}}>{["distance","time","count"].map(m=><button key={m} onClick={()=>togM(i,m)} style={{padding:"2px 9px",borderRadius:20,fontSize:"0.72rem",border:"1px solid",cursor:"pointer",borderColor:t.metrics.includes(m)?T.accentBtn:T.border,background:t.metrics.includes(m)?T.accentBg:"transparent",color:t.metrics.includes(m)?T.accent:T.textMuted}}>{m}</button>)}</div></div>)}</div>);
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
-// DAY TEMPLATES PANEL
-// 4 slots: Home / Office / Outing / Travel
-// Build from scratch using same entry forms — Fix #5d
-// Edit individual entries — Fix #5d "with ability to edit"
-// Load: time-shift anchored to today's first Weight entry
+// TEMPLATES PANEL
+// ── Save: snapshot today's supported entries into chosen slot
+// ── Load: find today's earliest Weight entry as wake-up anchor,
+//          shift all template times by the same offset, preview, confirm
 // ═══════════════════════════════════════════════════════════════════════════════
-function DayTemplatesPanel({dayTemplates,setDayTemplates,settings,todayEntries,onLoadTemplate,T}){
+function TemplatesPanel({templates,setTemplates,todayEntries,onLoadTemplate,T}){
   const[selIdx,setSelIdx]=useState(0);
-  const[view,setView]=useState("list");   // list | add | edit | preview
-  const[editId,setEditId]=useState(null);
+  const[mode,setMode]=useState("view");       // view | preview
   const[preview,setPreview]=useState([]);
   const[excluded,setExcluded]=useState(new Set());
 
-  const tpl=dayTemplates[selIdx]||{name:"",icon:"",entries:[]};
-  const tplEntries=[...(tpl.entries||[])].sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
+  const tpl=templates[selIdx]||{name:"",icon:"",entries:[]};
+  const hasEntries=tpl.entries&&tpl.entries.length>0;
 
-  const updateTpl=updater=>{
-    const next=deepClone(dayTemplates);
-    next[selIdx]=typeof updater==="function"?updater(next[selIdx]):updater;
-    setDayTemplates(next);
+  // ── Entry display label ───────────────────────────────────────────────────
+  const entryLabel=e=>{
+    if(e.type==="meal")       return`${e.mealType} · ${e.food}${e.qty?` · ${e.qty}${e.unit==="count"?"":e.unit}`:""}`;
+    if(e.type==="liquid")     return`${e.liquidType}${e.ml?` · ${e.ml}ml`:""}${e.notes?` (${e.notes})`:""}`;
+    if(e.type==="liquid" && ["Warm Water","Plain Water","Cold Water"].includes(e.liquidType))      return`${e.waterTemp||""} Water · ${e.ml}ml`.trim();
+    if(e.type==="medical")    return`${e.readingType} · ${e.value||"—"}${e.unit?" "+e.unit:""}`;
+    if(e.type==="medication") return`${e.med} · ${e.timing}`;
+    return e.type;
   };
-  const addEntryToTpl=entry=>{
-    // Store with today's date placeholder — we only use the time component for display/sorting
-    const ts=makeTS("1970-01-01",entry._time||"08:00");
-    const{_time,...rest}=entry;
-    updateTpl(t=>({...t,entries:[...(t.entries||[]),{...rest,id:genId(),timestamp:ts,date:"1970-01-01"}]}));
-    setView("list");
-  };
-  const updateEntryInTpl=(id,data)=>{
-    updateTpl(t=>({...t,entries:(t.entries||[]).map(e=>e.id===id?{...e,...data}:e)}));
-    setView("list");setEditId(null);
-  };
-  const deleteEntryFromTpl=id=>{
-    if(!confirm("Remove this entry from template?"))return;
-    updateTpl(t=>({...t,entries:(t.entries||[]).filter(e=>e.id!==id)}));
-  };
-  const clearTemplate=()=>{
-    if(!confirm(`Clear all entries from "${tpl.name}"?\n\nThis cannot be undone.`))return;
-    updateTpl(t=>({...t,entries:[]}));
+  const typeIcon=t=>({meal:"🍽️",drinks:"☕",water:"💧",medical:"🩺",medication:"💊"}[t]||"•");
+
+  // ── SAVE today → template ─────────────────────────────────────────────────
+  const saveToTemplate=()=>{
+    const filtered=todayEntries.filter(e=>TEMPLATE_SUPPORTED.includes(e.type));
+    if(!filtered.length){alert("No entries today to save.\n\nLog your full day first, then save it as a template.");return;}
+    if(!confirm(`Save today's ${filtered.length} entries as "${tpl.name}"?\n\nThis replaces any existing entries in this template slot.`))return;
+    const next=deepClone(templates);
+    next[selIdx]={...next[selIdx],entries:filtered,savedAt:new Date().toISOString()};
+    setTemplates(next);
+    alert(`✓ "${tpl.name}" saved with ${filtered.length} entries.`);
   };
 
-  // ── LOAD: time-shift to today using first Weight entry as anchor ───────────
+  // ── LOAD: build time-shifted preview ─────────────────────────────────────
   const buildPreview=()=>{
-    if(!tplEntries.length){alert(`"${tpl.name}" has no entries yet.\n\nUse + Add Entry to build it.`);return;}
-    const tplAnchorMs=new Date(tplEntries[0].timestamp).getTime();
-    const weightToday=todayEntries.filter(e=>e.type==="medical"&&e.readingType==="Weight").sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
-    const todayAnchorMs=weightToday.length?new Date(weightToday[0].timestamp).getTime():Date.now();
-    const offsetMs=todayAnchorMs-tplAnchorMs;
-    const shifted=tplEntries.map(e=>{
+    if(!hasEntries){alert(`"${tpl.name}" is empty.\n\nLog a full day, then use Save to capture it as a template.`);return;}
+
+    // Find anchor from template (earliest timestamp = wake-up)
+    const tplTimes=tpl.entries.map(e=>new Date(e.timestamp).getTime());
+    const tplAnchor=Math.min(...tplTimes);
+
+    // Find today's wake-up: earliest Weight medical entry logged today
+    // (you always log Wake-Up Wt first thing)
+    const todayWeightEntries=todayEntries
+      .filter(e=>e.type==="medical"&&e.readingType==="Weight")
+      .sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
+
+    let todayAnchorMs;
+    if(todayWeightEntries.length>0){
+      todayAnchorMs=new Date(todayWeightEntries[0].timestamp).getTime();
+    } else {
+      // Fallback: use current time as anchor
+      todayAnchorMs=Date.now();
+    }
+
+    const offsetMs=todayAnchorMs-tplAnchor;
+
+    // Shift all entries, assign fresh IDs, set today's date
+    const shifted=tpl.entries.map(e=>{
       const newTs=new Date(new Date(e.timestamp).getTime()+offsetMs);
       return{...deepClone(e),id:genId(),timestamp:newTs.toISOString(),date:newTs.toISOString().slice(0,10)};
-    });
-    setPreview(shifted);setExcluded(new Set());setView("preview");
+    }).sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
+
+    setPreview(shifted);
+    setExcluded(new Set());
+    setMode("preview");
   };
+
+  // ── CONFIRM load ──────────────────────────────────────────────────────────
   const confirmLoad=()=>{
     const toAdd=preview.filter(e=>!excluded.has(e.id));
-    if(!toAdd.length){alert("Nothing selected.");return;}
-    onLoadTemplate(toAdd);setView("list");
-    alert(`✓ ${toAdd.length} entries loaded from "${tpl.name}" into today.`);
+    if(!toAdd.length){alert("Nothing selected — tick at least one entry.");return;}
+    onLoadTemplate(toAdd);
+    setMode("view");
+    alert(`✓ ${toAdd.length} entries added from "${tpl.name}".`);
   };
-  const toggleExclude=id=>setExcluded(p=>{const n=new Set(p);n.has(id)?n.delete(id):n.add(id);return n;});
-  const toggleAll=()=>setExcluded(excluded.size===0?new Set(preview.map(e=>e.id)):new Set());
 
-  // ── PREVIEW VIEW ──────────────────────────────────────────────────────────
-  if(view==="preview")return(
+  const toggleExclude=id=>setExcluded(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n;});
+  const toggleAll=()=>{
+    if(excluded.size===0)setExcluded(new Set(preview.map(e=>e.id)));
+    else setExcluded(new Set());
+  };
+
+  // ── RENDER ────────────────────────────────────────────────────────────────
+  if(mode==="preview") return(
     <div>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
-        <button onClick={()=>setView("list")} className="tbtn">← Back</button>
+        <button onClick={()=>setMode("view")} style={{padding:"5px 10px",borderRadius:7,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontFamily:"inherit",fontSize:"0.78rem"}}>← Back</button>
         <div style={{flex:1,fontWeight:600,fontSize:"0.88rem"}}>{tpl.icon} {tpl.name} — Preview</div>
-        <button onClick={toggleAll} className="tbtn" style={{fontSize:"0.72rem"}}>{excluded.size===0?"Deselect all":"Select all"}</button>
+        <button onClick={toggleAll} style={{padding:"4px 9px",borderRadius:7,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontFamily:"inherit",fontSize:"0.73rem"}}>{excluded.size===0?"Deselect all":"Select all"}</button>
       </div>
+
+      {/* Anchor info */}
       <div style={{padding:"6px 10px",background:T.accentBg,borderRadius:7,border:`1px solid ${T.accentBtn}44`,marginBottom:8,fontSize:"0.73rem",color:T.accent}}>
-        {todayEntries.filter(e=>e.type==="medical"&&e.readingType==="Weight").length
-          ?"⏱ Times shifted to match today's wake-up Weight entry"
-          :"⏱ No Weight logged today — times shifted from now"}
-        <div style={{color:T.textMuted,marginTop:2}}>Untick entries to skip, then tap Load.</div>
+        {todayEntries.filter(e=>e.type==="medical"&&e.readingType==="Weight").length>0
+          ? `⏱ Times shifted to match today's wake-up Weight entry`
+          : `⏱ No Weight entry found today — times shifted from current time`}
+        <div style={{color:T.textMuted,marginTop:2}}>Untick entries you don't need today, then tap Load.</div>
       </div>
+
       <div className="card" style={{padding:"6px 11px"}}>
         {preview.map(e=>(
           <div key={e.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:`1px solid ${T.border}22`}}>
             <input type="checkbox" className="tpl-chk" checked={!excluded.has(e.id)} onChange={()=>toggleExclude(e.id)}/>
-            <span style={{flexShrink:0}}>{TYPE_ICON[e.type]||"•"}</span>
+            <span style={{fontSize:"0.85rem",flexShrink:0}}>{typeIcon(e.type)}</span>
             <span style={{fontSize:"0.68rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:42,flexShrink:0}}>{fmt24(e.timestamp)}</span>
             <span style={{flex:1,fontSize:"0.8rem",color:excluded.has(e.id)?T.textMuted:T.text,textDecoration:excluded.has(e.id)?"line-through":"none"}}>{entryLabel(e)}</span>
           </div>
         ))}
       </div>
+
       <button onClick={confirmLoad} style={{width:"100%",padding:"11px",borderRadius:10,border:"none",background:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",marginTop:4}}>
         ✓ Load {preview.length-excluded.size} entries into today
       </button>
     </div>
   );
 
-  // ── ADD ENTRY VIEW ────────────────────────────────────────────────────────
-  if(view==="add")return(
-    <div>
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
-        <button onClick={()=>setView("list")} className="tbtn">← Back</button>
-        <div style={{flex:1,fontWeight:600,fontSize:"0.88rem"}}>Add to {tpl.icon} {tpl.name}</div>
-      </div>
-      <TemplateEntryAdder settings={settings} onAdd={addEntryToTpl} onCancel={()=>setView("list")} T={T}/>
-    </div>
-  );
-
-  // ── EDIT ENTRY VIEW ───────────────────────────────────────────────────────
-  if(view==="edit"&&editId){
-    const editEntry=tplEntries.find(e=>e.id===editId);
-    if(!editEntry)return null;
-    return(
-      <div>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
-          <button onClick={()=>{setView("list");setEditId(null);}} className="tbtn">← Back</button>
-          <div style={{flex:1,fontWeight:600,fontSize:"0.88rem"}}>Edit entry in {tpl.icon} {tpl.name}</div>
-        </div>
-        <EditEntry entry={editEntry} settings={settings} T={T}
-          onSave={d=>updateEntryInTpl(editId,d)}
-          onCancel={()=>{setView("list");setEditId(null);}}/>
-      </div>
-    );
-  }
-
-  // ── LIST VIEW (main) ──────────────────────────────────────────────────────
+  // View mode
   return(
     <div>
-      {/* Slot selector */}
+      {/* Template selector */}
       <div style={{display:"flex",gap:5,marginBottom:10}}>
-        {dayTemplates.map((t,i)=>(
-          <button key={i} onClick={()=>{setSelIdx(i);setView("list");}} style={{flex:1,padding:"8px 4px",borderRadius:9,border:"1px solid",textAlign:"center",cursor:"pointer",fontFamily:"inherit",borderColor:selIdx===i?T.accentBtn:T.border,background:selIdx===i?T.accentBg:T.cardBg,color:selIdx===i?T.accent:T.textMuted}}>
+        {templates.map((t,i)=>(
+          <button key={i} onClick={()=>{setSelIdx(i);setMode("view");}} style={{flex:1,padding:"8px 4px",borderRadius:9,border:"1px solid",textAlign:"center",cursor:"pointer",fontFamily:"inherit",borderColor:selIdx===i?T.accentBtn:T.border,background:selIdx===i?T.accentBg:T.cardBg,color:selIdx===i?T.accent:T.textMuted}}>
             <div style={{fontSize:"1.3rem"}}>{t.icon}</div>
             <div style={{fontSize:"0.68rem",fontWeight:600,marginTop:2}}>{t.name}</div>
             <div style={{fontSize:"0.6rem",color:T.textMuted,marginTop:1}}>{t.entries?.length?`${t.entries.length} entries`:"empty"}</div>
@@ -877,78 +758,75 @@ function DayTemplatesPanel({dayTemplates,setDayTemplates,settings,todayEntries,o
         ))}
       </div>
 
-      {/* Action buttons */}
-      <div style={{display:"flex",gap:6,marginBottom:10}}>
-        <button onClick={buildPreview} style={{flex:2,padding:"9px",borderRadius:9,border:"none",background:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:600,fontSize:"0.85rem",cursor:"pointer"}}>
+      {/* Template info */}
+      <div style={{padding:"7px 11px",background:T.accentBg,borderRadius:8,border:`1px solid ${T.accentBtn}44`,marginBottom:10,fontSize:"0.75rem",color:T.accent}}>
+        <b>{tpl.icon} {tpl.name}</b>
+        {hasEntries
+          ?<span style={{color:T.textMuted,fontWeight:400,marginLeft:6}}>· {tpl.entries.length} entries · saved {tpl.savedAt?new Date(tpl.savedAt).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"2-digit"}):"—"}</span>
+          :<span style={{color:T.textMuted,fontWeight:400,marginLeft:6}}>· empty — log a day first, then Save it here</span>}
+      </div>
+
+      {/* Actions */}
+      <div style={{display:"flex",gap:8,marginBottom:12}}>
+        <button onClick={buildPreview} style={{flex:1,padding:"10px",borderRadius:9,border:"none",background:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:600,fontSize:"0.85rem",cursor:"pointer"}}>
           📥 Load into Today
         </button>
-        <button onClick={()=>setView("add")} style={{flex:1,padding:"9px",borderRadius:9,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontFamily:"inherit",fontWeight:600,fontSize:"0.85rem",cursor:"pointer"}}>
-          ＋ Add Entry
+        <button onClick={saveToTemplate} style={{flex:1,padding:"10px",borderRadius:9,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontFamily:"inherit",fontWeight:600,fontSize:"0.85rem",cursor:"pointer"}}>
+          💾 Save Today Here
         </button>
       </div>
 
-      {/* Entry list */}
-      {!tplEntries.length
-        ?<div style={{padding:"18px",textAlign:"center",color:T.textMuted,fontSize:"0.82rem",background:T.cardBg,borderRadius:12,border:`1px solid ${T.border}`}}>
-          This template is empty.<br/>Tap <b>＋ Add Entry</b> to build it.
-        </div>
-        :<div className="card" style={{padding:"6px 11px"}}>
-          {tplEntries.map(e=>(
-            <div key={e.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:`1px solid ${T.border}22`}}>
-              <span style={{flexShrink:0}}>{TYPE_ICON[e.type]||"•"}</span>
+      {/* Preview of stored entries */}
+      {hasEntries&&<>
+        <div className="slabel">Stored entries</div>
+        <div className="card" style={{padding:"6px 11px"}}>
+          {[...tpl.entries].sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)).map((e,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:`1px solid ${T.border}22`}}>
+              <span style={{fontSize:"0.85rem",flexShrink:0}}>{typeIcon(e.type)}</span>
               <span style={{fontSize:"0.68rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:42,flexShrink:0}}>{fmt24(e.timestamp)}</span>
-              <span style={{flex:1,fontSize:"0.8rem"}}>{entryLabel(e)}{e.notes&&<span style={{fontSize:"0.73rem",color:T.textSub,fontStyle:"italic"}}> ({e.notes})</span>}</span>
-              <div style={{display:"flex",gap:2,flexShrink:0}}>
-                <button className="ibtn" onClick={()=>{setEditId(e.id);setView("edit");}}>✏️</button>
-                <button className="ibtn" style={{color:T.danger}} onClick={()=>deleteEntryFromTpl(e.id)}>🗑️</button>
-              </div>
+              <span style={{flex:1,fontSize:"0.8rem"}}>{entryLabel(e)}</span>
             </div>
           ))}
-        </div>}
+        </div>
+      </>}
 
-      {tplEntries.length>0&&<button onClick={clearTemplate} style={{width:"100%",padding:"7px",borderRadius:8,border:`1px solid ${T.danger}66`,background:"transparent",color:T.danger,fontFamily:"inherit",fontSize:"0.78rem",cursor:"pointer",marginTop:4}}>Clear all entries from this template</button>}
-
-      <div style={{fontSize:"0.71rem",color:T.textMuted,lineHeight:1.7,marginTop:10,padding:"7px 9px",background:T.even,borderRadius:7,border:`1px solid ${T.border}`}}>
-        <b style={{color:T.textSub}}>How Day Templates work:</b><br/>
-        1. Tap <b>＋ Add Entry</b> to build your typical day entry by entry<br/>
-        2. Each entry's time sets its position in the day schedule<br/>
-        3. Tap <b>📥 Load into Today</b> — times shift to match your wake-up Weight reading<br/>
-        4. Untick anything you're skipping today → confirm Load<br/>
-        5. Edit ✏️ or delete 🗑️ any entry in the template at any time
+      <div style={{fontSize:"0.71rem",color:T.textMuted,lineHeight:1.7,marginTop:6,padding:"6px 8px",background:T.even,borderRadius:7,border:`1px solid ${T.border}`}}>
+        <b style={{color:T.textSub}}>How templates work:</b><br/>
+        1. Log your typical day fully (meals, drinks, water, meds, readings)<br/>
+        2. Come to this tab → tap <b>💾 Save Today Here</b><br/>
+        3. Next day: tap <b>📥 Load into Today</b><br/>
+        4. Times auto-shift to match your wake-up Weight reading<br/>
+        5. Untick anything you're skipping today → tap Load
       </div>
     </div>
   );
 }
 
-// Form-based template entry adder — same UI as Home but saves to template with time picker
-function TemplateEntryAdder({settings,onAdd,onCancel,T}){
-  const[module,setModule]=useState("meal");
-  const[entryTime,setEntryTime]=useState("07:30");
-
-  // All entry forms dispatch through here — we inject the time before saving
-  const handleAdd=entry=>{onAdd({...entry,_time:entryTime});};
-
-  return(<div>
-    <div style={{display:"flex",gap:5,marginBottom:10,alignItems:"center",flexWrap:"wrap"}}>
-      {[["meal","🍽️"],["liquid","💧"],["exercise","🏃"],["medical","🩺"],["medication","💊"]].map(([m,ic])=>(
-        <button key={m} onClick={()=>setModule(m)} style={{padding:"6px 10px",borderRadius:9,border:"1px solid",fontSize:"1.05rem",borderColor:module===m?T.accentBtn:T.border,background:module===m?T.accentBg:T.cardBg,color:module===m?T.accent:T.textMuted}}>{ic}</button>
-      ))}
-      <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6}}>
-        <span style={{fontSize:"0.73rem",color:T.textMuted}}>Time:</span>
-        <TimeInput value={entryTime} onChange={setEntryTime} style={{background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:7,color:T.text}}/>
-      </div>
-    </div>
-    {module==="meal"      &&<MealEntry settings={settings} onAdd={handleAdd} T={T}/>}
-    {module==="liquid"    &&<LiquidEntry settings={settings} onAdd={handleAdd} T={T}/>}
-    {module==="exercise"  &&<ExerciseEntry settings={settings} onAdd={handleAdd} T={T}/>}
-    {module==="medical"   &&<MedicalEntry settings={settings} onAdd={handleAdd} T={T}/>}
-    {module==="medication"&&<MedEntry settings={settings} onAdd={handleAdd} T={T}/>}
-  </div>);
+// ── Settings sub-components ───────────────────────────────────────────────────
+function MedicalPresetSetting({presets,onAdd,onRemove,T}){
+  const[nm,setNm]=useState("");const[ut,setUt]=useState("");
+  return(<div className="card"><div style={{display:"flex",gap:6,marginBottom:9,alignItems:"center"}}><input placeholder="Name (e.g. SpO2)" value={nm} onChange={e=>setNm(e.target.value)} onKeyDown={e=>e.key==="Enter"&&(onAdd(nm,ut),setNm(""),setUt(""))} style={{flex:2}}/><input placeholder="Unit (e.g. %)" value={ut} onChange={e=>setUt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&(onAdd(nm,ut),setNm(""),setUt(""))} style={{flex:1}}/><button onClick={()=>{onAdd(nm,ut);setNm("");setUt("");}} style={{flexShrink:0,padding:"7px 12px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div>{(presets||[]).map(p=>{const nm2=typeof p==="string"?p:p.name;const ut2=typeof p==="string"?"":p.unit;return(<div key={nm2} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}><span>{nm2}{ut2&&<span style={{color:T.textMuted,fontSize:"0.75rem",marginLeft:6}}>({ut2})</span>}</span><button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(nm2)}>🗑️</button></div>);})}</div>);
+}
+function EList({items,onRemove,newItem,setNew,onAdd,T}){
+  return(<div className="card"><div style={{display:"flex",gap:7,marginBottom:9}}><input placeholder="Add new item…" value={newItem} onChange={e=>setNew(e.target.value)} onKeyDown={e=>e.key==="Enter"&&onAdd()}/><button onClick={onAdd} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div>{[...(items||[])].sort().map(item=>(<div key={item} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}><span>{item}</span><button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(item)}>🗑️</button></div>))}</div>);
+}
+function ExerciseSetting({types,onChange,T}){
+  const[ei,setEi]=useState(null);const[nn,setNn]=useState("");
+  const add=()=>{if(!nn.trim())return;onChange([...types,{name:nn.trim(),subTypes:[],metrics:["time"]}]);setNn("");};
+  const rem=i=>onChange(types.filter((_,x)=>x!==i));
+  const addSub=(i,s)=>{if(!s.trim())return;onChange(types.map((t,x)=>x===i?{...t,subTypes:[...t.subTypes,s.trim()].sort()}:t));};
+  const remSub=(i,s)=>onChange(types.map((t,x)=>x===i?{...t,subTypes:t.subTypes.filter(v=>v!==s)}:t));
+  const togM=(i,m)=>onChange(types.map((t,x)=>{if(x!==i)return t;const h=t.metrics.includes(m);return{...t,metrics:h?t.metrics.filter(v=>v!==m):[...t.metrics,m]};}));
+  return(<div><div className="card" style={{marginBottom:7}}><div style={{display:"flex",gap:7}}><input placeholder="New exercise type…" value={nn} onChange={e=>setNn(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button onClick={add} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div><div style={{fontSize:"0.7rem",color:T.textMuted,marginTop:5}}>New types default to time metric. Toggle below to change.</div></div>{types.map((t,i)=>(<div key={t.name} className="card" style={{marginBottom:7}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}}><span style={{fontWeight:600,fontSize:"0.85rem"}}>{t.name}</span><div style={{display:"flex",gap:5}}><button className="ibtn" onClick={()=>setEi(ei===i?null:i)}>{ei===i?"✖️":"✏️"}</button><button className="ibtn" style={{color:T.danger}} onClick={()=>rem(i)}>🗑️</button></div></div><div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:3}}>{["distance","time","count"].map(m=>(<button key={m} onClick={()=>togM(i,m)} style={{padding:"2px 9px",borderRadius:20,fontSize:"0.72rem",border:"1px solid",cursor:"pointer",borderColor:t.metrics.includes(m)?T.accentBtn:T.border,background:t.metrics.includes(m)?T.accentBg:"transparent",color:t.metrics.includes(m)?T.accent:T.textMuted}}>{m}</button>))}</div>{ei===i&&<div style={{marginTop:7}}><div className="slabel">Sub-types</div>{t.subTypes.map(s=>(<div key={s} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:"0.8rem",padding:"4px 0",borderBottom:`1px solid ${T.border}`}}><span>{s}</span><button className="ibtn" style={{color:T.danger}} onClick={()=>remSub(i,s)}>🗑️</button></div>))}<AddInline placeholder="Add sub-type…" onAdd={s=>addSub(i,s)} T={T}/></div>}</div>))}</div>);
+}
+function AddInline({placeholder,onAdd,T}){
+  const[v,setV]=useState("");
+  return(<div style={{display:"flex",gap:6,marginTop:6}}><input placeholder={placeholder} value={v} onChange={e=>setV(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){onAdd(v);setV("");}}} style={{fontSize:"0.78rem"}}/><button onClick={()=>{onAdd(v);setV("");}} style={{flexShrink:0,padding:"5px 9px",fontSize:"0.78rem",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div>);
 }
 
 const root=ReactDOM.createRoot(document.getElementById("root"));
 root.render(<App/>);
 </script>
-<script>if('serviceWorker' in navigator){window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').catch(()=>{});});}</script>
+<script>if('serviceWorker' in navigator){window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').catch(e=>console.log('SW:',e));});}</script>
 </body>
 </html>
