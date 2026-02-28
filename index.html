@@ -66,7 +66,7 @@ const deepClone=o=>JSON.parse(JSON.stringify(o));
 const FOOD_UNITS=["g","ml","count"];
 const MED_TIMES=["Before breakfast","After breakfast","Before lunch","After lunch","Before dinner","After dinner","Bedtime"];
 const MEAL_TYPES=["Breakfast","Lunch","Dinner","Snack"];
-const WATER_TEMPS=["Cold","Plain","Warm"];
+const ["Warm","Plain","Cold"]=["Cold","Plain","Warm"];
 const TEMPLATE_SUPPORTED=["meal","drinks","water","medical","medication"];
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
@@ -155,7 +155,7 @@ function parseAndMergeCSV(csvText,existingEntries){
     const ts=makeTS(parsedDate,timeStr);
     let entry={id,date:parsedDate,timestamp:ts,notes};
     if(type==="meal")       entry={...entry,type:"meal",mealType:subType,food:d1,qty:d2,unit};
-    else if(type==="drinks_legacy")entry={...entry,type:"drinks",drinkType:subType,ml:d1};
+    else if(type==="drinks")entry={...entry,type:"drinks",drinkType:subType,ml:d1};
     else if(type==="exercise")entry={...entry,type:"exercise",exType:subType,subType:d1,dist:d2,time:d3,count:d3,unit};
     else if(type==="water"||type==="liquid") entry={...entry,type:"water",waterTemp:subType,ml:d1};
     else if(type==="medical")entry={...entry,type:"medical",readingType:subType,value:d1,unit};
@@ -528,14 +528,58 @@ function ManageRow({e,onEdit,onDelete,T}){
   return(<div className="card" style={{display:"flex",alignItems:"flex-start",gap:8,padding:"9px 11px",marginBottom:6}}><span style={{fontSize:"0.66rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:40,paddingTop:2,flexShrink:0}}>{fmt24(e.timestamp)}</span><span style={{flexShrink:0}}>{ic[e.type]||"•"}</span><div style={{flex:1,fontSize:"0.82rem",lineHeight:1.4}}>{m}{e.notes&&<span style={{fontSize:"0.74rem",color:T.textSub,fontStyle:"italic"}}> ({e.notes})</span>}</div><div style={{display:"flex",gap:3,flexShrink:0}}><button className="ibtn" onClick={onEdit}>✏️</button><button className="ibtn" style={{color:T.danger}} onClick={onDelete}>🗑️</button></div></div>);
 }
 function EditEntry({entry,settings,onSave,onCancel,T}){
-  const[d,setD]=useState(deepClone(entry));const set=(k,v)=>setD(p=>({...p,[k]:v}));
+  const[d,setD]=useState(deepClone(entry));
+  const set=(k,v)=>setD(p=>({...p,[k]:v}));
   const[editDate,setEditDate]=useState(entry.date||today());
   const[editTime,setEditTime]=useState(fmt24(entry.timestamp));
-  const eo=settings.exerciseTypes?.find(e=>e.name===d.exType);
-  const hasDist=eo?.metrics?.includes("distance");const hasTime=eo?.metrics?.includes("time");const hasCnt=eo?.metrics?.includes("count");
-  const medPresets=settings.medicalPresets||FD.medicalPresets;
+  const mp=settings.medicalPresets||FD.medicalPresets;
+  const liqTypes=(settings.liquidTypes||FD.liquidTypes).filter(t=>t!=="--------");
+  const eo=(settings.exerciseTypes||FD.exerciseTypes).find(e=>e.name===d.exType);
+  const hasDist=eo?.metrics?.includes("distance");
+  const hasTime=eo?.metrics?.includes("time");
+  const hasCnt=eo?.metrics?.includes("count");
   const doSave=()=>onSave({...d,date:editDate,timestamp:makeTS(editDate,editTime)});
-  return(<div className="card" style={{border:`1px solid ${T.accentBtn}55`,marginBottom:8}}><div className="slabel" style={{color:T.accent,marginBottom:7}}>✏️ Editing</div><div style={{display:"flex",gap:5,marginBottom:8,alignItems:"center"}}><input type="date" value={editDate} onChange={e=>setEditDate(e.target.value)} style={{flex:1,fontSize:"0.8rem",padding:"5px 7px"}}/><input type="text" inputMode="numeric" value={editTime} onChange={e=>{let v=e.target.value.replace(/[^0-9:]/g,"");if(v.length===4&&!v.includes(":"))v=v.slice(0,2)+":"+v.slice(2);setEditTime(v.slice(0,5));}} placeholder="HH:MM" maxLength={5} style={{flex:"0 0 72px",fontSize:"0.8rem",padding:"5px 7px",fontFamily:"'DM Mono',monospace"}}/></div>{d.type==="meal"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}><select value={d.mealType} onChange={e=>set("mealType",e.target.value)} style={{width:95}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select><select value={d.food} onChange={e=>set("food",e.target.value)} style={{flex:"2 1 80px"}}>{(settings.foodCategories||[]).sort().map(f=><option key={f}>{f}</option>)}</select><input type="number" value={d.qty} onChange={e=>set("qty",e.target.value)} style={{width:62}}/><select value={d.unit} onChange={e=>set("unit",e.target.value)} style={{width:70}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select><input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100px"}}/></div>}{d.type==="liquid"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}><select value={d.liquidType||""} onChange={e=>set("drinkType",e.target.value)} style={{flex:"2 1 120px"}}>{(settings.liquidTypes||FD.liquidTypes).sort().map(dk=><option key={dk}>{dk}</option>)}</select><input type="number" placeholder="ml" value={d.ml||""} onChange={e=>set("ml",e.target.value)} style={{width:72}}/><input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100px"}}/></div>}{d.type==="exercise"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}><select value={d.exType} onChange={e=>set("exType",e.target.value)} style={{flex:"1 1 100px"}}>{(settings.exerciseTypes||[]).map(e=><option key={e.name}>{e.name}</option>)}</select>{eo?.subTypes?.length>0&&<select value={d.subType||""} onChange={e=>set("subType",e.target.value)} style={{flex:"1 1 110px"}}>{eo.subTypes.map(s=><option key={s}>{s}</option>)}</select>}{hasDist&&<input type="number" placeholder="km" value={d.dist||""} onChange={e=>set("dist",e.target.value)} style={{width:52}}/>}{(hasDist||hasTime)&&<input type="number" placeholder="min" value={d.time||""} onChange={e=>set("time",e.target.value)} style={{width:52}}/>}{hasCnt&&<input type="number" placeholder="count" value={d.count||""} onChange={e=>set("count",e.target.value)} style={{width:68}}/>}<input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100px"}}/></div>}{d.type==="water"&&<div style={{display:"flex",gap:5,marginBottom:7}}><select value={d.waterTemp||"Plain"} onChange={e=>set("waterTemp",e.target.value)} style={{width:90}}>{WATER_TEMPS.map(t=><option key={t}>{t}</option>)}</select><input type="number" value={d.ml} onChange={e=>set("ml",+e.target.value)}/></div>}{d.type==="medical"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}><select value={d.readingType} onChange={e=>set("readingType",e.target.value)} style={{flex:"0 0 90px"}}>{medPresets.map(p=>{const nm=typeof p==="string"?p:p.name;return<option key={nm}>{nm}</option>;})}</select><input value={d.value} onChange={e=>set("value",e.target.value)} style={{flex:1}}/><input placeholder="unit" value={d.unit||""} onChange={e=>set("unit",e.target.value)} style={{flex:"0 0 60px"}}/><input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100px"}}/></div>}{d.type==="medication"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}><select value={d.med} onChange={e=>set("med",e.target.value)} style={{flex:"1 1 130px"}}>{(settings.medications||[]).map(m=><option key={m}>{m}</option>)}</select><select value={d.timing} onChange={e=>set("timing",e.target.value)} style={{flex:"1 1 120px"}}>{MED_TIMES.map(t=><option key={t}>{t}</option>)}</select></div>}<div style={{display:"flex",gap:6}}><button onClick={onCancel} style={{flex:1,padding:"7px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontFamily:"inherit"}}>Cancel</button><button onClick={doSave} style={{flex:1,padding:"7px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Save Changes</button></div></div>);
+  return(
+    <div className="card" style={{border:`1px solid ${T.accentBtn}55`,marginBottom:8}}>
+      <div className="slabel" style={{color:T.accent,marginBottom:7}}>✏️ Editing</div>
+      <div style={{display:"flex",gap:5,marginBottom:8}}>
+        <input type="date" value={editDate} onChange={e=>setEditDate(e.target.value)} style={{flex:1,fontSize:"0.8rem",padding:"5px 7px"}}/>
+        <input type="text" inputMode="numeric" value={editTime} onChange={e=>{let v=e.target.value.replace(/[^0-9:]/g,"");if(v.length===4&&!v.includes(":"))v=v.slice(0,2)+":"+v.slice(2);setEditTime(v.slice(0,5));}} placeholder="HH:MM" maxLength={5} style={{flex:"0 0 72px",fontSize:"0.8rem",padding:"5px 7px",fontFamily:"'DM Mono',monospace"}}/>
+      </div>
+      {d.type==="meal"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}>
+        <select value={d.mealType} onChange={e=>set("mealType",e.target.value)} style={{width:95}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select>
+        <select value={d.food} onChange={e=>set("food",e.target.value)} style={{flex:"2 1 80px"}}><option value="">Food…</option>{(settings.foodCategories||FD.foodCategories).sort().map(f=><option key={f}>{f}</option>)}</select>
+        <input type="number" value={d.qty} onChange={e=>set("qty",e.target.value)} style={{width:58}}/>
+        <select value={d.unit} onChange={e=>set("unit",e.target.value)} style={{width:66}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select>
+        <input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100%"}}/>
+      </div>}
+      {d.type==="liquid"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}>
+        <select value={d.liquidType||""} onChange={e=>set("liquidType",e.target.value)} style={{flex:"2 1 130px"}}>{liqTypes.map(t=><option key={t}>{t}</option>)}</select>
+        <input type="number" placeholder="ml" value={d.ml||""} onChange={e=>set("ml",e.target.value)} style={{width:72}}/>
+        <input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100%"}}/>
+      </div>}
+      {d.type==="exercise"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}>
+        <select value={d.exType} onChange={e=>set("exType",e.target.value)} style={{flex:"1 1 130px"}}>{(settings.exerciseTypes||FD.exerciseTypes).map(e=><option key={e.name}>{e.name}</option>)}</select>
+        {hasDist&&<input type="number" placeholder="km" value={d.dist||""} onChange={e=>set("dist",e.target.value)} style={{width:52}}/>}
+        {(hasDist||hasTime)&&<input type="number" placeholder="min" value={d.time||""} onChange={e=>set("time",e.target.value)} style={{width:52}}/>}
+        {hasCnt&&<input type="number" placeholder="count" value={d.count||""} onChange={e=>set("count",e.target.value)} style={{width:68}}/>}
+        <input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100%"}}/>
+      </div>}
+      {d.type==="medical"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}>
+        <select value={d.readingType} onChange={e=>set("readingType",e.target.value)} style={{flex:"0 0 90px"}}>{mp.map(p=>{const n=p.name||p;return <option key={n}>{n}</option>;})}</select>
+        <input value={d.value} onChange={e=>set("value",e.target.value)} placeholder={(mp.find(p=>(p.name||p)===d.readingType)||{}).unit||""} style={{flex:1}}/>
+        <input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100%"}}/>
+      </div>}
+      {d.type==="medication"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}>
+        <select value={d.med} onChange={e=>set("med",e.target.value)} style={{flex:"1 1 130px"}}>{(settings.medications||FD.medications).map(m=><option key={m}>{m}</option>)}</select>
+        <select value={d.timing} onChange={e=>set("timing",e.target.value)} style={{flex:"1 1 110px"}}>{MED_TIMES.map(t=><option key={t}>{t}</option>)}</select>
+      </div>}
+      <div style={{display:"flex",gap:6}}>
+        <button onClick={onCancel} style={{flex:1,padding:"7px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer"}}>Cancel</button>
+        <button onClick={doSave} style={{flex:1,padding:"7px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontWeight:600}}>Save Changes</button>
+      </div>
+    </div>
+  );
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
