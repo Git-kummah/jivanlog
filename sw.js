@@ -1,4 +1,4 @@
-const CACHE='jivanlog-v5';
+const CACHE='jivanlog-v6';
 const ASSETS=['./', './index.html','./manifest.json','./icon.svg',
   'https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js',
   'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js',
