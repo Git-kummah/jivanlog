@@ -614,7 +614,7 @@ function SettingsPage({settings,defaults,presets,templates,theme,setSettings,set
   const resetAllPresets=()=>{if(!confirm("Reset ALL Presets → Default?"))return;setPresets([deepClone(defaults),deepClone(defaults),deepClone(defaults)]);};
   const addItem=key=>{if(!newItem.trim())return;updateActive(p=>({...p,[key]:[...(p[key]||[]),newItem.trim()].sort()}));setNewItem("");};
   const removeItem=(key,item)=>updateActive(p=>({...p,[key]:(p[key]||[]).filter(x=>x!==item)}));
-  const addMedPreset=(name,unit)=>{if(!name.trim())return;const ex=getActive()?.medicalPresets||[];if(ex.some(p=>(typeof p==="string"?p:p.name)===name.trim()))return;updateActive(p=>({...p,medicalPresets:[{name:"Sugar",unit:"mg/dL"},{name:"BP",unit:"Sys/Dia"},{name:"Weight",unit:"kg"},{name:"Height",unit:"cm"}]),{name:name.trim(),unit:unit.trim()}]}));};
+  const addMedPreset=(name,unit)=>{if(!name.trim())return;const ex=getActive()?.medicalPresets||[];if(ex.some(p=>(typeof p==="string"?p:p.name)===name.trim()))return;updateActive(p=>({...p,medicalPresets:[...(p.medicalPresets||FD.medicalPresets),{name:name.trim(),unit:unit.trim()}]}));};
   const removeMedPreset=name=>updateActive(p=>({...p,medicalPresets:(p.medicalPresets||[]).filter(x=>(typeof x==="string"?x:x.name)!==name)}));
   const active=getActive();
   return(<div>
