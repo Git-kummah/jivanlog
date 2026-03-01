@@ -37,7 +37,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.6";
+const APP_VERSION="v4.7";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -413,7 +413,7 @@ function HomePage({entries,settings,onAdd,entryTime,setEntryTime,T}){
           ))}
         </div>
         <div style={{flexShrink:0,borderLeft:`1px solid ${T.border}`,paddingLeft:8}}>
-          <input type="text" inputMode="numeric" value={entryTime} onChange={e=>{let v=e.target.value.replace(/[^0-9:]/g,"");if(v.length===4&&!v.includes(":"))v=v.slice(0,2)+":"+v.slice(2);setEntryTime(v.slice(0,5));}} placeholder="HH:MM" maxLength={5} style={{width:68,fontSize:"0.8rem",padding:"4px 5px",fontFamily:"'DM Mono',monospace",background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:7,color:T.text}}/>
+          <input type="text" placeholder="9.20" value={entryTime} onChange={e=>setEntryTime(e.target.value)} onBlur={e=>{const raw=e.target.value.replace(/[^0-9]/g,"");if(!raw)return;let h,m;if(raw.length<=2){h=+raw;m=0;}else if(raw.length===3){h=+raw[0];m=+raw.slice(1);}else{h=+raw.slice(0,2);m=+raw.slice(2,4);}h=Math.min(23,Math.max(0,h));m=Math.min(59,Math.max(0,m));setEntryTime(String(h).padStart(2,"0")+":"+String(m).padStart(2,"0"));}} maxLength={5} style={{width:68,fontSize:"0.8rem",padding:"4px 5px",fontFamily:"'DM Mono',monospace",background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:7,color:T.text}}/>
         </div>
       </div>
       {active==="meal"      &&<MealEntry settings={settings} onAdd={onAdd} T={T}/>}
@@ -435,40 +435,24 @@ function MealEntry({settings,onAdd,T}){
   return(<div className="card"><div className="slabel">🍽️ Meal</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={mt} onChange={e=>setMt(e.target.value)} style={{flex:"0 0 95px"}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select><select value={food} onChange={e=>setFood(e.target.value)} style={{flex:"2 1 80px",minWidth:0}}><option value="">Food item…</option>{(settings.foodCategories||[]).sort().map(f=><option key={f}>{f}</option>)}</select><input type="number" placeholder="Qty" value={qty} onChange={e=>setQty(e.target.value)} style={{flex:"1 0 62px",width:62}}/><select value={unit} onChange={e=>setUnit(e.target.value)} style={{flex:"1 0 70px",width:70}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select></div><div style={{display:"flex",gap:6,alignItems:"center"}}><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
 }
 function LiquidEntry({settings,onAdd,T}){
-  const WATER=["Warm Water","Plain Water","Cold Water"];
-  const allTypes=(settings.liquidTypes||["Warm Water","Plain Water","Cold Water","--------","Morning Drink","Morning Coffee","Milk Tea","Green Tea","Tulsi Mulethi Tea","Black Coffee","Coconut Water"]);
+  const allTypes=(settings.liquidTypes||FD.liquidTypes||[]);
   const[liqType,setLiqType]=useState("Warm Water");
   const[ml,setMl]=useState("");
   const[notes,setNotes]=useState("");
-  const[pending,setPending]=useState(0);
   const[fl,setFl]=useState(false);
-  const timerRef=useRef();
-  const liqRef=useRef(liqType);liqRef.current=liqType;
-  const isWater=WATER.includes(liqType);
-  const quickAdd=amt=>{
-    if(isWater){setPending(p=>{const n=p+amt;clearTimeout(timerRef.current);timerRef.current=setTimeout(()=>{onAdd({type:"liquid",liquidType:liqRef.current,ml:n,notes:""});setPending(0);},30000);return n;});}
-    else{setMl(String((+ml||0)+amt));}
-  };
-  const flushPending=()=>{clearTimeout(timerRef.current);if(pending>0){onAdd({type:"liquid",liquidType:liqType,ml:pending,notes:""});setPending(0);}};
-  const save=()=>{if(pending>0){flushPending();return;}if(!ml)return;onAdd({type:"liquid",liquidType:liqType,ml:+ml,notes});setMl("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
+  const add=amt=>setMl(s=>String((+s||0)+amt));
+  const save=()=>{if(!ml||+ml<=0)return;onAdd({type:"liquid",liquidType:liqType,ml:+ml,notes});setMl("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
   return(<div className="card"><div className="slabel">💧 Liquids</div>
-    <div style={{display:"flex",gap:5,marginBottom:7,alignItems:"center"}}>
-      <select value={liqType} onChange={e=>{setLiqType(e.target.value);setPending(0);clearTimeout(timerRef.current);}} style={{flex:"2 1 130px",minWidth:0}}>
-        {allTypes.map((t,i)=>t==="--------"?<option key={i} disabled>---- Drinks ----</option>:<option key={t}>{t}</option>)}
+    {/* Single-line row: dropdown | quick-add buttons | qty | Save */}
+    <div style={{display:"flex",gap:5,marginBottom:7,alignItems:"center",flexWrap:"wrap"}}>
+      <select value={liqType} onChange={e=>setLiqType(e.target.value)} style={{flex:"2 1 110px",minWidth:0}}>
+        {allTypes.map((t,i)=>t==="--------"?<option key={i} disabled>── Drinks ──</option>:<option key={t}>{t}</option>)}
       </select>
-      <input type="number" placeholder="ml" value={ml} onChange={e=>setMl(e.target.value)} style={{flex:"0 0 68px"}}/>
+      {[500,250,100,50].map(amt=><button key={amt} className="wbtn" onClick={()=>add(amt)} style={{padding:"5px 7px",fontSize:"0.78rem",flex:"0 0 auto"}}>{"+"+amt}</button>)}
+      <input type="number" placeholder="ml" value={ml} onChange={e=>setMl(e.target.value)} style={{flex:"0 0 58px",textAlign:"center"}}/>
+      <button onClick={save} style={{flexShrink:0,padding:"6px 12px",fontSize:"0.85rem",borderRadius:8,fontFamily:"inherit",fontWeight:500,cursor:"pointer",border:"none",background:fl?T.ok:T.accentBtn,color:"#fff"}}>{fl?"✔":"Save"}</button>
     </div>
-    <div style={{display:"flex",gap:5,marginBottom:7,flexWrap:"wrap"}}>
-      {[500,350,300,250,200,100].map(amt=><button key={amt} className="lbtn" onClick={()=>quickAdd(amt)}>{"+"+amt}</button>)}
-    </div>
-    {pending>0&&<div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 9px",background:T.even,borderRadius:8,border:"1px solid "+T.border,marginBottom:7}}>
-      <span style={{fontSize:"0.82rem",color:T.wbtnTxt}}>💧 {liqType} {pending}ml pending</span>
-      <button onClick={flushPending} style={{marginLeft:"auto",padding:"3px 9px",fontSize:"0.75rem",borderRadius:7,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer"}}>Log now</button>
-    </div>}
-    <div style={{display:"flex",gap:6,alignItems:"center"}}>
-      <input placeholder={isWater?"Notes (optional)":"Notes e.g. 60ml milk+stevia"} value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/>
-      <button onClick={save} style={{flexShrink:0,padding:"7px 14px",fontSize:"0.85rem",borderRadius:8,fontFamily:"inherit",fontWeight:500,cursor:"pointer",border:"none",background:fl?T.ok:T.accentBtn,color:"#fff",minWidth:52}}>{fl?"✔":"Save"}</button>
-    </div>
+    <input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{width:"100%"}}/>
   </div>);
 }
 function ExerciseEntry({settings,onAdd,T}){
@@ -517,7 +501,7 @@ function TLE({e,settings,T}){
   if(e.type==="meal")       m=`${e.mealType} · ${e.food} · ${e.unit==="count"?e.qty:e.qty+e.unit}`;
   if(e.type==="liquid")     m=`${e.liquidType}${e.ml?" · "+e.ml+"ml":""}`;
   if(e.type==="exercise")   {m=e.exType;if(e.subType)m+=` · ${e.subType}`;if(e.dist)m+=` · ${e.dist}km`;if(e.time)m+=` · ${e.time}min`;if(e.count)m+=` · x${e.count}`;}
-  if(e.type==="liquid" && ["Warm Water","Plain Water","Cold Water"].includes(e.liquidType)) m=`${e.waterTemp||""} ${e.ml}ml`.trim();
+  // water is handled by the liquid branch above (shows "Warm Water · 600ml")
   if(e.type==="medical")    m=`${e.readingType} · ${e.value}${resolvedUnit?" "+resolvedUnit:""}`;
   if(e.type==="medication") m=`${e.med} · ${e.timing}`;
   return(<div className="tle"><span style={{fontSize:"0.68rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:40,flexShrink:0}}>{fmt24(e.timestamp)}</span><span style={{flexShrink:0}}>{ic[e.type]||"•"}</span><div style={{flex:1,fontSize:"0.83rem",lineHeight:1.45}}>{m}{e.notes&&<span style={{fontSize:"0.74rem",color:T.textSub,fontStyle:"italic"}}> ({e.notes})</span>}</div></div>);
