@@ -54,7 +54,8 @@ const FD={
   templates:[
     {name:"Home Day",  icon:"🏠",entries:[]},
     {name:"Office Day",icon:"🏢",entries:[]},
-    {name:"Travel Day",icon:"✈️",entries:[]},
+    {name:"Outing",    icon:"🌆",entries:[]},
+    {name:"Travel",    icon:"✈️",entries:[]},
   ],
 };
 const deepClone=o=>JSON.parse(JSON.stringify(o));
@@ -487,9 +488,18 @@ function MedicalEntry({settings,onAdd,T}){
   </div>);
 }
 function MedEntry({settings,onAdd,T}){
-  const[med,setMed]=useState("");const[timing,setTiming]=useState("After dinner");const[fl,setFl]=useState(false);
-  const save=()=>{if(!med)return;onAdd({type:"medication",med,timing});setMed("");setFl(true);setTimeout(()=>setFl(false),1200);};
-  return(<div className="card"><div className="slabel">💊 Medication</div><div style={{display:"flex",gap:5,alignItems:"center"}}><select value={med} onChange={e=>setMed(e.target.value)} style={{flex:"1 1 140px",minWidth:0}}><option value="">Medication…</option>{(settings.medications||[]).map(m=><option key={m}>{m}</option>)}</select><select value={timing} onChange={e=>setTiming(e.target.value)} style={{flex:"1 1 120px",minWidth:0}}>{MED_TIMES.map(t=><option key={t}>{t}</option>)}</select><Saver flash={fl} onClick={save} T={T}/></div></div>);
+  const[med,setMed]=useState("");const[timing,setTiming]=useState("After dinner");const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
+  const save=()=>{if(!med)return;onAdd({type:"medication",med,timing,notes});setMed("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
+  return(<div className="card"><div className="slabel">💊 Medication</div>
+    <div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6}}>
+      <select value={med} onChange={e=>setMed(e.target.value)} style={{flex:"1 1 140px",minWidth:0}}><option value="">Medication…</option>{(settings.medications||[]).map(m=><option key={m}>{m}</option>)}</select>
+      <select value={timing} onChange={e=>setTiming(e.target.value)} style={{flex:"1 1 120px",minWidth:0}}>{MED_TIMES.map(t=><option key={t}>{t}</option>)}</select>
+    </div>
+    <div style={{display:"flex",gap:6}}>
+      <input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/>
+      <Saver flash={fl} onClick={save} T={T}/>
+    </div>
+  </div>);
 }
 function TLE({e,T}){
   const ic={meal:"🍽️",drinks:"☕",exercise:"🏃",water:"💧",medical:"🩺",medication:"💊"};
@@ -599,28 +609,22 @@ function ReportsPage({entries,settings,T,clearAll,setModal,onImport}){
 // ═══════════════════════════════════════════════════════════════════════════════
 // SETTINGS
 // ═══════════════════════════════════════════════════════════════════════════════
-const STABS=[["general","General"],["current","Current"],["default","Default"],["daytpl","📋 Day Templates"]];
+const STABS=[["general","General"],["daytpl","📋 Day Templates"]];
 const CTABS=[["food","🍽️ Food"],["drinks","☕ Drinks"],["exercise","🏃 Exercise"],["medical","🩺 Medical"],["meds","💊 Meds"]];
 
 function SettingsPage({settings,defaults,presets,templates,theme,setSettings,setDefaults,setPresets,setTemplates,setTheme,user,onSignOut,todayEntries,onLoadTemplate,T}){
   const[stab,setStab]=useState("general");const[ctab,setCtab]=useState("food");const[newItem,setNewItem]=useState("");const[applyFlash,setApplyFlash]=useState(false);
-  const getActive=()=>{if(stab==="default")return defaults;const i=parseInt(stab[1])-1;return presets[i];};
-  const updateActive=updater=>{
-    if(stab==="default"){setDefaults(typeof updater==="function"?updater(defaults):updater);return;}
-    const idx=parseInt(stab[1])-1;const next=deepClone(presets);next[idx]=typeof updater==="function"?updater(presets[idx]):updater;setPresets(next);
-  };
-  const applyToCurrent=()=>{const src=getActive();if(!src)return;const label=stab==="default"?"Default":`Preset ${stab[1]}`;if(!confirm(`Apply ${label} to Current Settings?\n\nEntry forms will immediately use this config.`))return;setSettings(deepClone(src));setApplyFlash(true);setTimeout(()=>setApplyFlash(false),1800);};
-  const resetCurrent=()=>{if(!confirm("Reset Current Settings → Default?"))return;setSettings(deepClone(defaults));};
-  const resetAllPresets=()=>{if(!confirm("Reset ALL Presets → Default?"))return;setPresets([deepClone(defaults),deepClone(defaults),deepClone(defaults)]);};
+  const active=settings;
+  const updateActive=updater=>setSettings(typeof updater==="function"?updater(settings):updater);
+  const applyToSettings=()=>{setSettings(deepClone(defaults));setApplyFlash(true);setTimeout(()=>setApplyFlash(false),1800);};
   const addItem=key=>{if(!newItem.trim())return;updateActive(p=>({...p,[key]:[...(p[key]||[]),newItem.trim()].sort()}));setNewItem("");};
   const removeItem=(key,item)=>updateActive(p=>({...p,[key]:(p[key]||[]).filter(x=>x!==item)}));
-  const addMedPreset=(name,unit)=>{if(!name.trim())return;const ex=getActive()?.medicalPresets||[];if(ex.some(p=>(typeof p==="string"?p:p.name)===name.trim()))return;updateActive(p=>({...p,medicalPresets:[...(p.medicalPresets||FD.medicalPresets),{name:name.trim(),unit:unit.trim()}]}));};
+  const addMedPreset=(name,unit)=>{if(!name.trim())return;const ex=active?.medicalPresets||[];if(ex.some(p=>(typeof p==="string"?p:p.name)===name.trim()))return;updateActive(p=>({...p,medicalPresets:[...(p.medicalPresets||FD.medicalPresets),{name:name.trim(),unit:unit.trim()}]}));};
   const removeMedPreset=name=>updateActive(p=>({...p,medicalPresets:(p.medicalPresets||[]).filter(x=>(typeof x==="string"?x:x.name)!==name)}));
-  const active=getActive();
   return(<div>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
       <div style={{fontWeight:600,fontSize:"0.92rem"}}>⚙️ Settings</div>
-      {stab!=="general"&&stab!=="tpl"&&active&&<button onClick={applyToCurrent} style={{padding:"5px 12px",borderRadius:8,border:"none",background:applyFlash?T.ok:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:600,fontSize:"0.79rem",cursor:"pointer",transition:"background 0.3s"}}>{applyFlash?"✔ Applied!":"Apply to Current ▶"}</button>}
+      
     </div>
     <div style={{display:"flex",gap:4,marginBottom:10,overflowX:"auto",paddingBottom:2}}>
       {STABS.map(([k,l])=><button key={k} onClick={()=>{setStab(k);setNewItem("");}} className={`tbtn${stab===k?" on":""}`} style={{flexShrink:0,fontSize:"0.75rem"}}>{l}</button>)}
@@ -633,33 +637,25 @@ function SettingsPage({settings,defaults,presets,templates,theme,setSettings,set
         <button onClick={onSignOut} style={{padding:"5px 10px",borderRadius:7,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}>Sign out</button>
       </div>
       <div className="card"><div className="slabel">🎨 Theme</div><div style={{display:"flex",gap:6}}>{[["dark","🌙 Dark"],["light","☀️ Light"],["system","💻 System"]].map(([m,l])=><button key={m} onClick={()=>setTheme(m)} style={{flex:1,padding:"7px 4px",borderRadius:8,border:"1px solid",fontSize:"0.78rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit",borderColor:theme===m?T.accentBtn:T.border,background:theme===m?T.accentBg:T.cardBg,color:theme===m?T.accent:T.textMuted}}>{l}</button>)}</div></div>
-      <div className="card"><div className="slabel">🔄 Reset</div>{[["Reset Current → Default","Replaces entry-form config with Default",resetCurrent],["Reset All Presets → Default","Sets Presets 1, 2 & 3 to match Default",resetAllPresets]].map(([title,sub,fn])=>(<div key={title} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${T.border}`}}><div><div style={{fontSize:"0.82rem",fontWeight:500}}>{title}</div><div style={{fontSize:"0.71rem",color:T.textMuted}}>{sub}</div></div><button onClick={fn} style={{flexShrink:0,marginLeft:10,padding:"4px 12px",borderRadius:7,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontFamily:"inherit",fontSize:"0.77rem"}}>Reset</button></div>))}</div>
-      <div style={{padding:"8px 10px",background:T.even,borderRadius:8,border:`1px solid ${T.border}`,fontSize:"0.72rem",color:T.textMuted,lineHeight:1.75}}>
-        <b style={{color:T.textSub}}>How it works:</b><br/>
-        • <b>Default</b> — edit baseline. Saves instantly.<br/>
-        • <b>Preset 1–3</b> — independent configs.<br/>
-        • <b>Apply to Current ▶</b> — pushes preset to entry forms.<br/>
-        • <b>📋 Templates</b> — save/load full day schedules.
-      </div>
-    </>}
-
-    {stab!=="general"&&stab!=="tpl"&&active&&<>
-      <div style={{padding:"6px 10px",background:T.accentBg,borderRadius:7,border:`1px solid ${T.accentBtn}44`,marginBottom:8,fontSize:"0.74rem",color:T.accent,fontWeight:500}}>
-        {stab==="default"?"Editing Default":"Editing "+STABS.find(([k])=>k===stab)?.[1]}
-        <span style={{color:T.textMuted,fontWeight:400,marginLeft:6}}>· saves instantly</span>
+      
+    
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"10px 0 6px"}}>
+        <div className="slabel" style={{marginBottom:0}}>⚙️ Default Config</div>
+        <button onClick={applyToSettings} style={{padding:"5px 14px",borderRadius:8,border:"none",background:applyFlash?T.ok:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:600,fontSize:"0.79rem",cursor:"pointer",transition:"background 0.3s"}}>{applyFlash?"✔ Applied!":"Apply ▶"}</button>
       </div>
       <div style={{display:"flex",gap:4,marginBottom:9,overflowX:"auto"}}>
         {CTABS.map(([k,l])=><button key={k} onClick={()=>{setCtab(k);setNewItem("");}} className={`tbtn${ctab===k?" on":""}`} style={{flexShrink:0,fontSize:"0.75rem"}}>{l}</button>)}
       </div>
-      {ctab==="food"    &&<EList items={active.foodCategories||[]} onRemove={i=>removeItem("foodCategories",i)} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("foodCategories")} T={T}/>}
-      {ctab==="drinks"  &&<EList items={active.liquidTypes||FD.liquidTypes} onRemove={i=>removeItem("liquidTypes",i)} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("liquidTypes")} T={T}/>}
-      {ctab==="meds"    &&<EList items={active.medications||[]} onRemove={i=>removeItem("medications",i)} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("medications")} T={T}/>}
-      {ctab==="exercise"&&<ExerciseSetting types={active.exerciseTypes||[]} onChange={et=>updateActive(p=>({...p,exerciseTypes:et}))} T={T}/>}
-      {ctab==="medical" &&<MedicalPresetSetting presets={active.medicalPresets||FD.medicalPresets} onAdd={addMedPreset} onRemove={removeMedPreset} T={T}/>}
-      <div style={{marginTop:6,fontSize:"0.71rem",color:T.textMuted,fontStyle:"italic",textAlign:"right"}}>Changes save instantly · Apply to Current ▶ to use in entry forms</div>
+      {ctab==="food"&&<><EList items={active.foodCategories} onRemove={item=>removeItem("foodCategories",item)} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("foodCategories")} T={T}/></>}
+      {ctab==="liquid"&&<><EList items={(active.liquidTypes||[]).filter(t=>t!=="--------")} onRemove={item=>removeItem("liquidTypes",item)} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("liquidTypes")} T={T}/></>}
+      {ctab==="exercise"&&<ExerciseSetting types={active.exerciseTypes||FD.exerciseTypes} onChange={v=>updateActive(p=>({...p,exerciseTypes:v}))} T={T}/>}
+      {ctab==="medical"&&<MedicalPresetSetting presets={active.medicalPresets||FD.medicalPresets} onAdd={addMedPreset} onRemove={removeMedPreset} T={T}/>}
+      {ctab==="medication"&&<EList items={active.medications||[]} onRemove={item=>removeItem("medications",item)} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("medications")} T={T}/>}
     </>}
 
-    {stab==="daytpl"&&<TemplatesPanel templates={templates} setTemplates={setTemplates} todayEntries={todayEntries} onLoadTemplate={onLoadTemplate} T={T}/>}
+    
+
+    {stab==="daytpl"&&<TemplatesPanel templates={templates} setTemplates={setTemplates} settings={settings} todayEntries={todayEntries} onLoadTemplate={onLoadTemplate} T={T}/>}
   </div>);
 }
 
@@ -669,126 +665,134 @@ function SettingsPage({settings,defaults,presets,templates,theme,setSettings,set
 // ── Load: find today's earliest Weight entry as wake-up anchor,
 //          shift all template times by the same offset, preview, confirm
 // ═══════════════════════════════════════════════════════════════════════════════
-function TemplatesPanel({templates,setTemplates,todayEntries,onLoadTemplate,T}){
+function TemplatesPanel({templates,setTemplates,settings,todayEntries,onLoadTemplate,T}){
   const[selIdx,setSelIdx]=useState(0);
-  const[mode,setMode]=useState("view");       // view | preview
+  const[mode,setMode]=useState("view");       // view | add | preview
+  const[addType,setAddType]=useState("meal");
   const[preview,setPreview]=useState([]);
   const[excluded,setExcluded]=useState(new Set());
+  const[editIdx,setEditIdx]=useState(null);
 
   const tpl=templates[selIdx]||{name:"",icon:"",entries:[]};
   const hasEntries=tpl.entries&&tpl.entries.length>0;
 
-  // ── Entry display label ───────────────────────────────────────────────────
-  const entryLabel=e=>{
+  const setTplEntries=fn=>{
+    const next=[...templates];
+    const cur=deepClone(next[selIdx]);
+    cur.entries=typeof fn==="function"?fn(cur.entries||[]):fn;
+    cur.savedAt=Date.now();
+    next[selIdx]=cur;
+    setTemplates(next);
+  };
+
+  // ── Entry label inside panel ──────────────────────────────────────────────
+  const eLabel=e=>{
     if(e.type==="meal")       return`${e.mealType} · ${e.food}${e.qty?` · ${e.qty}${e.unit==="count"?"":e.unit}`:""}`;
-    if(e.type==="liquid")     return`${e.liquidType}${e.ml?` · ${e.ml}ml`:""}${e.notes?` (${e.notes})`:""}`;
-    if(e.type==="liquid" && ["Warm Water","Plain Water","Cold Water"].includes(e.liquidType))      return`${e.waterTemp||""} Water · ${e.ml}ml`.trim();
+    if(e.type==="liquid")     return`${e.liquidType}${e.ml?` · ${e.ml}ml`:""}`;
     if(e.type==="medical")    return`${e.readingType} · ${e.value||"—"}${e.unit?" "+e.unit:""}`;
     if(e.type==="medication") return`${e.med} · ${e.timing}`;
+    if(e.type==="exercise")   return`${e.exType}${e.time?` · ${e.time}min`:""}${e.dist?` · ${e.dist}km`:""}`;
     return e.type;
   };
-  const typeIcon=t=>({meal:"🍽️",drinks:"☕",water:"💧",medical:"🩺",medication:"💊"}[t]||"•");
+  const tIcon=t=>({meal:"🍽️",liquid:"💧",medical:"🩺",medication:"💊",exercise:"🏃"}[t]||"•");
 
-  // ── SAVE today → template ─────────────────────────────────────────────────
+  // ── Save today → template ─────────────────────────────────────────────────
   const saveToTemplate=()=>{
-    const filtered=todayEntries.filter(e=>TEMPLATE_SUPPORTED.includes(e.type));
-    if(!filtered.length){alert("No entries today to save.\n\nLog your full day first, then save it as a template.");return;}
-    if(!confirm(`Save today's ${filtered.length} entries as "${tpl.name}"?\n\nThis replaces any existing entries in this template slot.`))return;
-    const next=deepClone(templates);
-    next[selIdx]={...next[selIdx],entries:filtered,savedAt:new Date().toISOString()};
-    setTemplates(next);
-    alert(`✓ "${tpl.name}" saved with ${filtered.length} entries.`);
+    const filtered=todayEntries.filter(e=>["meal","liquid","medical","medication","exercise"].includes(e.type));
+    if(!filtered.length){alert("No entries today to save.\n\nLog your full day first.");return;}
+    if(!confirm(`Save today's ${filtered.length} entries to ${tpl.icon} ${tpl.name}?\n\nThis will replace any existing entries.`))return;
+    setTplEntries(filtered.map(e=>({...e,id:genId()})));
   };
 
-  // ── LOAD: build time-shifted preview ─────────────────────────────────────
+  // ── Load → today (with time shift) ───────────────────────────────────────
   const buildPreview=()=>{
-    if(!hasEntries){alert(`"${tpl.name}" is empty.\n\nLog a full day, then use Save to capture it as a template.`);return;}
-
-    // Find anchor from template (earliest timestamp = wake-up)
-    const tplTimes=tpl.entries.map(e=>new Date(e.timestamp).getTime());
-    const tplAnchor=Math.min(...tplTimes);
-
-    // Find today's wake-up: earliest Weight medical entry logged today
-    // (you always log Wake-Up Wt first thing)
-    const todayWeightEntries=todayEntries
-      .filter(e=>e.type==="medical"&&e.readingType==="Weight")
-      .sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
-
-    let todayAnchorMs;
-    if(todayWeightEntries.length>0){
-      todayAnchorMs=new Date(todayWeightEntries[0].timestamp).getTime();
-    } else {
-      // Fallback: use current time as anchor
-      todayAnchorMs=Date.now();
-    }
-
-    const offsetMs=todayAnchorMs-tplAnchor;
-
-    // Shift all entries, assign fresh IDs, set today's date
-    const shifted=tpl.entries.map(e=>{
-      const newTs=new Date(new Date(e.timestamp).getTime()+offsetMs);
-      return{...deepClone(e),id:genId(),timestamp:newTs.toISOString(),date:newTs.toISOString().slice(0,10)};
-    }).sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
-
+    if(!hasEntries){alert("No entries stored in this template yet.");return;}
+    const weightEntry=todayEntries.find(e=>e.type==="medical"&&e.readingType==="Weight");
+    const baseHour=weightEntry?new Date(weightEntry.timestamp).getHours():7;
+    const tplEntries=[...(tpl.entries||[])].sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
+    const firstHour=tplEntries.length>0?new Date(tplEntries[0].timestamp).getHours():7;
+    const shift=(baseHour-firstHour)*3600000;
+    const shifted=tplEntries.map(e=>({...e,id:genId(),date:today(),timestamp:new Date(new Date(e.timestamp).getTime()+shift).toISOString()}));
     setPreview(shifted);
     setExcluded(new Set());
     setMode("preview");
   };
-
-  // ── CONFIRM load ──────────────────────────────────────────────────────────
-  const confirmLoad=()=>{
-    const toAdd=preview.filter(e=>!excluded.has(e.id));
-    if(!toAdd.length){alert("Nothing selected — tick at least one entry.");return;}
-    onLoadTemplate(toAdd);
+  const doLoad=()=>{
+    const toLoad=preview.filter(e=>!excluded.has(e.id));
+    onLoadTemplate(toLoad);
     setMode("view");
-    alert(`✓ ${toAdd.length} entries added from "${tpl.name}".`);
   };
 
-  const toggleExclude=id=>setExcluded(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n;});
-  const toggleAll=()=>{
-    if(excluded.size===0)setExcluded(new Set(preview.map(e=>e.id)));
-    else setExcluded(new Set());
+  // ── Add entry to template ─────────────────────────────────────────────────
+  const handleAddEntry=entry=>{
+    const ts=makeTS(today(),entry._ttime||"08:00");
+    setTplEntries(prev=>[...prev,{...entry,id:genId(),date:today(),timestamp:ts}].sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)));
+    setMode("view");
   };
 
-  // ── RENDER ────────────────────────────────────────────────────────────────
-  if(mode==="preview") return(
+  // ── Delete entry ──────────────────────────────────────────────────────────
+  const deleteEntry=idx=>setTplEntries(prev=>prev.filter((_,i)=>i!==idx));
+
+  // ── Edit entry time ────────────────────────────────────────────────────────
+  const updateEntryTime=(idx,timeStr)=>{
+    setTplEntries(prev=>prev.map((e,i)=>{
+      if(i!==idx)return e;
+      return{...e,timestamp:makeTS(today(),timeStr)};
+    }));
+  };
+
+  // ── Preview mode ──────────────────────────────────────────────────────────
+  if(mode==="preview")return(
     <div>
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
-        <button onClick={()=>setMode("view")} style={{padding:"5px 10px",borderRadius:7,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontFamily:"inherit",fontSize:"0.78rem"}}>← Back</button>
-        <div style={{flex:1,fontWeight:600,fontSize:"0.88rem"}}>{tpl.icon} {tpl.name} — Preview</div>
-        <button onClick={toggleAll} style={{padding:"4px 9px",borderRadius:7,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontFamily:"inherit",fontSize:"0.73rem"}}>{excluded.size===0?"Deselect all":"Select all"}</button>
+        <button onClick={()=>setMode("view")} style={{background:"none",border:"none",color:T.accentBtn,cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:"0.82rem",padding:0}}>← Back</button>
+        <span style={{flex:1,fontWeight:600,fontSize:"0.85rem"}}>Load {tpl.icon} {tpl.name}</span>
+        <button onClick={doLoad} style={{padding:"7px 16px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:600,fontSize:"0.82rem",cursor:"pointer"}}>📥 Load ({preview.filter(e=>!excluded.has(e.id)).length})</button>
       </div>
-
-      {/* Anchor info */}
-      <div style={{padding:"6px 10px",background:T.accentBg,borderRadius:7,border:`1px solid ${T.accentBtn}44`,marginBottom:8,fontSize:"0.73rem",color:T.accent}}>
-        {todayEntries.filter(e=>e.type==="medical"&&e.readingType==="Weight").length>0
-          ? `⏱ Times shifted to match today's wake-up Weight entry`
-          : `⏱ No Weight entry found today — times shifted from current time`}
-        <div style={{color:T.textMuted,marginTop:2}}>Untick entries you don't need today, then tap Load.</div>
-      </div>
-
+      <div style={{fontSize:"0.72rem",color:T.textMuted,marginBottom:8}}>Untick entries to skip today:</div>
       <div className="card" style={{padding:"6px 11px"}}>
         {preview.map(e=>(
-          <div key={e.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 0",borderBottom:`1px solid ${T.border}22`}}>
-            <input type="checkbox" className="tpl-chk" checked={!excluded.has(e.id)} onChange={()=>toggleExclude(e.id)}/>
-            <span style={{fontSize:"0.85rem",flexShrink:0}}>{typeIcon(e.type)}</span>
+          <div key={e.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:`1px solid ${T.border}22`}}>
+            <input type="checkbox" checked={!excluded.has(e.id)} onChange={()=>setExcluded(s=>{const n=new Set(s);n.has(e.id)?n.delete(e.id):n.add(e.id);return n;})} style={{flexShrink:0}}/>
+            <span style={{fontSize:"0.82rem",flexShrink:0}}>{tIcon(e.type)}</span>
             <span style={{fontSize:"0.68rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:42,flexShrink:0}}>{fmt24(e.timestamp)}</span>
-            <span style={{flex:1,fontSize:"0.8rem",color:excluded.has(e.id)?T.textMuted:T.text,textDecoration:excluded.has(e.id)?"line-through":"none"}}>{entryLabel(e)}</span>
+            <span style={{flex:1,fontSize:"0.78rem"}}>{eLabel(e)}</span>
           </div>
         ))}
       </div>
-
-      <button onClick={confirmLoad} style={{width:"100%",padding:"11px",borderRadius:10,border:"none",background:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:700,fontSize:"0.9rem",cursor:"pointer",marginTop:4}}>
-        ✓ Load {preview.length-excluded.size} entries into today
-      </button>
     </div>
   );
 
-  // View mode
+  // ── Add entry mode ─────────────────────────────────────────────────────────
+  if(mode==="add"){
+    const MODULE_TYPES=[["meal","Meal","🍽️"],["liquid","Liquid","💧"],["exercise","Exercise","🏃"],["medical","Medical","🩺"],["medication","Medication","💊"]];
+    return(
+      <div>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+          <button onClick={()=>setMode("view")} style={{background:"none",border:"none",color:T.accentBtn,cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:"0.82rem",padding:0}}>← Back</button>
+          <span style={{fontWeight:600,fontSize:"0.85rem"}}>Add entry to {tpl.icon} {tpl.name}</span>
+        </div>
+        <div style={{display:"flex",gap:4,marginBottom:10,flexWrap:"wrap"}}>
+          {MODULE_TYPES.map(([k,,icon])=><button key={k} onClick={()=>setAddType(k)} className={`tbtn${addType===k?" on":""}`} style={{fontSize:"0.74rem"}}>{icon}</button>)}
+        </div>
+        <div style={{fontSize:"0.7rem",color:T.textMuted,marginBottom:8,padding:"4px 8px",background:T.even,borderRadius:6}}>
+          Time: <input type="text" inputMode="numeric" placeholder="HH:MM" maxLength={5} id="tpl-time-input" defaultValue="08:00" style={{width:60,fontSize:"0.8rem",padding:"2px 5px",fontFamily:"'DM Mono',monospace"}}/>
+          <span style={{marginLeft:6,color:T.textMuted}}>(will be used as entry time)</span>
+        </div>
+        {addType==="meal"&&<MealEntry settings={settings} onAdd={e=>{e._ttime=document.getElementById("tpl-time-input")?.value||"08:00";handleAddEntry(e);}} T={T}/>}
+        {addType==="liquid"&&<LiquidEntry settings={settings} onAdd={e=>{e._ttime=document.getElementById("tpl-time-input")?.value||"08:00";handleAddEntry(e);}} T={T}/>}
+        {addType==="exercise"&&<ExerciseEntry settings={settings} onAdd={e=>{e._ttime=document.getElementById("tpl-time-input")?.value||"08:00";handleAddEntry(e);}} T={T}/>}
+        {addType==="medical"&&<MedicalEntry settings={settings} onAdd={e=>{e._ttime=document.getElementById("tpl-time-input")?.value||"08:00";handleAddEntry(e);}} T={T}/>}
+        {addType==="medication"&&<MedEntry settings={settings} onAdd={e=>{e._ttime=document.getElementById("tpl-time-input")?.value||"08:00";handleAddEntry(e);}} T={T}/>}
+      </div>
+    );
+  }
+
+  // ── View mode ─────────────────────────────────────────────────────────────
   return(
     <div>
       {/* Template selector */}
-      <div style={{display:"flex",gap:5,marginBottom:10}}>
+      <div style={{display:"flex",gap:4,marginBottom:10}}>
         {templates.map((t,i)=>(
           <button key={i} onClick={()=>{setSelIdx(i);setMode("view");}} style={{flex:1,padding:"8px 4px",borderRadius:9,border:"1px solid",textAlign:"center",cursor:"pointer",fontFamily:"inherit",borderColor:selIdx===i?T.accentBtn:T.border,background:selIdx===i?T.accentBg:T.cardBg,color:selIdx===i?T.accent:T.textMuted}}>
             <div style={{fontSize:"1.3rem"}}>{t.icon}</div>
@@ -803,7 +807,7 @@ function TemplatesPanel({templates,setTemplates,todayEntries,onLoadTemplate,T}){
         <b>{tpl.icon} {tpl.name}</b>
         {hasEntries
           ?<span style={{color:T.textMuted,fontWeight:400,marginLeft:6}}>· {tpl.entries.length} entries · saved {tpl.savedAt?new Date(tpl.savedAt).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"2-digit"}):"—"}</span>
-          :<span style={{color:T.textMuted,fontWeight:400,marginLeft:6}}>· empty — log a day first, then Save it here</span>}
+          :<span style={{color:T.textMuted,fontWeight:400,marginLeft:6}}>· empty — add entries or save today here</span>}
       </div>
 
       {/* Actions */}
@@ -816,27 +820,32 @@ function TemplatesPanel({templates,setTemplates,todayEntries,onLoadTemplate,T}){
         </button>
       </div>
 
-      {/* Preview of stored entries */}
+      {/* Add entry button */}
+      <button onClick={()=>setMode("add")} style={{width:"100%",padding:"8px",borderRadius:8,border:`1px dashed ${T.accentBtn}88`,background:T.accentBg,color:T.accent,fontFamily:"inherit",fontWeight:600,fontSize:"0.82rem",cursor:"pointer",marginBottom:10}}>
+        ＋ Add entry to template
+      </button>
+
+      {/* Stored entries with edit/delete */}
       {hasEntries&&<>
         <div className="slabel">Stored entries</div>
         <div className="card" style={{padding:"6px 11px"}}>
-          {[...tpl.entries].sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)).map((e,i)=>(
-            <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:`1px solid ${T.border}22`}}>
-              <span style={{fontSize:"0.85rem",flexShrink:0}}>{typeIcon(e.type)}</span>
-              <span style={{fontSize:"0.68rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:42,flexShrink:0}}>{fmt24(e.timestamp)}</span>
-              <span style={{flex:1,fontSize:"0.8rem"}}>{entryLabel(e)}</span>
+          {[...(tpl.entries||[])].sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)).map((e,i)=>(
+            <div key={e.id||i} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:`1px solid ${T.border}22`}}>
+              <span style={{fontSize:"0.85rem",flexShrink:0}}>{tIcon(e.type)}</span>
+              <input type="text" inputMode="numeric" defaultValue={fmt24(e.timestamp)} onBlur={ev=>updateEntryTime(i,ev.target.value)} maxLength={5} style={{width:44,fontSize:"0.68rem",padding:"1px 3px",fontFamily:"'DM Mono',monospace",color:T.textMuted,border:`1px solid ${T.border}`,borderRadius:4,background:"transparent",flexShrink:0}}/>
+              <span style={{flex:1,fontSize:"0.78rem"}}>{eLabel(e)}</span>
+              <button onClick={()=>deleteEntry(i)} style={{background:"none",border:"none",color:T.danger,cursor:"pointer",fontSize:"1rem",padding:"0 2px",flexShrink:0}}>🗑️</button>
             </div>
           ))}
         </div>
       </>}
 
-      <div style={{fontSize:"0.71rem",color:T.textMuted,lineHeight:1.7,marginTop:6,padding:"6px 8px",background:T.even,borderRadius:7,border:`1px solid ${T.border}`}}>
+      <div style={{fontSize:"0.71rem",color:T.textMuted,lineHeight:1.7,marginTop:10,padding:"6px 8px",background:T.even,borderRadius:7,border:`1px solid ${T.border}`}}>
         <b style={{color:T.textSub}}>How templates work:</b><br/>
-        1. Log your typical day fully (meals, drinks, water, meds, readings)<br/>
-        2. Come to this tab → tap <b>💾 Save Today Here</b><br/>
-        3. Next day: tap <b>📥 Load into Today</b><br/>
-        4. Times auto-shift to match your wake-up Weight reading<br/>
-        5. Untick anything you're skipping today → tap Load
+        1. Add entries manually (＋) or save today's log (💾)<br/>
+        2. Next day: tap <b>📥 Load into Today</b><br/>
+        3. Times auto-shift to match your wake-up Weight reading<br/>
+        4. Untick anything you're skipping today → tap Load
       </div>
     </div>
   );
