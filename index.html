@@ -37,7 +37,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.5";
+const APP_VERSION="v4.6";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -254,8 +254,15 @@ function App(){
         if(th.exists())setTheme(th.val());
         if(tmpl.exists()){
           const t=tmpl.val();
-          // Merge saved templates with FD structure to preserve names/icons
-          const merged=FD.templates.map((fd,i)=>t[i]?{...fd,...t[i]}:fd);
+          // Merge: use Firebase entries only if they look valid (have type field)
+          const isValidEntries=arr=>Array.isArray(arr)&&arr.length>0&&arr[0]&&arr[0].type;
+          const merged=FD.templates.map((fd,i)=>{
+            if(!t[i])return fd;
+            // Keep FD entries if Firebase entries are empty or stale-formatted
+            const fbEntries=t[i].entries;
+            const entries=isValidEntries(fbEntries)?fbEntries:fd.entries;
+            return{...fd,...t[i],entries};
+          });
           setTemplates(merged);
         }
       }catch(e){console.error("Settings load:",e);}
@@ -695,12 +702,15 @@ function TemplatesPanel({templates,setTemplates,settings,todayEntries,onLoadTemp
 
   // ── Entry label inside panel ──────────────────────────────────────────────
   const eLabel=e=>{
-    if(e.type==="meal")       return`${e.mealType} · ${e.food}${e.qty?` · ${e.qty}${e.unit==="count"?"":e.unit}`:""}`;
-    if(e.type==="liquid")     return`${e.liquidType}${e.ml?` · ${e.ml}ml`:""}`;
-    if(e.type==="medical")    return`${e.readingType} · ${e.value||"—"}${e.unit?" "+e.unit:""}`;
-    if(e.type==="medication") return`${e.med} · ${e.timing}`;
-    if(e.type==="exercise")   return`${e.exType}${e.time?` · ${e.time}min`:""}${e.dist?` · ${e.dist}km`:""}`;
-    return e.type;
+    if(!e)return"—";
+    if(e.type==="meal")       return[e.mealType,e.food,e.qty?(e.qty+(e.unit==="count"?"":e.unit)):null].filter(Boolean).join(" · ");
+    if(e.type==="liquid")     return[e.liquidType||e.drinkType,e.ml?e.ml+"ml":null].filter(Boolean).join(" · ");
+    if(e.type==="medical")    return[e.readingType,(e.value||"—")+(e.unit?" "+e.unit:"")].filter(Boolean).join(" · ");
+    if(e.type==="medication") return[e.med,e.timing].filter(Boolean).join(" · ");
+    if(e.type==="exercise")   return[e.exType,e.time?e.time+"min":null,e.dist?e.dist+"km":null].filter(Boolean).join(" · ");
+    if(e.type==="water")      return[(e.waterTemp||"Water"),e.ml?e.ml+"ml":null].filter(Boolean).join(" · ");
+    if(e.type==="drinks")     return[e.drinkType||e.liquidType,e.ml?e.ml+"ml":null].filter(Boolean).join(" · ");
+    return e.type||"—";
   };
   const tIcon=t=>({meal:"🍽️",liquid:"💧",medical:"🩺",medication:"💊",exercise:"🏃"}[t]||"•");
 
@@ -770,6 +780,35 @@ function TemplatesPanel({templates,setTemplates,settings,todayEntries,onLoadTemp
       </div>
     </div>
   );
+
+  // ── Edit entry mode ────────────────────────────────────────────────────────
+  if(mode==="edit"&&editIdx!==null){
+    const editEntry=tpl.entries?.[editIdx];
+    if(!editEntry)return null;
+    const [editTime,setEditTime]=React.useState(fmt24(editEntry.timestamp));
+    const saveEdit=newData=>{
+      const ts=makeTS(today(),editTime||"08:00");
+      setTplEntries(prev=>prev.map((e,i)=>i===editIdx?{...e,...newData,timestamp:ts,date:"1970-01-01"}:e));
+      setMode("view");setEditIdx(null);
+    };
+    return(
+      <div>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+          <button onClick={()=>{setMode("view");setEditIdx(null);}} style={{background:"none",border:"none",color:T.accentBtn,cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:"0.82rem",padding:0}}>← Back</button>
+          <span style={{fontWeight:600,fontSize:"0.85rem"}}>Edit entry in {tpl.icon} {tpl.name}</span>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,padding:"8px 11px",background:T.accentBg,borderRadius:8,border:`1px solid ${T.accentBtn}44`,fontSize:"0.8rem",color:T.accent}}>
+          <span>⏱ Entry time:</span>
+          <input type="text" inputMode="numeric" value={editTime} onChange={e=>setEditTime(e.target.value)} maxLength={5} style={{width:60,fontSize:"0.82rem",padding:"3px 6px",fontFamily:"'DM Mono',monospace",background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:6,color:T.text}}/>
+        </div>
+        {editEntry.type==="meal"&&<MealEntry settings={settings} onAdd={saveEdit} T={T} initialData={editEntry}/>}
+        {editEntry.type==="liquid"&&<LiquidEntry settings={settings} onAdd={saveEdit} T={T} initialData={editEntry}/>}
+        {editEntry.type==="exercise"&&<ExerciseEntry settings={settings} onAdd={saveEdit} T={T} initialData={editEntry}/>}
+        {editEntry.type==="medical"&&<MedicalEntry settings={settings} onAdd={saveEdit} T={T} initialData={editEntry}/>}
+        {editEntry.type==="medication"&&<MedEntry settings={settings} onAdd={saveEdit} T={T} initialData={editEntry}/>}
+      </div>
+    );
+  }
 
   // ── Add entry mode ─────────────────────────────────────────────────────────
   if(mode==="add"){
@@ -842,13 +881,14 @@ function TemplatesPanel({templates,setTemplates,settings,todayEntries,onLoadTemp
               <span style={{fontSize:"0.85rem",flexShrink:0}}>{tIcon(e.type)}</span>
               <input type="text" inputMode="numeric" defaultValue={fmt24(e.timestamp)} onBlur={ev=>updateEntryTime(i,ev.target.value)} maxLength={5} style={{width:44,fontSize:"0.68rem",padding:"1px 3px",fontFamily:"'DM Mono',monospace",color:T.textMuted,border:`1px solid ${T.border}`,borderRadius:4,background:"transparent",flexShrink:0}}/>
               <span style={{flex:1,fontSize:"0.78rem"}}>{eLabel(e)}</span>
+              <button onClick={()=>{setEditIdx(i);setMode("edit");}} style={{background:"none",border:"none",color:T.textMuted,cursor:"pointer",fontSize:"0.9rem",padding:"0 2px",flexShrink:0}}>✏️</button>
               <button onClick={()=>deleteEntry(i)} style={{background:"none",border:"none",color:T.danger,cursor:"pointer",fontSize:"1rem",padding:"0 2px",flexShrink:0}}>🗑️</button>
             </div>
           ))}
         </div>
       </>}
 
-      {selIdx===0&&<button onClick={()=>{if(!confirm("Reset Home Day to built-in default entries?\n\nThis replaces all current entries."))return;setTplEntries(deepClone(FD.templates[0].entries));}} style={{width:"100%",padding:"7px",borderRadius:8,border:`1px solid ${T.accentBtn}66`,background:"transparent",color:T.accent,fontFamily:"inherit",fontSize:"0.78rem",cursor:"pointer",marginBottom:6}}>↺ Reset Home Day to default</button>}
+      <button onClick={()=>{if(!confirm(`Reset ${tpl.icon} ${tpl.name} to built-in default entries?\n\nThis replaces all current entries.`))return;setTplEntries(deepClone(FD.templates[selIdx].entries));}} style={{width:"100%",padding:"7px",borderRadius:8,border:`1px solid ${T.accentBtn}66`,background:"transparent",color:T.accent,fontFamily:"inherit",fontSize:"0.78rem",cursor:"pointer",marginBottom:6}}>↺ Reset {tpl.icon} {tpl.name} to default</button>
 
       <div style={{fontSize:"0.71rem",color:T.textMuted,lineHeight:1.7,marginTop:10,padding:"6px 8px",background:T.even,borderRadius:7,border:`1px solid ${T.border}`}}>
         <b style={{color:T.textSub}}>How templates work:</b><br/>
