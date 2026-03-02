@@ -44,7 +44,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.10";
+const APP_VERSION="v4.11";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -405,8 +405,8 @@ function App(){
       <div style={{flex:1,overflowY:"auto",padding:"12px 13px"}}>
         {page==="home"    &&<HomePage entries={entries} settings={settings} onAdd={addEntry} entryTime={entryTime} setEntryTime={setEntryTime} T={T}/>}
         {page==="manage"  &&<ManagePage entries={entries} settings={settings} onUpdate={updateEntry} onDelete={deleteEntry} T={T}/>}
-        {page==="reports" &&<ReportsPage entries={entries} settings={settings} T={T} clearAll={clearAll} setModal={setExportModal} onImport={handleImport}/>}
-        {page==="settings"&&<SettingsPage settings={settings} defaults={defaults} presets={presets} templates={templates} theme={theme} setSettings={saveSettings} setDefaults={saveDefaults} setPresets={savePresets} setTemplates={saveTemplates} setTheme={saveTheme} user={user} onSignOut={signOut} todayEntries={entries.filter(e=>e.date===today())} onLoadTemplate={addBatchEntries} T={T}/>}
+        {page==="reports" &&<ReportsPage entries={entries} settings={settings} T={T} setModal={setExportModal}/>}
+        {page==="settings"&&<SettingsPage settings={settings} defaults={defaults} presets={presets} templates={templates} theme={theme} setSettings={saveSettings} setDefaults={saveDefaults} setPresets={savePresets} setTemplates={saveTemplates} setTheme={saveTheme} user={user} onSignOut={signOut} todayEntries={entries.filter(e=>e.date===today())} onLoadTemplate={addBatchEntries} entries={entries} onImport={handleImport} clearAll={clearAll} setModal={setModal} T={T}/>}
       </div>
 
       <nav style={{display:"flex",background:T.navBg,borderTop:`1px solid ${T.border}`,flexShrink:0}}>
@@ -608,10 +608,9 @@ function EditEntry({entry,settings,onSave,onCancel,T}){
 // ═══════════════════════════════════════════════════════════════════════════════
 // REPORTS
 // ═══════════════════════════════════════════════════════════════════════════════
-function ReportsPage({entries,settings,T,clearAll,setModal,onImport}){
+function ReportsPage({entries,settings,T,setModal}){
   const[tab,setTab]=useState("view");const[vd,setVd]=useState(today());
   const[cd,setCd]=useState([today()]);const[ad,setAd]=useState(today());const[qr,setQr]=useState("");
-  const fileRef=useRef();
   const d30=Array.from({length:30},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);});
   const medPresets=settings.medicalPresets||FD.medicalPresets;
   const medNames=medPresets.map(p=>typeof p==="string"?p:p.name);
@@ -619,17 +618,59 @@ function ReportsPage({entries,settings,T,clearAll,setModal,onImport}){
   const allRows=[{key:"water",label:"Water"},{key:"drinks",label:"Drinks"},{key:"medication",label:"Medications"},{key:"exercise",label:"Exercise"},{key:"Breakfast",label:"Breakfast"},{key:"Lunch",label:"Lunch"},{key:"Snack",label:"Snack"},{key:"Dinner",label:"Dinner"},...medNames.map(n=>({key:n,label:n}))];
   const doExport=(csv,fn)=>setModal({filename:fn,csv});
   const applyQr=v=>{setQr(v);if(!v)return;const n=parseInt(v);setCd(Array.from({length:n},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);}));};
-  const handleFile=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>{onImport(ev.target.result);};r.readAsText(f);e.target.value="";};
-  return(<div><div style={{display:"flex",alignItems:"center",gap:4,marginBottom:10,flexWrap:"wrap"}}><span style={{fontWeight:700,fontSize:"0.92rem",marginRight:4}}>📊</span><button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} onClick={()=>fileRef.current.click()}>⬆️ Import</button><button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} onClick={()=>doExport(buildViewCSV(entries,tab==="view"?[vd]:cd,medPresets),`jivanlog-view-${today()}.csv`)}>⬇️ This View</button><button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} onClick={()=>doExport(buildAllCSV(entries),`jivanlog-all-${today()}.csv`)}>⬇️ All Data</button><div style={{flex:1}}/><button onClick={clearAll} style={{fontSize:"0.72rem",padding:"4px 8px",fontWeight:700,background:"none",border:`1px solid ${T.danger}88`,color:T.danger,borderRadius:8,cursor:"pointer",fontFamily:"inherit"}}>CLEAR ALL</button><input ref={fileRef} type="file" accept=".csv" style={{display:"none"}} onChange={handleFile}/></div><div style={{display:"flex",gap:5,marginBottom:9,alignItems:"center"}}><button className={`tbtn${tab==="view"?" on":""}`} onClick={()=>setTab("view")}>View</button><button className={`tbtn${tab==="compare"?" on":""}`} onClick={()=>setTab("compare")}>Compare</button>{tab==="view"&&<select value={vd} onChange={e=>setVd(e.target.value)} style={{flex:1,fontSize:"0.79rem",padding:"5px 7px"}}>{d30.map(d=><option key={d} value={d}>{fmtDate(d)}{d===today()?" ★":""}</option>)}</select>}{tab==="compare"&&<><select value={qr} onChange={e=>applyQr(e.target.value)} style={{flex:"0 0 auto",fontSize:"0.79rem",padding:"5px 6px",width:110}}><option value="">Quick…</option>{[2,3,4,5,6,7,8,9,10].map(n=><option key={n} value={n}>Last {n} days</option>)}</select><select value={ad} onChange={e=>setAd(e.target.value)} style={{flex:1,fontSize:"0.79rem",padding:"5px 6px"}}>{d30.map(d=><option key={d} value={d}>{fmtShort(d)}{d===today()?" ★":""}</option>)}</select><button onClick={()=>{setQr("");if(!cd.includes(ad)&&cd.length<10)setCd(p=>[...p,ad].sort().reverse());}} style={{flexShrink:0,padding:"5px 11px",fontSize:"1.1rem",fontWeight:700,lineHeight:1,border:"none",borderRadius:8,background:T.accentBtn,color:"#fff",cursor:"pointer"}}>＋</button></>}</div>{tab==="compare"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8,alignItems:"center"}}>{cd.map(d=>(<div key={d} style={{display:"flex",alignItems:"center",gap:3,background:T.border,borderRadius:20,padding:"2px 9px",fontSize:"0.73rem"}}><span>{fmtShort(d)}</span>{cd.length>1&&<button onClick={()=>{setQr("");setCd(p=>p.filter(x=>x!==d));}} style={{background:"none",border:"none",color:T.textMuted,cursor:"pointer",fontSize:"0.85rem",padding:"0 0 0 3px"}}>×</button>}</div>))}<button className="tbtn" style={{padding:"2px 9px",fontSize:"0.72rem"}} onClick={()=>{setQr("");setCd([today()]);}} >Clear</button></div>}{tab==="view"&&<div className="card"><div style={{fontWeight:600,fontSize:"0.82rem",marginBottom:8,color:T.accent}}>{fmtDate(vd)}</div>{allRows.map(({label,key})=>{const v=rpt(vd)[key]||"-";return(<div key={key} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}><span style={{color:T.textMuted,fontSize:"0.76rem",minWidth:100,flexShrink:0}}>{label}</span><span style={{textAlign:"right",flex:1,paddingLeft:6,color:v==="-"?T.border:T.text}}>{v}</span></div>);})}</div>}{tab==="compare"&&<div style={{overflowX:"auto"}}><table className="ctbl"><thead><tr><th style={{minWidth:90}}>Category</th>{cd.map(d=><th key={d}>{fmtShort(d)}</th>)}</tr></thead><tbody>{allRows.map(({label,key})=>{const vals=cd.map(d=>rpt(d)[key]||"-");return(<tr key={key}><td style={{color:T.textMuted,fontWeight:600}}>{label}</td>{vals.map((v,i)=><td key={i} style={{color:v==="-"?T.border:T.text}}>{v}</td>)}</tr>);})}</tbody></table></div>}</div>);
+  return(<div><div style={{display:"flex",alignItems:"center",gap:4,marginBottom:10,flexWrap:"wrap"}}><span style={{fontWeight:700,fontSize:"0.92rem",marginRight:4}}>📊 Reports</span><button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} onClick={()=>doExport(buildViewCSV(entries,tab==="view"?[vd]:cd,medPresets),`jivanlog-view-${today()}.csv`)}>⬇️ Export view</button></div><div style={{display:"flex",gap:5,marginBottom:9,alignItems:"center"}}><button className={`tbtn${tab==="view"?" on":""}`} onClick={()=>setTab("view")}>View</button><button className={`tbtn${tab==="compare"?" on":""}`} onClick={()=>setTab("compare")}>Compare</button>{tab==="view"&&<select value={vd} onChange={e=>setVd(e.target.value)} style={{flex:1,fontSize:"0.79rem",padding:"5px 7px"}}>{d30.map(d=><option key={d} value={d}>{fmtDate(d)}{d===today()?" ★":""}</option>)}</select>}{tab==="compare"&&<><select value={qr} onChange={e=>applyQr(e.target.value)} style={{flex:"0 0 auto",fontSize:"0.79rem",padding:"5px 6px",width:110}}><option value="">Quick…</option>{[2,3,4,5,6,7,8,9,10].map(n=><option key={n} value={n}>Last {n} days</option>)}</select><select value={ad} onChange={e=>setAd(e.target.value)} style={{flex:1,fontSize:"0.79rem",padding:"5px 6px"}}>{d30.map(d=><option key={d} value={d}>{fmtShort(d)}{d===today()?" ★":""}</option>)}</select><button onClick={()=>{setQr("");if(!cd.includes(ad)&&cd.length<10)setCd(p=>[...p,ad].sort().reverse());}} style={{flexShrink:0,padding:"5px 11px",fontSize:"1.1rem",fontWeight:700,lineHeight:1,border:"none",borderRadius:8,background:T.accentBtn,color:"#fff",cursor:"pointer"}}>＋</button></>}</div>{tab==="compare"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8,alignItems:"center"}}>{cd.map(d=>(<div key={d} style={{display:"flex",alignItems:"center",gap:3,background:T.border,borderRadius:20,padding:"2px 9px",fontSize:"0.73rem"}}><span>{fmtShort(d)}</span>{cd.length>1&&<button onClick={()=>{setQr("");setCd(p=>p.filter(x=>x!==d));}} style={{background:"none",border:"none",color:T.textMuted,cursor:"pointer",fontSize:"0.85rem",padding:"0 0 0 3px"}}>×</button>}</div>))}<button className="tbtn" style={{padding:"2px 9px",fontSize:"0.72rem"}} onClick={()=>{setQr("");setCd([today()]);}} >Clear</button></div>}{tab==="view"&&<div className="card"><div style={{fontWeight:600,fontSize:"0.82rem",marginBottom:8,color:T.accent}}>{fmtDate(vd)}</div>{allRows.map(({label,key})=>{const v=rpt(vd)[key]||"-";return(<div key={key} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}><span style={{color:T.textMuted,fontSize:"0.76rem",minWidth:100,flexShrink:0}}>{label}</span><span style={{textAlign:"right",flex:1,paddingLeft:6,color:v==="-"?T.border:T.text}}>{v}</span></div>);})}</div>}{tab==="compare"&&<div style={{overflowX:"auto"}}><table className="ctbl"><thead><tr><th style={{minWidth:90}}>Category</th>{cd.map(d=><th key={d}>{fmtShort(d)}</th>)}</tr></thead><tbody>{allRows.map(({label,key})=>{const vals=cd.map(d=>rpt(d)[key]||"-");return(<tr key={key}><td style={{color:T.textMuted,fontWeight:600}}>{label}</td>{vals.map((v,i)=><td key={i} style={{color:v==="-"?T.border:T.text}}>{v}</td>)}</tr>);})}</tbody></table></div>}</div>);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SETTINGS
 // ═══════════════════════════════════════════════════════════════════════════════
-const STABS=[["general","General"],["daytpl","📋 Day Templates"]];
+const STABS=[["general","General"],["daytpl","📋 Day Templates"],["backup","💾 Backup"]];
 const CTABS=[["food","🍽️ Food"],["drinks","☕ Drinks"],["exercise","🏃 Exercise"],["medical","🩺 Medical"],["meds","💊 Meds"]];
 
-function SettingsPage({settings,defaults,presets,templates,theme,setSettings,setDefaults,setPresets,setTemplates,setTheme,user,onSignOut,todayEntries,onLoadTemplate,T}){
+function BackupPanel({entries,onImport,clearAll,setModal,T}){
+  const fileRef=React.useRef();
+  const[fl,setFl]=React.useState(false);
+  const doExport=()=>{
+    const csv=buildAllCSV(entries);
+    const fn=`jivanlog-backup-${today()}.csv`;
+    setModal({filename:fn,csv});
+  };
+  const handleFile=e=>{
+    const f=e.target.files[0];if(!f)return;
+    const r=new FileReader();
+    r.onload=ev=>onImport(ev.target.result);
+    r.readAsText(f);
+    e.target.value="";
+    setFl(true);setTimeout(()=>setFl(false),2000);
+  };
+  return(<div>
+    <div className="slabel">💾 Backup & Restore</div>
+    <div className="card" style={{display:"flex",flexDirection:"column",gap:10}}>
+      <div style={{fontSize:"0.78rem",color:T.textSub,lineHeight:1.6}}>
+        <b>Export</b> saves all your entries as a CSV file. <b>Import</b> merges entries from a previously exported CSV — duplicates are skipped automatically.
+      </div>
+      <button onClick={doExport} style={{padding:"11px",borderRadius:9,border:"none",background:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:600,fontSize:"0.88rem",cursor:"pointer",textAlign:"left"}}>
+        ⬇️ Export all data to CSV
+      </button>
+      <button onClick={()=>fileRef.current.click()} style={{padding:"11px",borderRadius:9,border:`1px solid ${T.accentBtn}`,background:fl?T.ok:"transparent",color:fl?"#fff":T.accent,fontFamily:"inherit",fontWeight:600,fontSize:"0.88rem",cursor:"pointer",textAlign:"left",transition:"background 0.3s"}}>
+        {fl?"✔ Imported!":"⬆️ Import from CSV"}
+      </button>
+      <input ref={fileRef} type="file" accept=".csv" style={{display:"none"}} onChange={handleFile}/>
+    </div>
+    <div style={{marginTop:14}}>
+      <div className="slabel" style={{color:T.danger}}>⚠️ Danger Zone</div>
+      <div className="card" style={{border:`1px solid ${T.danger}44`}}>
+        <div style={{fontSize:"0.78rem",color:T.textSub,marginBottom:10,lineHeight:1.6}}>
+          Permanently deletes <b>all</b> your logged entries from the cloud. Export a backup first. This cannot be undone.
+        </div>
+        <button onClick={clearAll} style={{width:"100%",padding:"10px",borderRadius:9,border:`1px solid ${T.danger}`,background:"transparent",color:T.danger,fontFamily:"inherit",fontWeight:700,fontSize:"0.85rem",cursor:"pointer"}}>
+          🗑️ Clear all data
+        </button>
+      </div>
+    </div>
+  </div>);
+}
+function SettingsPage({settings,defaults,presets,templates,theme,setSettings,setDefaults,setPresets,setTemplates,setTheme,user,onSignOut,todayEntries,onLoadTemplate,entries,onImport,clearAll,setModal,T}){
   const[stab,setStab]=useState("general");const[ctab,setCtab]=useState("food");const[newItem,setNewItem]=useState("");const[applyFlash,setApplyFlash]=useState(false);
   // Default Config editor targets 'defaults'; Apply pushes defaults → settings
   const active=defaults;
@@ -683,6 +724,7 @@ function SettingsPage({settings,defaults,presets,templates,theme,setSettings,set
     
 
     {stab==="daytpl"&&<TemplatesPanel templates={templates} setTemplates={setTemplates} settings={settings} todayEntries={todayEntries} onLoadTemplate={onLoadTemplate} T={T}/>}
+    {stab==="backup"&&<BackupPanel entries={entries} onImport={onImport} clearAll={clearAll} setModal={setModal} T={T}/>}
   </div>);
 }
 
