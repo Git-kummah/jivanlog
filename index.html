@@ -44,7 +44,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.12";
+const APP_VERSION="v4.13";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -52,10 +52,11 @@ const LOGO_SVG=`data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http:/
 
 // ── CONSTANTS ─────────────────────────────────────────────────────────────────
 const FD={
-  foodCategories:[{name:"Airline Meal",note:""},{name:"Alfam Chicken",note:""},{name:"Almonds",note:""},{name:"Apple",note:""},{name:"Avial",note:""},{name:"Beans Thoran",note:""},{name:"Beetroot Thoran",note:""},{name:"Black Channa",note:""},{name:"Boiled Egg",note:""},{name:"Broccoli",note:""},{name:"Chapati",note:""},{name:"Coconut Chicken",note:""},{name:"Coconut Gravy",note:""},{name:"Coconut Masala",note:""},{name:"Curd",note:""},{name:"Curd + ACV",note:""},{name:"Dal",note:""},{name:"Fish (Plain)",note:""},{name:"Fish Curry",note:""},{name:"Fish Fry",note:""},{name:"Green Gram in Coconut",note:""},{name:"Haryali Chicken",note:""},{name:"Idli",note:""},{name:"Kabuli Channa",note:""},{name:"Karela-Onion Saute",note:""},{name:"Ladies Finger Saute",note:""},{name:"Lettuce Salad",note:""},{name:"Minced Salad",note:""},{name:"Mixed Veg in Coconut",note:""},{name:"Omelette",note:""},{name:"Orange",note:""},{name:"Palak Paneer",note:""},{name:"Paneer",note:""},{name:"Paneer Tikka",note:""},{name:"Pear",note:""},{name:"Poha",note:""},{name:"Pumpkin + Kabuli Channa",note:""},{name:"Pumpkin Seeds",note:""},{name:"Rajma",note:""},{name:"Red Amaranthus",note:""},{name:"Rice",note:""},{name:"Roti",note:""},{name:"Salad (Cucumber)",note:""},{name:"Salad (Lettuce+Broccoli)",note:""},{name:"Sambar",note:""},{name:"Soya Chunks",note:""},{name:"Stuffed Omelette",note:""},{name:"Upma",note:""},{name:"Walnuts",note:""},{name:"Yogurt / Curd",note:""}],
+  foodCategories:[{name:"Airline Meal",note:"",subTypes:[]},{name:"Alfam Chicken",note:"",subTypes:[]},{name:"Almonds",note:"",subTypes:[]},{name:"Apple",note:"",subTypes:[]},{name:"Avial",note:"",subTypes:[]},{name:"Beans Thoran",note:"",subTypes:[]},{name:"Beetroot Thoran",note:"",subTypes:[]},{name:"Black Channa",note:"",subTypes:[]},{name:"Boiled Egg",note:"",subTypes:[]},{name:"Broccoli",note:"",subTypes:[]},{name:"Chapati",note:"",subTypes:[]},{name:"Coconut Chicken",note:"",subTypes:[]},{name:"Coconut Gravy",note:"",subTypes:[]},{name:"Coconut Masala",note:"",subTypes:[]},{name:"Curd",note:"",subTypes:[]},{name:"Curd + ACV",note:"",subTypes:[]},{name:"Dal",note:"",subTypes:[]},{name:"Fish (Plain)",note:"",subTypes:[]},{name:"Fish Curry",note:"",subTypes:[]},{name:"Fish Fry",note:"",subTypes:[]},{name:"Green Gram in Coconut",note:"",subTypes:[]},{name:"Haryali Chicken",note:"",subTypes:[]},{name:"Idli",note:"",subTypes:[]},{name:"Kabuli Channa",note:"",subTypes:[]},{name:"Karela-Onion Saute",note:"",subTypes:[]},{name:"Ladies Finger Saute",note:"",subTypes:[]},{name:"Lettuce Salad",note:"",subTypes:[]},{name:"Minced Salad",note:"",subTypes:[]},{name:"Mixed Veg in Coconut",note:"",subTypes:[]},{name:"Omelette",note:"",subTypes:[]},{name:"Orange",note:"",subTypes:[]},{name:"Palak Paneer",note:"",subTypes:[]},{name:"Paneer",note:"",subTypes:[]},{name:"Paneer Tikka",note:"",subTypes:[]},{name:"Pear",note:"",subTypes:[]},{name:"Poha",note:"",subTypes:[]},{name:"Pumpkin + Kabuli Channa",note:"",subTypes:[]},{name:"Pumpkin Seeds",note:"",subTypes:[]},{name:"Rajma",note:"",subTypes:[]},{name:"Red Amaranthus",note:"",subTypes:[]},{name:"Rice",note:"",subTypes:[]},{name:"Roti",note:"",subTypes:[]},{name:"Salad (Cucumber)",note:"",subTypes:[]},{name:"Salad (Lettuce+Broccoli)",note:"",subTypes:[]},{name:"Sambar",note:"",subTypes:[]},{name:"Soya Chunks",note:"",subTypes:[]},{name:"Stuffed Omelette",note:"",subTypes:[]},{name:"Upma",note:"",subTypes:[]},{name:"Walnuts",note:"",subTypes:[]},{name:"Yogurt / Curd",note:"",subTypes:[]}],
   liquidTypes:["Warm Water","Plain Water","Cold Water","--------","Morning Drink","Morning Coffee","Milk Tea","Green Tea","Tulsi Mulethi Tea","Tulsi Ginger Tea","Black Coffee","Black Tea","Coconut Water","Buttermilk","Herbal Tea","Lemon Water","Turmeric Milk"],
   liquidNotes:{},
-  exerciseTypes:[{name:"Morning Walk",subTypes:[],metrics:["time"],note:""},{name:"Evening Walk",subTypes:[],metrics:["time"],note:""},{name:"Additional Walk",subTypes:[],metrics:["time"],note:""},{name:"Legs Up the Wall",subTypes:[],metrics:["time"],note:""},{name:"Legs Up the Pillow",subTypes:[],metrics:["time"],note:""},{name:"Seated Calf Raise",subTypes:[],metrics:["count"],note:""},{name:"Seated Ankle Circles",subTypes:[],metrics:["count"],note:""},{name:"Seated Knee Extension",subTypes:[],metrics:["count"],note:""},{name:"Short Arc Quad",subTypes:[],metrics:["count"],note:""},{name:"Straight Leg Raise",subTypes:[],metrics:["count"],note:""},{name:"Sole-to-Sole",subTypes:[],metrics:["count"],note:""},{name:"Running",subTypes:[],metrics:["distance","time"],note:""},{name:"Cycling",subTypes:[],metrics:["distance","time"],note:""}],
+  liquidSubTypes:{},
+  exerciseTypes:[{name:"Morning Walk",subTypes:[],metrics:["time"],note:"",subTypes:[]},{name:"Evening Walk",subTypes:[],metrics:["time"],note:"",subTypes:[]},{name:"Additional Walk",subTypes:[],metrics:["time"],note:"",subTypes:[]},{name:"Legs Up the Wall",subTypes:[],metrics:["time"],note:"",subTypes:[]},{name:"Legs Up the Pillow",subTypes:[],metrics:["time"],note:"",subTypes:[]},{name:"Seated Calf Raise",subTypes:[],metrics:["count"],note:"",subTypes:[]},{name:"Seated Ankle Circles",subTypes:[],metrics:["count"],note:"",subTypes:[]},{name:"Seated Knee Extension",subTypes:[],metrics:["count"],note:"",subTypes:[]},{name:"Short Arc Quad",subTypes:[],metrics:["count"],note:"",subTypes:[]},{name:"Straight Leg Raise",subTypes:[],metrics:["count"],note:"",subTypes:[]},{name:"Sole-to-Sole",subTypes:[],metrics:["count"],note:"",subTypes:[]},{name:"Running",subTypes:[],metrics:["distance","time"],note:"",subTypes:[]},{name:"Cycling",subTypes:[],metrics:["distance","time"],note:"",subTypes:[]}],
   // ── Medical presets now carry unit — fixes issue #1 ───────────────────────
   medicalPresets:[{name:"Sugar",unit:"mg/dL"},{name:"BP",unit:"Sys/Dia"},{name:"Weight",unit:"kg"},{name:"Height",unit:"cm"}],
   medications:["Glycomet 500 SR","Nexovas 10","Multi-Vitamins","Vitamin D (60K / Lumia)","Other"],
@@ -80,7 +81,7 @@ const sysDark =()=>window.matchMedia?.("(prefers-color-scheme:dark)").matches;
 // ── Food item helpers — handles both old string format and new {name,note} ────
 const foodName=f=>typeof f==="string"?f:(f?.name||"");
 const foodNote=f=>typeof f==="string"?"":( f?.note||"");
-const foodItems=arr=>(arr||[]).map(f=>typeof f==="string"?{name:f,note:""}:f);
+const foodItems=arr=>(arr||[]).map(f=>typeof f==="string"?{name:f,note:"",subTypes:[]}:{subTypes:[],...f});
 
 const autoMeal=()=>{const m=new Date().getHours()*60+new Date().getMinutes();return m<705?"Breakfast":m<945?"Lunch":m<1125?"Snack":"Dinner";};
 const makeTS  =(dateStr,timeStr)=>{const[y,mo,d]=dateStr.split("-").map(Number);const[h,mi]=(timeStr||"00:00").split(":").map(Number);return new Date(y,mo-1,d,h,mi,0,0).toISOString();};
@@ -116,8 +117,8 @@ function buildAllCSV(entries){
   const hdr=["ID","Date","Time","Type","SubType","Detail1","Detail2","Detail3","Unit","Notes"];
   const rows=[...entries].sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)).map(e=>{
     let t="",st="",d1="",d2="",d3="",u="",n=e.notes||"";
-    if(e.type==="meal")      {t="Meal";st=e.mealType;d1=e.food;d2=e.qty;u=e.unit;}
-    if(e.type==="liquid")    {t="Drinks";st=e.liquidType||"";d1=e.ml||"";u="ml";}
+    if(e.type==="meal")      {t="Meal";st=e.mealType;d1=e.food+(e.foodSubType?" · "+e.foodSubType:"");d2=e.qty;u=e.unit;}
+    if(e.type==="liquid")    {t="Drinks";st=(e.liquidType||"")+(e.liquidSubType?" · "+e.liquidSubType:"");d1=e.ml||"";u="ml";}
     if(e.type==="exercise")  {t="Exercise";st=e.exType;d1=e.subType||"";d2=e.dist||"";d3=e.time||e.count||"";u=e.dist?"km":e.count?"count":"min";}
     if(e.type==="liquid" && ["Warm Water","Plain Water","Cold Water"].includes(e.liquidType))     {t="Water";st=e.waterTemp||"";d1=e.ml;u="ml";}
     if(e.type==="medical")   {t="Medical";st=e.readingType;d1=e.value;u=e.unit||"";}
@@ -248,13 +249,13 @@ function App(){
           const s=sett.val();
           // Normalise foodCategories: old string[] → new {name,note}[]
           if(s.foodCategories&&typeof s.foodCategories[0]==="string")
-            s.foodCategories=s.foodCategories.map(n=>({name:n,note:""}));
+            s.foodCategories=s.foodCategories.map(n=>({name:n,note:"",subTypes:[]}));
           setSettings(s);
         }
         if(defs.exists()){
           const d=defs.val();
           if(d.foodCategories&&typeof d.foodCategories[0]==="string")
-            d.foodCategories=d.foodCategories.map(n=>({name:n,note:""}));
+            d.foodCategories=d.foodCategories.map(n=>({name:n,note:"",subTypes:[]}));
           setDefaults(d);
         }
         if(th.exists())setTheme(th.val());
@@ -436,28 +437,35 @@ const TimeInput=({value,onChange,T})=>(
 );
 
 function MealEntry({settings,onAdd,entryTime,setEntryTime,T}){
-  const[mt,setMt]=useState(autoMeal);const[food,setFood]=useState("");const[qty,setQty]=useState("");const[unit,setUnit]=useState("g");const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
+  const[mt,setMt]=useState(autoMeal);const[food,setFood]=useState("");const[foodSub,setFoodSub]=useState("");const[qty,setQty]=useState("");const[unit,setUnit]=useState("g");const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
   const foods=foodItems(settings.foodCategories||FD.foodCategories);
-  const onFoodChange=name=>{setFood(name);const fi=foods.find(f=>f.name===name);if(fi&&fi.note)setNotes(fi.note);else setNotes("");};
-  const save=()=>{if(!food||!qty)return;onAdd({type:"meal",mealType:mt,food,qty,unit,notes});setFood("");setQty("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
-  return(<div className="card"><div className="slabel">🍽️ Meal</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={mt} onChange={e=>setMt(e.target.value)} style={{flex:"0 0 95px"}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select><select value={food} onChange={e=>onFoodChange(e.target.value)} style={{flex:"2 1 80px",minWidth:0}}><option value="">Food item…</option>{[...foods].sort((a,b)=>a.name.localeCompare(b.name)).map(f=><option key={f.name} value={f.name}>{f.name}</option>)}</select><input type="number" placeholder="Qty" value={qty} onChange={e=>setQty(e.target.value)} style={{flex:"1 0 62px",width:62}}/><select value={unit} onChange={e=>setUnit(e.target.value)} style={{flex:"1 0 70px",width:70}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select></div><div style={{display:"flex",gap:6,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
+  const foodObj=foods.find(f=>f.name===food);
+  const hasFoodSub=foodObj?.subTypes?.length>0;
+  const onFoodChange=name=>{setFood(name);setFoodSub("");const fi=foods.find(f=>f.name===name);setNotes(fi?.note||"");};
+  const save=()=>{if(!food||!qty)return;onAdd({type:"meal",mealType:mt,food,foodSubType:foodSub,qty,unit,notes});setFood("");setFoodSub("");setQty("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
+  return(<div className="card"><div className="slabel">🍽️ Meal</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={mt} onChange={e=>setMt(e.target.value)} style={{flex:"0 0 95px"}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select><select value={food} onChange={e=>onFoodChange(e.target.value)} style={{flex:"2 1 80px",minWidth:0}}><option value="">Food item…</option>{[...foods].sort((a,b)=>a.name.localeCompare(b.name)).map(f=><option key={f.name} value={f.name}>{f.name}</option>)}</select>{hasFoodSub&&<select value={foodSub} onChange={e=>setFoodSub(e.target.value)} style={{flex:"1 1 90px",minWidth:0}}><option value="">Sub-type…</option>{foodObj.subTypes.map(s=><option key={s}>{s}</option>)}</select>}<input type="number" placeholder="Qty" value={qty} onChange={e=>setQty(e.target.value)} style={{flex:"1 0 62px",width:62}}/><select value={unit} onChange={e=>setUnit(e.target.value)} style={{flex:"1 0 70px",width:70}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select></div><div style={{display:"flex",gap:6,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
 }
 function LiquidEntry({settings,onAdd,entryTime,setEntryTime,T}){
   const allTypes=(settings.liquidTypes||FD.liquidTypes||[]);
   const liqNotes=settings.liquidNotes||FD.liquidNotes||{};
+  const liqSubTypes=settings.liquidSubTypes||FD.liquidSubTypes||{};
   const[liqType,setLiqType]=useState("Warm Water");
+  const[liqSub,setLiqSub]=useState("");
   const[ml,setMl]=useState("");
   const[notes,setNotes]=useState("");
   const[fl,setFl]=useState(false);
   const add=amt=>setMl(s=>String((+s||0)+amt));
-  const onTypeChange=t=>{setLiqType(t);setNotes(liqNotes[t]||"");};
-  const save=()=>{if(!ml||+ml<=0)return;onAdd({type:"liquid",liquidType:liqType,ml:+ml,notes});setMl("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
+  const curSubTypes=liqSubTypes[liqType]||[];
+  const hasLiqSub=curSubTypes.length>0;
+  const onTypeChange=t=>{setLiqType(t);setLiqSub("");setNotes(liqNotes[t]||"");};
+  const save=()=>{if(!ml||+ml<=0)return;onAdd({type:"liquid",liquidType:liqType,liquidSubType:liqSub,ml:+ml,notes});setMl("");setLiqSub("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
   return(<div className="card"><div className="slabel">💧 Liquids</div>
     {/* Row 1: dropdown | quick-add buttons | qty */}
     <div style={{display:"flex",gap:5,marginBottom:7,alignItems:"center",flexWrap:"wrap"}}>
       <select value={liqType} onChange={e=>onTypeChange(e.target.value)} style={{flex:"2 1 110px",minWidth:0}}>
         {allTypes.map((t,i)=>t==="--------"?<option key={i} disabled>── Drinks ──</option>:<option key={t}>{t}</option>)}
       </select>
+      {hasLiqSub&&<select value={liqSub} onChange={e=>setLiqSub(e.target.value)} style={{flex:"1 1 90px",minWidth:0}}><option value="">Sub-type…</option>{curSubTypes.map(s=><option key={s}>{s}</option>)}</select>}
       {[500,250,100,50].map(amt=><button key={amt} className="wbtn" onClick={()=>add(amt)} style={{padding:"5px 7px",fontSize:"0.78rem",flex:"0 0 auto"}}>{"+"+amt}</button>)}
       <input type="number" placeholder="ml" value={ml} onChange={e=>setMl(e.target.value)} style={{flex:"0 0 58px",textAlign:"center"}}/>
     </div>
@@ -509,8 +517,8 @@ function TLE({e,settings,T}){
   // Enrich medical unit from presets if not saved on entry (handles old Firebase entries)
   const resolvedUnit=e.unit||(e.type==="medical"&&settings?((settings.medicalPresets||FD.medicalPresets||[]).find(p=>(p.name||p)===e.readingType)||{}).unit||"":"");
   let m="";
-  if(e.type==="meal")       m=`${e.mealType} · ${e.food} · ${e.unit==="count"?e.qty:e.qty+e.unit}`;
-  if(e.type==="liquid")     m=`${e.liquidType}${e.ml?" · "+e.ml+"ml":""}`;
+  if(e.type==="meal")       m=`${e.mealType} · ${e.food}${e.foodSubType?" · "+e.foodSubType:""} · ${e.unit==="count"?e.qty:e.qty+e.unit}`;
+  if(e.type==="liquid")     m=`${e.liquidType}${e.liquidSubType?" · "+e.liquidSubType:""}${e.ml?" · "+e.ml+"ml":""}`;
   if(e.type==="exercise")   {m=e.exType;if(e.subType)m+=` · ${e.subType}`;if(e.dist)m+=` · ${e.dist}km`;if(e.time)m+=` · ${e.time}min`;if(e.count)m+=` · x${e.count}`;}
   // water is handled by the liquid branch above (shows "Warm Water · 600ml")
   if(e.type==="medical")    m=`${e.readingType} · ${e.value}${resolvedUnit?" "+resolvedUnit:""}`;
@@ -530,8 +538,8 @@ function ManagePage({entries,settings,onUpdate,onDelete,T}){
 function ManageRow({e,onEdit,onDelete,T}){
   const ic={meal:"🍽️",liquid:"💧",drinks:"☕",exercise:"🏃",water:"💧",medical:"🩺",medication:"💊"};
   let m="";
-  if(e.type==="meal")       m=`${e.mealType} · ${e.food} · ${e.unit==="count"?e.qty:e.qty+e.unit}`;
-  if(e.type==="liquid")     m=`${e.liquidType}${e.ml?" · "+e.ml+"ml":""}`;
+  if(e.type==="meal")       m=`${e.mealType} · ${e.food}${e.foodSubType?" · "+e.foodSubType:""} · ${e.unit==="count"?e.qty:e.qty+e.unit}`;
+  if(e.type==="liquid")     m=`${e.liquidType}${e.liquidSubType?" · "+e.liquidSubType:""}${e.ml?" · "+e.ml+"ml":""}`;
   if(e.type==="exercise")   {m=e.exType;if(e.subType)m+=` · ${e.subType}`;if(e.dist)m+=` · ${e.dist}km`;if(e.time)m+=` · ${e.time}min`;if(e.count)m+=` · x${e.count}`;}
   if(e.type==="liquid" && ["Warm Water","Plain Water","Cold Water"].includes(e.liquidType))      m=`${e.waterTemp||""} ${e.ml}ml`.trim();
   if(e.type==="medical")    m=`${e.readingType} · ${e.value}${e.unit?" "+e.unit:""}`;
@@ -558,16 +566,22 @@ function EditEntry({entry,settings,onSave,onCancel,T}){
         <input type="text" inputMode="numeric" value={editTime} onChange={e=>{let v=e.target.value.replace(/[^0-9:]/g,"");if(v.length===4&&!v.includes(":"))v=v.slice(0,2)+":"+v.slice(2);setEditTime(v.slice(0,5));}} placeholder="HH:MM" maxLength={5} style={{flex:"0 0 72px",fontSize:"0.8rem",padding:"5px 7px",fontFamily:"'DM Mono',monospace"}}/>
       </div>
       {d.type==="meal"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}>
+        {(()=>{const foods=foodItems(settings.foodCategories||FD.foodCategories);const fo=foods.find(f=>f.name===d.food);return(<>
         <select value={d.mealType} onChange={e=>set("mealType",e.target.value)} style={{width:95}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select>
-        <select value={d.food} onChange={e=>set("food",e.target.value)} style={{flex:"2 1 80px"}}><option value="">Food…</option>{[...foodItems(settings.foodCategories||FD.foodCategories)].sort((a,b)=>a.name.localeCompare(b.name)).map(f=><option key={f.name} value={f.name}>{f.name}</option>)}</select>
+        <select value={d.food} onChange={e=>{set("food",e.target.value);set("foodSubType","");}} style={{flex:"2 1 80px"}}><option value="">Food…</option>{[...foods].sort((a,b)=>a.name.localeCompare(b.name)).map(f=><option key={f.name} value={f.name}>{f.name}</option>)}</select>
+        {fo?.subTypes?.length>0&&<select value={d.foodSubType||""} onChange={e=>set("foodSubType",e.target.value)} style={{flex:"1 1 90px"}}><option value="">Sub-type…</option>{fo.subTypes.map(s=><option key={s}>{s}</option>)}</select>}
         <input type="number" value={d.qty} onChange={e=>set("qty",e.target.value)} style={{width:58}}/>
         <select value={d.unit} onChange={e=>set("unit",e.target.value)} style={{width:66}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select>
         <input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100%"}}/>
+        </>);})()}
       </div>}
       {d.type==="liquid"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}>
-        <select value={d.liquidType||""} onChange={e=>set("liquidType",e.target.value)} style={{flex:"2 1 130px"}}>{liqTypes.map(t=><option key={t}>{t}</option>)}</select>
+        {(()=>{const liqSubs=(settings.liquidSubTypes||FD.liquidSubTypes||{})[d.liquidType]||[];return(<>
+        <select value={d.liquidType||""} onChange={e=>{set("liquidType",e.target.value);set("liquidSubType","");}} style={{flex:"2 1 130px"}}>{liqTypes.map(t=><option key={t}>{t}</option>)}</select>
+        {liqSubs.length>0&&<select value={d.liquidSubType||""} onChange={e=>set("liquidSubType",e.target.value)} style={{flex:"1 1 90px"}}><option value="">Sub-type…</option>{liqSubs.map(s=><option key={s}>{s}</option>)}</select>}
         <input type="number" placeholder="ml" value={d.ml||""} onChange={e=>set("ml",e.target.value)} style={{width:72}}/>
         <input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100%"}}/>
+        </>);})()}
       </div>}
       {d.type==="exercise"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}>
         <select value={d.exType} onChange={e=>set("exType",e.target.value)} style={{flex:"1 1 130px"}}>{(settings.exerciseTypes||FD.exerciseTypes).map(e=><option key={e.name}>{e.name}</option>)}</select>
@@ -662,14 +676,10 @@ function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,
   const active=defaults;
   const updateActive=updater=>setDefaults(typeof updater==="function"?updater(defaults):updater);
   const applyToSettings=()=>{if(!confirm("Apply Default config to active settings?\n\nEntry forms will immediately use this config."))return;setSettings(deepClone(defaults));setApplyFlash(true);setTimeout(()=>setApplyFlash(false),1800);};
-  const addItem=key=>{if(!newItem.trim())return;const val=key==="foodCategories"?{name:newItem.trim(),note:""}:newItem.trim();updateActive(p=>({...p,[key]:[...(p[key]||[]),val]}));setNewItem("");};
+  const addItem=key=>{if(!newItem.trim())return;const val=key==="foodCategories"?{name:newItem.trim(),note:"",subTypes:[]}:newItem.trim();updateActive(p=>({...p,[key]:[...(p[key]||[]),val]}));setNewItem("");};
   const removeItem=(key,item)=>updateActive(p=>({...p,[key]:(p[key]||[]).filter(x=>key==="foodCategories"?foodName(x)!==foodName(item):x!==item)}));
-  const updateLiquidNote=(name,note)=>updateActive(p=>({...p,liquidNotes:{...(p.liquidNotes||{}), [name]:note}}));
-  const updateFoodNote=(name,note)=>updateActive(p=>{
-    const fi=foodItems(p.foodCategories||[]);
-    const updated=fi.map(f=>f.name===name?{...f,note}:f);
-    return{...p,foodCategories:updated};
-  });
+  const updateDrink=(field,val)=>updateActive(p=>({...p,[field==='notes'?'liquidNotes':'liquidSubTypes']:val}));
+  const updateFood=newArr=>updateActive(p=>({...p,foodCategories:newArr}));
   const addMedPreset=(name,unit)=>{if(!name.trim())return;const ex=active?.medicalPresets||[];if(ex.some(p=>(typeof p==="string"?p:p.name)===name.trim()))return;updateActive(p=>({...p,medicalPresets:[...(p.medicalPresets||FD.medicalPresets),{name:name.trim(),unit:unit.trim()}]}));};
   const removeMedPreset=name=>updateActive(p=>({...p,medicalPresets:(p.medicalPresets||[]).filter(x=>(typeof x==="string"?x:x.name)!==name)}));
   return(<div>
@@ -701,8 +711,8 @@ function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,
       <div style={{display:"flex",gap:4,marginBottom:9,overflowX:"auto"}}>
         {CTABS.map(([k,l])=><button key={k} onClick={()=>{setCtab(k);setNewItem("");}} className={`tbtn${ctab===k?" on":""}`} style={{flexShrink:0,fontSize:"0.75rem"}}>{l}</button>)}
       </div>
-      {ctab==="food"&&<><FoodList items={active.foodCategories||FD.foodCategories} onRemove={name=>removeItem("foodCategories",name)} onUpdateNote={(name,note)=>updateFoodNote(name,note)} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("foodCategories")} T={T}/></>}
-      {ctab==="drinks"&&<><DrinkList types={active.liquidTypes||FD.liquidTypes} notes={active.liquidNotes||FD.liquidNotes||{}} onRemove={item=>removeItem("liquidTypes",item)} onUpdateNote={(n,v)=>updateLiquidNote(n,v)} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("liquidTypes")} T={T}/></>}
+      {ctab==="food"&&<FoodSetting items={active.foodCategories||FD.foodCategories} onRemove={name=>removeItem("foodCategories",name)} onUpdate={updateFood} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("foodCategories")} T={T}/>}
+      {ctab==="drinks"&&<DrinkSetting types={active.liquidTypes||FD.liquidTypes} notes={active.liquidNotes||FD.liquidNotes||{}} subTypes={active.liquidSubTypes||FD.liquidSubTypes||{}} onRemove={item=>removeItem("liquidTypes",item)} onUpdate={updateDrink} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("liquidTypes")} T={T}/>}
       {ctab==="exercise"&&<ExerciseSetting types={active.exerciseTypes||FD.exerciseTypes} onChange={v=>updateActive(p=>({...p,exerciseTypes:v}))} T={T}/>}
       {ctab==="medical"&&<MedicalPresetSetting presets={active.medicalPresets||FD.medicalPresets} onAdd={addMedPreset} onRemove={removeMedPreset} T={T}/>}
       {ctab==="meds"&&<EList items={active.medications||FD.medications} onRemove={item=>removeItem("medications",item)} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("medications")} T={T}/>}
@@ -726,51 +736,72 @@ function MedicalPresetSetting({presets,onAdd,onRemove,T}){
   const[nm,setNm]=useState("");const[ut,setUt]=useState("");
   return(<div className="card"><div style={{display:"flex",gap:6,marginBottom:9,alignItems:"center"}}><input placeholder="Name (e.g. SpO2)" value={nm} onChange={e=>setNm(e.target.value)} onKeyDown={e=>e.key==="Enter"&&(onAdd(nm,ut),setNm(""),setUt(""))} style={{flex:2}}/><input placeholder="Unit (e.g. %)" value={ut} onChange={e=>setUt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&(onAdd(nm,ut),setNm(""),setUt(""))} style={{flex:1}}/><button onClick={()=>{onAdd(nm,ut);setNm("");setUt("");}} style={{flexShrink:0,padding:"7px 12px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div>{(presets||[]).map(p=>{const nm2=typeof p==="string"?p:p.name;const ut2=typeof p==="string"?"":p.unit;return(<div key={nm2} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}><span>{nm2}{ut2&&<span style={{color:T.textMuted,fontSize:"0.75rem",marginLeft:6}}>({ut2})</span>}</span><button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(nm2)}>🗑️</button></div>);})}</div>);
 }
-function DrinkList({types,notes,onRemove,onUpdateNote,newItem,setNew,onAdd,T}){
-  const drinks=(types||[]).filter(t=>t!=="--------");
-  return(<div className="card">
-    <div style={{display:"flex",gap:7,marginBottom:9}}>
-      <input placeholder="Add drink type…" value={newItem} onChange={e=>setNew(e.target.value)} onKeyDown={e=>e.key==="Enter"&&onAdd()}/>
-      <button onClick={onAdd} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button>
-    </div>
-    {[...drinks].sort().map(t=>(
-      <div key={t} style={{borderBottom:`1px solid ${T.border}`,paddingBottom:6,marginBottom:6}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:3}}>
-          <span style={{fontSize:"0.84rem",fontWeight:500}}>{t}</span>
-          <button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(t)}>🗑️</button>
-        </div>
-        <input placeholder="Default note (optional)"
-          value={notes[t]||""}
-          onChange={e=>onUpdateNote(t,e.target.value)}
-          style={{width:"100%",fontSize:"0.76rem",padding:"4px 7px",color:T.textSub}}
-        />
-      </div>
-    ))}
-  </div>);
-}
-function FoodList({items,onRemove,onUpdateNote,newItem,setNew,onAdd,T}){
+function FoodSetting({items,onRemove,onUpdate,newItem,setNew,onAdd,T}){
+  const[ei,setEi]=useState(null);
   const fi=foodItems(items);
-  return(<div className="card">
-    <div style={{display:"flex",gap:7,marginBottom:9}}>
-      <input placeholder="Add food item…" value={newItem} onChange={e=>setNew(e.target.value)} onKeyDown={e=>e.key==="Enter"&&onAdd()}/>
-      <button onClick={onAdd} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button>
+  const upd=(name,patch)=>onUpdate(fi.map(f=>f.name===name?{...f,...patch}:f));
+  const addSub=(name,s)=>{if(!s.trim())return;const f=fi.find(x=>x.name===name);upd(name,{subTypes:[...(f.subTypes||[]),s.trim()].sort()});};
+  const remSub=(name,s)=>{const f=fi.find(x=>x.name===name);upd(name,{subTypes:(f.subTypes||[]).filter(v=>v!==s)});};
+  return(<div>
+    <div className="card" style={{marginBottom:7}}>
+      <div style={{display:"flex",gap:7}}>
+        <input placeholder="Add food item..." value={newItem} onChange={e=>setNew(e.target.value)} onKeyDown={e=>e.key==="Enter"&&onAdd()}/>
+        <button onClick={onAdd} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button>
+      </div>
     </div>
     {[...fi].sort((a,b)=>a.name.localeCompare(b.name)).map(item=>(
-      <div key={item.name} style={{borderBottom:`1px solid ${T.border}`,paddingBottom:6,marginBottom:6}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:3}}>
-          <span style={{fontSize:"0.84rem",fontWeight:500}}>{item.name}</span>
-          <button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(item.name)}>🗑️</button>
+      <div key={item.name} className="card" style={{marginBottom:7}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+          <span style={{fontWeight:600,fontSize:"0.85rem"}}>{item.name}</span>
+          <div style={{display:"flex",gap:5}}>
+            <button className="ibtn" onClick={()=>setEi(ei===item.name?null:item.name)}>{ei===item.name?"✖️":"✏️"}</button>
+            <button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(item.name)}>🗑️</button>
+          </div>
         </div>
-        <input
-          placeholder="Default note (optional, e.g. 100g + salad mix)"
-          value={item.note||""}
-          onChange={e=>onUpdateNote(item.name,e.target.value)}
-          style={{width:"100%",fontSize:"0.76rem",padding:"4px 7px",color:T.textSub}}
-        />
+        <input placeholder="Default note (optional)" value={item.note||""} onChange={e=>upd(item.name,{note:e.target.value})} style={{width:"100%",fontSize:"0.76rem",padding:"4px 7px",marginBottom:ei===item.name?6:0,color:T.textSub}}/>
+        {ei===item.name&&<div style={{marginTop:5}}>
+          <div className="slabel">Sub-types</div>
+          {(item.subTypes||[]).map(s=>(<div key={s} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:"0.8rem",padding:"4px 0",borderBottom:`1px solid ${T.border}`}}><span>{s}</span><button className="ibtn" style={{color:T.danger}} onClick={()=>remSub(item.name,s)}>🗑️</button></div>))}
+          <AddInline placeholder="Add sub-type..." onAdd={s=>addSub(item.name,s)} T={T}/>
+        </div>}
       </div>
     ))}
   </div>);
 }
+function DrinkSetting({types,notes,subTypes,onRemove,onUpdate,newItem,setNew,onAdd,T}){
+  const[ei,setEi]=useState(null);
+  const drinks=(types||[]).filter(t=>t!=="--------");
+  const updNote=(name,note)=>onUpdate("notes",{...notes,[name]:note});
+  const updSubs=(name,subs)=>onUpdate("subTypes",{...subTypes,[name]:subs});
+  const addSub=(name,s)=>{if(!s.trim())return;updSubs(name,[...((subTypes||{})[name]||[]),s.trim()].sort());};
+  const remSub=(name,s)=>updSubs(name,((subTypes||{})[name]||[]).filter(v=>v!==s));
+  return(<div>
+    <div className="card" style={{marginBottom:7}}>
+      <div style={{display:"flex",gap:7}}>
+        <input placeholder="Add drink type…" value={newItem} onChange={e=>setNew(e.target.value)} onKeyDown={e=>e.key==="Enter"&&onAdd()}/>
+        <button onClick={onAdd} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button>
+      </div>
+    </div>
+    {[...drinks].sort().map(name=>(
+      <div key={name} className="card" style={{marginBottom:7}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
+          <span style={{fontWeight:600,fontSize:"0.85rem"}}>{name}</span>
+          <div style={{display:"flex",gap:5}}>
+            <button className="ibtn" onClick={()=>setEi(ei===name?null:name)}>{ei===name?"✖️":"✏️"}</button>
+            <button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(name)}>🗑️</button>
+          </div>
+        </div>
+        <input placeholder="Default note (optional)" value={(notes||{})[name]||""} onChange={e=>updNote(name,e.target.value)} style={{width:"100%",fontSize:"0.76rem",padding:"4px 7px",marginBottom:ei===name?6:0,color:T.textSub}}/>
+        {ei===name&&<div style={{marginTop:5}}>
+          <div className="slabel">Sub-types</div>
+          {((subTypes||{})[name]||[]).map(s=>(<div key={s} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:"0.8rem",padding:"4px 0",borderBottom:`1px solid ${T.border}`}}><span>{s}</span><button className="ibtn" style={{color:T.danger}} onClick={()=>remSub(name,s)}>🗑️</button></div>))}
+          <AddInline placeholder="Add sub-type…" onAdd={s=>addSub(name,s)} T={T}/>
+        </div>}
+      </div>
+    ))}
+  </div>);
+}
+
 function EList({items,onRemove,newItem,setNew,onAdd,T}){
   return(<div className="card"><div style={{display:"flex",gap:7,marginBottom:9}}><input placeholder="Add new item…" value={newItem} onChange={e=>setNew(e.target.value)} onKeyDown={e=>e.key==="Enter"&&onAdd()}/><button onClick={onAdd} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div>{[...(items||[])].sort().map(item=>(<div key={item} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}><span>{item}</span><button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(item)}>🗑️</button></div>))}</div>);
 }
