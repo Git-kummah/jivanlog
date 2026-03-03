@@ -44,7 +44,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.13";
+const APP_VERSION="v4.14";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -300,6 +300,34 @@ function App(){
     setTimeout(async()=>{if(user)try{await dbDel(user.uid,"entries");}catch(e){}},500);
   },[entries,user]);
 
+  const onClearAll=useCallback(async()=>{
+    downloadCSV(buildAllCSV(entries),`jivanlog-backup-full-${today()}.csv`);
+    if(user){try{
+      await Promise.all([dbDel(user.uid,"entries"),dbDel(user.uid,"settings"),dbDel(user.uid,"defaults"),dbDel(user.uid,"theme")]);
+      setSettings(deepClone(FD));setDefaults(deepClone(FD));setTheme("dark");
+    }catch(e){console.error(e);}}
+  },[entries,user]);
+
+  const onClearEntries=useCallback(async()=>{
+    if(user)try{await dbDel(user.uid,"entries");}catch(e){}
+  },[user]);
+
+  const onClearConfig=useCallback(async section=>{
+    const keyMap={food:["foodCategories"],drinks:["liquidTypes","liquidNotes","liquidSubTypes"],exercise:["exerciseTypes"],medical:["medicalPresets"],meds:["medications"]};
+    const keys=keyMap[section]||[];
+    const patch={};keys.forEach(k=>{patch[k]=deepClone(FD[k]);});
+    const newDef={...defaults,...patch};const newSet={...settings,...patch};
+    setDefaults(newDef);setSettings(newSet);
+    if(user){try{await Promise.all([dbSet(user.uid,"defaults",newDef),dbSet(user.uid,"settings",newSet)]);}catch(e){}}
+  },[defaults,settings,user]);
+
+  const onImportConfig=useCallback(async cfg=>{
+    const newDef={...defaults,...cfg};const newSet={...settings,...cfg};
+    setDefaults(newDef);setSettings(newSet);
+    if(user){try{await Promise.all([dbSet(user.uid,"defaults",newDef),dbSet(user.uid,"settings",newSet)]);}catch(e){}}
+    alert("✓ Config imported successfully.");
+  },[defaults,settings,user]);
+
   const handleImport=useCallback(async csvText=>{
     try{
       const imported=parseAndMergeCSV(csvText,entries);
@@ -373,7 +401,7 @@ function App(){
         {page==="home"    &&<HomePage entries={entries} settings={settings} onAdd={addEntry} entryTime={entryTime} setEntryTime={setEntryTime} T={T}/>}
         {page==="manage"  &&<ManagePage entries={entries} settings={settings} onUpdate={updateEntry} onDelete={deleteEntry} T={T}/>}
         {page==="reports" &&<ReportsPage entries={entries} settings={settings} T={T}/>}
-        {page==="settings"&&<SettingsPage settings={settings} defaults={defaults} theme={theme} setSettings={saveSettings} setDefaults={saveDefaults} setTheme={saveTheme} user={user} onSignOut={signOut} entries={entries} onImport={handleImport} clearAll={clearAll} T={T}/>}
+        {page==="settings"&&<SettingsPage settings={settings} defaults={defaults} theme={theme} setSettings={saveSettings} setDefaults={saveDefaults} setTheme={saveTheme} user={user} onSignOut={signOut} entries={entries} onImport={handleImport} clearAll={clearAll} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} T={T}/>}
       </div>
 
       <nav style={{display:"flex",background:T.navBg,borderTop:`1px solid ${T.border}`,flexShrink:0}}>
@@ -629,63 +657,55 @@ function ReportsPage({entries,settings,T}){
 const STABS=[["general","General"],["backup","💾 Backup"]];
 const CTABS=[["food","🍽️ Food"],["drinks","☕ Drinks"],["exercise","🏃 Exercise"],["medical","🩺 Medical"],["meds","💊 Meds"]];
 
-function BackupPanel({entries,onImport,clearAll,T}){
-  const fileRef=useRef();
-  const[fl,setFl]=useState(false);
-  const doExport=()=>{
-    downloadCSV(buildAllCSV(entries),`jivanlog-backup-${today()}.csv`);
-  };
-  const handleFile=e=>{
-    const f=e.target.files[0];if(!f)return;
-    const r=new FileReader();
-    r.onload=ev=>onImport(ev.target.result);
-    r.readAsText(f);
-    e.target.value="";
-    setFl(true);setTimeout(()=>setFl(false),2000);
-  };
-  return(<div>
-    <div className="slabel">💾 Backup & Restore</div>
-    <div className="card" style={{display:"flex",flexDirection:"column",gap:10}}>
-      <div style={{fontSize:"0.78rem",color:T.textSub,lineHeight:1.6}}>
-        <b>Export</b> saves all your entries as a CSV file. <b>Import</b> merges entries from a previously exported CSV — duplicates are skipped automatically.
-      </div>
-      <button onClick={doExport} style={{padding:"11px",borderRadius:9,border:"none",background:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:600,fontSize:"0.88rem",cursor:"pointer",textAlign:"left"}}>
-        ⬇️ Export all data to CSV
-      </button>
-      <button onClick={()=>fileRef.current.click()} style={{padding:"11px",borderRadius:9,border:`1px solid ${T.accentBtn}`,background:fl?T.ok:"transparent",color:fl?"#fff":T.accent,fontFamily:"inherit",fontWeight:600,fontSize:"0.88rem",cursor:"pointer",textAlign:"left",transition:"background 0.3s"}}>
-        {fl?"✔ Imported!":"⬆️ Import from CSV"}
-      </button>
-      <input ref={fileRef} type="file" accept=".csv" style={{display:"none"}} onChange={handleFile}/>
-    </div>
-    <div style={{marginTop:14}}>
-      <div className="slabel" style={{color:T.danger}}>⚠️ Danger Zone</div>
-      <div className="card" style={{border:`1px solid ${T.danger}44`}}>
-        <div style={{fontSize:"0.78rem",color:T.textSub,marginBottom:10,lineHeight:1.6}}>
-          Permanently deletes <b>all</b> your logged entries from the cloud. Export a backup first. This cannot be undone.
-        </div>
-        <button onClick={clearAll} style={{width:"100%",padding:"10px",borderRadius:9,border:`1px solid ${T.danger}`,background:"transparent",color:T.danger,fontFamily:"inherit",fontWeight:700,fontSize:"0.85rem",cursor:"pointer"}}>
-          🗑️ Clear all data
-        </button>
-      </div>
-    </div>
-  </div>);
+
+// ── Config export/import helpers ──────────────────────────────────────────────
+const CONFIG_KEYS={
+  food:    ["foodCategories"],
+  drinks:  ["liquidTypes","liquidNotes","liquidSubTypes"],
+  exercise:["exerciseTypes"],
+  medical: ["medicalPresets"],
+  meds:    ["medications"],
+};
+const ALL_CONFIG_KEYS=Object.values(CONFIG_KEYS).flat();
+
+function exportConfig(settings,section){
+  const keys=section==="all"?ALL_CONFIG_KEYS:CONFIG_KEYS[section]||[];
+  const obj={_jivanlog_config:true,_version:APP_VERSION,_section:section,_date:today()};
+  keys.forEach(k=>{if(settings[k]!==undefined)obj[k]=settings[k];});
+  return JSON.stringify(obj,null,2);
 }
-function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,user,onSignOut,entries,onImport,clearAll,T}){
+
+function importConfig(jsonText){
+  let obj;
+  try{obj=JSON.parse(jsonText);}catch(e){throw new Error("Invalid JSON file");}
+  if(!obj._jivanlog_config)throw new Error("Not a JivanLog config file");
+  const result={};
+  ALL_CONFIG_KEYS.forEach(k=>{if(obj[k]!==undefined)result[k]=obj[k];});
+  if(!Object.keys(result).length)throw new Error("No config data found in file");
+  return result;
+}
+
+function exportEntries(entries,section){
+  if(section==="all")return buildAllCSV(entries);
+  const typeMap={meal:"Meal",liquid:"Drinks",exercise:"Exercise",medical:"Medical",medication:"Medication"};
+  const filtered=entries.filter(e=>e.type===section);
+  return buildAllCSV(filtered);
+}
+
+function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,user,onSignOut,entries,onImport,onImportConfig,onClearEntries,onClearConfig,onClearAll,T}){
   const[stab,setStab]=useState("general");const[ctab,setCtab]=useState("food");const[newItem,setNewItem]=useState("");const[applyFlash,setApplyFlash]=useState(false);
-  // Default Config editor targets 'defaults'; Apply pushes defaults → settings
   const active=defaults;
   const updateActive=updater=>setDefaults(typeof updater==="function"?updater(defaults):updater);
   const applyToSettings=()=>{if(!confirm("Apply Default config to active settings?\n\nEntry forms will immediately use this config."))return;setSettings(deepClone(defaults));setApplyFlash(true);setTimeout(()=>setApplyFlash(false),1800);};
   const addItem=key=>{if(!newItem.trim())return;const val=key==="foodCategories"?{name:newItem.trim(),note:"",subTypes:[]}:newItem.trim();updateActive(p=>({...p,[key]:[...(p[key]||[]),val]}));setNewItem("");};
   const removeItem=(key,item)=>updateActive(p=>({...p,[key]:(p[key]||[]).filter(x=>key==="foodCategories"?foodName(x)!==foodName(item):x!==item)}));
-  const updateDrink=(field,val)=>updateActive(p=>({...p,[field==='notes'?'liquidNotes':'liquidSubTypes']:val}));
   const updateFood=newArr=>updateActive(p=>({...p,foodCategories:newArr}));
-  const addMedPreset=(name,unit)=>{if(!name.trim())return;const ex=active?.medicalPresets||[];if(ex.some(p=>(typeof p==="string"?p:p.name)===name.trim()))return;updateActive(p=>({...p,medicalPresets:[...(p.medicalPresets||FD.medicalPresets),{name:name.trim(),unit:unit.trim()}]}));};
+  const updateDrink=(field,val)=>updateActive(p=>({...p,[field==="notes"?"liquidNotes":"liquidSubTypes"]:val}));
+  const addMedPreset=(name,unit)=>{if(!name.trim())return;const ex=active?.medicalPresets||[];if(ex.some(p=>(typeof p==="string"?p:p.name)===name.trim()))return;updateActive(p=>({...p,medicalPresets:[...(p.medicalPresets||[]),{name:name.trim(),unit:unit.trim()}]}));};
   const removeMedPreset=name=>updateActive(p=>({...p,medicalPresets:(p.medicalPresets||[]).filter(x=>(typeof x==="string"?x:x.name)!==name)}));
   return(<div>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
       <div style={{fontWeight:600,fontSize:"0.92rem"}}>⚙️ Settings</div>
-      
     </div>
     <div style={{display:"flex",gap:4,marginBottom:10,overflowX:"auto",paddingBottom:2}}>
       {STABS.map(([k,l])=><button key={k} onClick={()=>{setStab(k);setNewItem("");}} className={`tbtn${stab===k?" on":""}`} style={{flexShrink:0,fontSize:"0.75rem"}}>{l}</button>)}
@@ -699,8 +719,6 @@ function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,
         <div style={{fontSize:"0.62rem",color:T.border,fontFamily:"'DM Mono',monospace",marginLeft:4,alignSelf:"flex-end"}}>{APP_VERSION}</div>
       </div>
       <div className="card"><div className="slabel">🎨 Theme</div><div style={{display:"flex",gap:6}}>{[["dark","🌙 Dark"],["light","☀️ Light"],["system","💻 System"]].map(([m,l])=><button key={m} onClick={()=>setTheme(m)} style={{flex:1,padding:"7px 4px",borderRadius:8,border:"1px solid",fontSize:"0.78rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit",borderColor:theme===m?T.accentBtn:T.border,background:theme===m?T.accentBg:T.cardBg,color:theme===m?T.accent:T.textMuted}}>{l}</button>)}</div></div>
-      
-    
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"10px 0 6px"}}>
         <div className="slabel" style={{marginBottom:0}}>⚙️ Default Config</div>
         <div style={{display:"flex",gap:6}}>
@@ -718,18 +736,140 @@ function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,
       {ctab==="meds"&&<EList items={active.medications||FD.medications} onRemove={item=>removeItem("medications",item)} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("medications")} T={T}/>}
     </>}
 
-    
-
-    {stab==="backup"&&<BackupPanel entries={entries} onImport={onImport} clearAll={clearAll} T={T}/>}
+    {stab==="backup"&&<BackupPanel entries={entries} settings={settings} defaults={defaults} onImport={onImport} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} T={T}/>}
   </div>);
 }
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// TEMPLATES PANEL
-// ── Save: snapshot today's supported entries into chosen slot
-// ── Load: find today's earliest Weight entry as wake-up anchor,
-//          shift all template times by the same offset, preview, confirm
-// ═══════════════════════════════════════════════════════════════════════════════
+function BackupPanel({entries,settings,defaults,onImport,onImportConfig,onClearEntries,onClearConfig,onClearAll,T}){
+  const dataRef=useRef();
+  const cfgRef=useRef();
+  const[section,setSection]=useState("entries"); // entries | config
+  const[cfgSub,setCfgSub]=useState("all");       // all | food | drinks | exercise | medical | meds
+  const[entrySub,setEntrySub]=useState("all");   // all | meal | liquid | exercise | medical | medication
+  const[showClear,setShowClear]=useState(false);
+
+  const ENTRY_SUBS=[["all","All entries"],["meal","🍽️ Food"],["liquid","💧 Drinks"],["exercise","🏃 Exercise"],["medical","🩺 Medical"],["medication","💊 Meds"]];
+  const CFG_SUBS=[["all","All config"],["food","🍽️ Food"],["drinks","💧 Drinks"],["exercise","🏃 Exercise"],["medical","🩺 Medical Readings"],["meds","💊 Medications"]];
+  const CLEAR_OPTS=[
+    {key:"all",   label:"⚠️ Clear EVERYTHING",  desc:"All entries + all config + theme. Full reset.",danger:true},
+    {key:"entries",label:"🗑️ Clear all entries", desc:"Delete all logged entries. Config is kept."},
+    {key:"food",   label:"🍽️ Clear Food config", desc:"Reset food list to factory defaults."},
+    {key:"drinks", label:"💧 Clear Drinks config",desc:"Reset drinks list to factory defaults."},
+    {key:"exercise",label:"🏃 Clear Exercise config",desc:"Reset exercise types to factory defaults."},
+    {key:"medical",label:"🩺 Clear Medical config",desc:"Reset medical reading types to factory defaults."},
+    {key:"meds",   label:"💊 Clear Meds config",  desc:"Reset medications list to factory defaults."},
+  ];
+
+  const doExport=()=>{
+    if(section==="entries"){
+      const filtered=entrySub==="all"?entries:entries.filter(e=>e.type===entrySub);
+      const label=entrySub==="all"?"all":entrySub;
+      downloadCSV(buildAllCSV(filtered),`jivanlog-entries-${label}-${today()}.csv`);
+    } else {
+      const json=exportConfig(settings,cfgSub);
+      const blob=new Blob([json],{type:"application/json"});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a");a.href=url;
+      a.setAttribute("download",`jivanlog-config-${cfgSub}-${today()}.json`);
+      document.body.appendChild(a);a.click();
+      setTimeout(()=>{URL.revokeObjectURL(url);document.body.removeChild(a);},500);
+    }
+  };
+
+  const handleDataFile=e=>{
+    const f=e.target.files[0];if(!f)return;
+    const r=new FileReader();
+    r.onload=ev=>{
+      if(section==="entries")onImport(ev.target.result);
+      else{try{const cfg=importConfig(ev.target.result);onImportConfig(cfg);}catch(err){alert("Import failed: "+err.message);}}
+    };
+    r.readAsText(f);
+    e.target.value="";
+  };
+
+  const doClear=key=>{
+    const opt=CLEAR_OPTS.find(o=>o.key===key);
+    const msg=key==="all"
+      ?"CLEAR EVERYTHING?\n\nThis deletes ALL entries AND resets ALL config to factory defaults.\n\nThis CANNOT be undone. Export a backup first."
+      :`${opt.label}\n\n${opt.desc}\n\nThis cannot be undone.`;
+    if(!confirm(msg))return;
+    if(key==="all"){if(!confirm("FINAL CONFIRMATION — press OK to clear everything."))return;onClearAll();}
+    else if(key==="entries"){if(!confirm("FINAL CONFIRMATION — delete all entries?"))return;onClearEntries();}
+    else onClearConfig(key);
+    setShowClear(false);
+  };
+
+  const SubBtn=({val,label,cur,set})=>(
+    <button onClick={()=>set(val)} className={`tbtn${cur===val?" on":""}`} style={{fontSize:"0.72rem",padding:"4px 8px",flexShrink:0}}>{label}</button>
+  );
+
+  return(<div>
+    {/* ── Section toggle ── */}
+    <div style={{display:"flex",gap:5,marginBottom:10}}>
+      {[["entries","📋 Entries"],["config","⚙️ Config"]].map(([k,l])=>(
+        <button key={k} onClick={()=>setSection(k)} className={`tbtn${section===k?" on":""}`} style={{flex:1,fontWeight:600}}>{l}</button>
+      ))}
+    </div>
+
+    {/* ── Sub-section pills ── */}
+    <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:10}}>
+      {(section==="entries"?ENTRY_SUBS:CFG_SUBS).map(([k,l])=>(
+        <SubBtn key={k} val={k} label={l} cur={section==="entries"?entrySub:cfgSub} set={section==="entries"?setEntrySub:setCfgSub}/>
+      ))}
+    </div>
+
+    {/* ── Export ── */}
+    <div className="slabel">⬇️ Export</div>
+    <div className="card" style={{marginBottom:8}}>
+      <div style={{fontSize:"0.76rem",color:T.textSub,marginBottom:8,lineHeight:1.5}}>
+        {section==="entries"
+          ?`Export ${entrySub==="all"?"all entries":entrySub+" entries"} as CSV. You can edit and re-import.`
+          :`Export ${cfgSub==="all"?"all config":"""+cfgSub+"" config"} as JSON. Re-import to restore lists & sub-types.`}
+      </div>
+      <button onClick={doExport} style={{width:"100%",padding:"10px",borderRadius:9,border:"none",background:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:600,fontSize:"0.85rem",cursor:"pointer"}}>
+        ⬇️ Download {section==="entries"?"CSV":"JSON"}
+      </button>
+    </div>
+
+    {/* ── Import ── */}
+    <div className="slabel">⬆️ Import</div>
+    <div className="card" style={{marginBottom:8}}>
+      <div style={{fontSize:"0.76rem",color:T.textSub,marginBottom:8,lineHeight:1.5}}>
+        {section==="entries"
+          ?"Import from a previously exported CSV. Duplicate IDs are skipped."
+          :"Import from a previously exported JSON config file. Existing lists will be replaced."}
+      </div>
+      <button onClick={()=>dataRef.current.click()} style={{width:"100%",padding:"10px",borderRadius:9,border:`1px solid ${T.accentBtn}`,background:"transparent",color:T.accent,fontFamily:"inherit",fontWeight:600,fontSize:"0.85rem",cursor:"pointer"}}>
+        ⬆️ Select {section==="entries"?"CSV":"JSON"} file…
+      </button>
+      <input ref={dataRef} type="file" accept={section==="entries"?".csv":".json"} style={{display:"none"}} onChange={handleDataFile}/>
+    </div>
+
+    {/* ── Clear / Danger Zone ── */}
+    <div style={{marginTop:14}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+        <div className="slabel" style={{marginBottom:0,color:T.danger}}>⚠️ Clear / Reset</div>
+        <button onClick={()=>setShowClear(v=>!v)} style={{fontSize:"0.72rem",padding:"3px 10px",borderRadius:7,border:`1px solid ${T.danger}`,background:"transparent",color:T.danger,cursor:"pointer",fontFamily:"inherit"}}>
+          {showClear?"Hide":"Show options"}
+        </button>
+      </div>
+      {showClear&&<div className="card" style={{border:`1px solid ${T.danger}44`}}>
+        {CLEAR_OPTS.map(opt=>(
+          <div key={opt.key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${T.border}22`}}>
+            <div>
+              <div style={{fontSize:"0.82rem",fontWeight:600,color:opt.danger?T.danger:T.text}}>{opt.label}</div>
+              <div style={{fontSize:"0.7rem",color:T.textMuted}}>{opt.desc}</div>
+            </div>
+            <button onClick={()=>doClear(opt.key)} style={{flexShrink:0,marginLeft:10,padding:"5px 11px",borderRadius:8,border:`1px solid ${opt.danger?T.danger:T.border}`,background:"transparent",color:opt.danger?T.danger:T.textMuted,cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:"0.75rem"}}>
+              Clear
+            </button>
+          </div>
+        ))}
+      </div>}
+    </div>
+  </div>);
+}
+
 
 // ── Settings sub-components ───────────────────────────────────────────────────
 function MedicalPresetSetting({presets,onAdd,onRemove,T}){
