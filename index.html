@@ -44,7 +44,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.14";
+const APP_VERSION="v4.16";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -210,6 +210,7 @@ function App(){
   const[clock,setClock]=useState(nowTime());
   const[entryTime,setEntryTime]=useState(nowHHMM());
   const[syncStatus,setSyncStatus]=useState("idle");
+  const[showUserMenu,setShowUserMenu]=useState(false);
   const entriesRef=useRef(null);
 
   const T=theme==="system"?THEMES[sysDark()?"dark":"light"]:(THEMES[theme]||THEMES.dark);
@@ -397,18 +398,35 @@ function App(){
         </div>
       </div>
 
-      <div style={{flex:1,overflowY:"auto",padding:"12px 13px"}}>
+      <div style={{flex:1,overflowY:"auto",padding:"12px 13px"}} onClick={()=>showUserMenu&&setShowUserMenu(false)}>
         {page==="home"    &&<HomePage entries={entries} settings={settings} onAdd={addEntry} entryTime={entryTime} setEntryTime={setEntryTime} T={T}/>}
         {page==="manage"  &&<ManagePage entries={entries} settings={settings} onUpdate={updateEntry} onDelete={deleteEntry} T={T}/>}
         {page==="reports" &&<ReportsPage entries={entries} settings={settings} T={T}/>}
-        {page==="settings"&&<SettingsPage settings={settings} defaults={defaults} theme={theme} setSettings={saveSettings} setDefaults={saveDefaults} setTheme={saveTheme} user={user} onSignOut={signOut} entries={entries} onImport={handleImport} clearAll={clearAll} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} T={T}/>}
+        {page==="settings"&&<SettingsPage settings={settings} defaults={defaults} theme={theme} setSettings={saveSettings} setDefaults={saveDefaults} setTheme={saveTheme} user={user} entries={entries} onImport={handleImport} clearAll={clearAll} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} T={T}/>}
       </div>
 
-      <nav style={{display:"flex",background:T.navBg,borderTop:`1px solid ${T.border}`,flexShrink:0}}>
+      <nav style={{display:"flex",background:T.navBg,borderTop:`1px solid ${T.border}`,flexShrink:0,alignItems:"center"}}>
         {[["home","🏠","Home"],["manage","📋","Manage"],["reports","📊","Reports"],["settings","⚙️","Settings"]].map(([p,ic,lb])=>(
           <button key={p} title={lb} onClick={()=>setPage(p)} style={{flex:1,padding:"9px 0 7px",textAlign:"center",fontSize:"1.3rem",background:"none",border:"none",color:page===p?T.accent:T.textMuted,borderRadius:0,cursor:"pointer",transition:"color 0.15s"}}>{ic}</button>
         ))}
-        <button title="Lock Session" onClick={()=>{if(confirm("Lock JivanLog?\nYour data is saved."))setLocked(true);}} style={{flex:1,padding:"9px 0 7px",textAlign:"center",fontSize:"1.3rem",background:"none",border:"none",color:T.textMuted,borderRadius:0,cursor:"pointer"}}>🔒</button>
+        {/* User avatar button — tap for lock/sign-out menu */}
+        <div style={{position:"relative",flex:1,display:"flex",justifyContent:"center"}}>
+          <button title={user.displayName||user.email} onClick={()=>setShowUserMenu(v=>!v)}
+            style={{background:"none",border:"none",cursor:"pointer",padding:"5px 0 3px",display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>
+            {user.photoURL
+              ?<img src={user.photoURL} style={{width:28,height:28,borderRadius:"50%",border:`2px solid ${showUserMenu?T.accentBtn:T.border}`}} alt="avatar"/>
+              :<div style={{width:28,height:28,borderRadius:"50%",background:T.accentBtn,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.85rem",fontWeight:700}}>{(user.displayName||user.email||"U")[0].toUpperCase()}</div>}
+            <div style={{fontSize:"0.5rem",color:T.textMuted,fontFamily:"inherit"}}>Account</div>
+          </button>
+          {showUserMenu&&<div style={{position:"absolute",bottom:"100%",right:0,background:T.cardBg,border:`1px solid ${T.border}`,borderRadius:12,padding:8,minWidth:180,boxShadow:"0 -4px 16px #0004",zIndex:200}}>
+            <div style={{padding:"6px 10px 8px",borderBottom:`1px solid ${T.border}`,marginBottom:6}}>
+              <div style={{fontWeight:600,fontSize:"0.82rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.displayName||"User"}</div>
+              <div style={{fontSize:"0.68rem",color:T.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.email}</div>
+            </div>
+            <button onClick={()=>{setShowUserMenu(false);if(confirm("Lock JivanLog?\nYour data is saved."))setLocked(true);}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",background:"none",border:"none",borderRadius:8,cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem",color:T.text}}>🔒 Lock session</button>
+            <button onClick={()=>{setShowUserMenu(false);signOut();}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",background:"none",border:"none",borderRadius:8,cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem",color:T.danger}}>↩ Sign out</button>
+          </div>}
+        </div>
       </nav>
     </div>
   );
@@ -658,41 +676,119 @@ const STABS=[["general","General"],["backup","💾 Backup"]];
 const CTABS=[["food","🍽️ Food"],["drinks","☕ Drinks"],["exercise","🏃 Exercise"],["medical","🩺 Medical"],["meds","💊 Meds"]];
 
 
-// ── Config export/import helpers ──────────────────────────────────────────────
-const CONFIG_KEYS={
-  food:    ["foodCategories"],
-  drinks:  ["liquidTypes","liquidNotes","liquidSubTypes"],
-  exercise:["exerciseTypes"],
-  medical: ["medicalPresets"],
-  meds:    ["medications"],
-};
-const ALL_CONFIG_KEYS=Object.values(CONFIG_KEYS).flat();
+// ── Config CSV export/import helpers ─────────────────────────────────────────
+// Each section exports as its own CSV with a sentinel header row
+// Sentinel: #JivanLog-Config-<section>-<version>
 
-function exportConfig(settings,section){
-  const keys=section==="all"?ALL_CONFIG_KEYS:CONFIG_KEYS[section]||[];
-  const obj={_jivanlog_config:true,_version:APP_VERSION,_section:section,_date:today()};
-  keys.forEach(k=>{if(settings[k]!==undefined)obj[k]=settings[k];});
-  return JSON.stringify(obj,null,2);
+function csvCell(v){
+  const s=String(v==null?"":v);
+  return s.includes(",")||s.includes('"')||s.includes("\n")?`"${s.replace(/"/g,'""')}"`  :s;
+}
+function csvRow(arr){return arr.map(csvCell).join(",");}
+
+function exportConfigCSV(settings,section){
+  const lines=[];
+  if(section==="all"||section==="food"){
+    lines.push(`#JivanLog-Config-food-${APP_VERSION}`);
+    lines.push(csvRow(["Name","Note","SubTypes"]));
+    foodItems(settings.foodCategories||FD.foodCategories).forEach(f=>{
+      lines.push(csvRow([f.name,f.note||"",(f.subTypes||[]).join(";")]));
+    });
+    if(section==="all")lines.push("");
+  }
+  if(section==="all"||section==="drinks"){
+    lines.push(`#JivanLog-Config-drinks-${APP_VERSION}`);
+    lines.push(csvRow(["Name","Note","SubTypes"]));
+    const types=(settings.liquidTypes||FD.liquidTypes).filter(t=>t!=="--------");
+    const notes=settings.liquidNotes||FD.liquidNotes||{};
+    const subs=settings.liquidSubTypes||FD.liquidSubTypes||{};
+    types.forEach(t=>{
+      lines.push(csvRow([t,notes[t]||"",(subs[t]||[]).join(";")]));
+    });
+    if(section==="all")lines.push("");
+  }
+  if(section==="all"||section==="exercise"){
+    lines.push(`#JivanLog-Config-exercise-${APP_VERSION}`);
+    lines.push(csvRow(["Name","Metrics","Note","SubTypes"]));
+    (settings.exerciseTypes||FD.exerciseTypes).forEach(e=>{
+      lines.push(csvRow([e.name,(e.metrics||[]).join(";"),e.note||"",(e.subTypes||[]).join(";")]));
+    });
+    if(section==="all")lines.push("");
+  }
+  if(section==="all"||section==="medical"){
+    lines.push(`#JivanLog-Config-medical-${APP_VERSION}`);
+    lines.push(csvRow(["Name","Unit"]));
+    (settings.medicalPresets||FD.medicalPresets).forEach(p=>{
+      lines.push(csvRow([typeof p==="string"?p:p.name,typeof p==="string"?"":p.unit||""]));
+    });
+    if(section==="all")lines.push("");
+  }
+  if(section==="all"||section==="meds"){
+    lines.push(`#JivanLog-Config-meds-${APP_VERSION}`);
+    lines.push(csvRow(["Name"]));
+    (settings.medications||FD.medications).forEach(m=>lines.push(csvCell(m)));
+  }
+  return lines.join("\n");
 }
 
-function importConfig(jsonText){
-  let obj;
-  try{obj=JSON.parse(jsonText);}catch(e){throw new Error("Invalid JSON file");}
-  if(!obj._jivanlog_config)throw new Error("Not a JivanLog config file");
+function importConfigCSV(csvText){
+  // Splits multi-section "all" exports or handles single-section files
+  const lines=csvText.split("\n").map(l=>l.trim());
   const result={};
-  ALL_CONFIG_KEYS.forEach(k=>{if(obj[k]!==undefined)result[k]=obj[k];});
-  if(!Object.keys(result).length)throw new Error("No config data found in file");
+  let section=null,headers=[];
+  const parseCells=line=>{
+    const row=[];let cur="",inQ=false;
+    for(const ch of line+","){
+      if(ch==='"'){inQ=!inQ;}
+      else if(ch===","&&!inQ){row.push(cur.replace(/""/g,'"'));cur="";}
+      else cur+=ch;
+    }
+    return row;
+  };
+  for(let i=0;i<lines.length;i++){
+    const line=lines[i];
+    if(!line)continue;
+    // Sentinel row
+    const sm=line.match(/^#JivanLog-Config-(\w+)-/);
+    if(sm){section=sm[1];headers=[];continue;}
+    if(!section)continue;
+    // Header row (first non-sentinel, non-empty row after sentinel)
+    if(!headers.length){headers=parseCells(line).map(h=>h.toLowerCase());continue;}
+    const cells=parseCells(line);
+    const get=h=>cells[headers.indexOf(h)]||"";
+    const spl=v=>v?v.split(";").map(s=>s.trim()).filter(Boolean):[];
+
+    if(section==="food"){
+      if(!result.foodCategories)result.foodCategories=[];
+      result.foodCategories.push({name:get("name"),note:get("note"),subTypes:spl(get("subtypes"))});
+    }
+    if(section==="drinks"){
+      if(!result.liquidTypes)result.liquidTypes=[];
+      if(!result.liquidNotes)result.liquidNotes={};
+      if(!result.liquidSubTypes)result.liquidSubTypes={};
+      const name=get("name");if(!name)continue;
+      result.liquidTypes.push(name);
+      if(get("note"))result.liquidNotes[name]=get("note");
+      const subs=spl(get("subtypes"));if(subs.length)result.liquidSubTypes[name]=subs;
+    }
+    if(section==="exercise"){
+      if(!result.exerciseTypes)result.exerciseTypes=[];
+      result.exerciseTypes.push({name:get("name"),metrics:spl(get("metrics")),note:get("note"),subTypes:spl(get("subtypes"))});
+    }
+    if(section==="medical"){
+      if(!result.medicalPresets)result.medicalPresets=[];
+      result.medicalPresets.push({name:get("name"),unit:get("unit")});
+    }
+    if(section==="meds"){
+      if(!result.medications)result.medications=[];
+      const name=cells[0]||"";if(name&&!name.startsWith("#"))result.medications.push(name);
+    }
+  }
+  if(!Object.keys(result).length)throw new Error("No config data found — check file format");
   return result;
 }
 
-function exportEntries(entries,section){
-  if(section==="all")return buildAllCSV(entries);
-  const typeMap={meal:"Meal",liquid:"Drinks",exercise:"Exercise",medical:"Medical",medication:"Medication"};
-  const filtered=entries.filter(e=>e.type===section);
-  return buildAllCSV(filtered);
-}
-
-function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,user,onSignOut,entries,onImport,onImportConfig,onClearEntries,onClearConfig,onClearAll,T}){
+function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,user,entries,onImport,onImportConfig,onClearEntries,onClearConfig,onClearAll,T}){
   const[stab,setStab]=useState("general");const[ctab,setCtab]=useState("food");const[newItem,setNewItem]=useState("");const[applyFlash,setApplyFlash]=useState(false);
   const active=defaults;
   const updateActive=updater=>setDefaults(typeof updater==="function"?updater(defaults):updater);
@@ -715,14 +811,14 @@ function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,
       <div className="card" style={{display:"flex",alignItems:"center",gap:12,padding:"10px 13px"}}>
         {user.photoURL&&<img src={user.photoURL} style={{width:38,height:38,borderRadius:"50%",border:`2px solid ${T.accentBtn}`}} alt="avatar"/>}
         <div style={{flex:1}}><div style={{fontWeight:600,fontSize:"0.88rem"}}>{user.displayName||"User"}</div><div style={{fontSize:"0.72rem",color:T.textMuted}}>{user.email}</div></div>
-        <button onClick={onSignOut} style={{padding:"5px 10px",borderRadius:7,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontSize:"0.75rem",cursor:"pointer",fontFamily:"inherit"}}>Sign out</button>
+        
         <div style={{fontSize:"0.62rem",color:T.border,fontFamily:"'DM Mono',monospace",marginLeft:4,alignSelf:"flex-end"}}>{APP_VERSION}</div>
       </div>
       <div className="card"><div className="slabel">🎨 Theme</div><div style={{display:"flex",gap:6}}>{[["dark","🌙 Dark"],["light","☀️ Light"],["system","💻 System"]].map(([m,l])=><button key={m} onClick={()=>setTheme(m)} style={{flex:1,padding:"7px 4px",borderRadius:8,border:"1px solid",fontSize:"0.78rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit",borderColor:theme===m?T.accentBtn:T.border,background:theme===m?T.accentBg:T.cardBg,color:theme===m?T.accent:T.textMuted}}>{l}</button>)}</div></div>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"10px 0 6px"}}>
         <div className="slabel" style={{marginBottom:0}}>⚙️ Default Config</div>
         <div style={{display:"flex",gap:6}}>
-          <button onClick={()=>{if(!confirm("Reset all config to factory defaults?\n\nThis restores all original built-in lists."))return;updateActive(()=>deepClone(FD));}} style={{padding:"5px 12px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontFamily:"inherit",fontWeight:600,fontSize:"0.79rem",cursor:"pointer"}}>↺ Reset</button>
+          <button onClick={()=>{if(!confirm("Reset all config to factory defaults?\n\nThis restores all original built-in lists."))return;updateActive(()=>deepClone(FD));}} style={{padding:"5px 12px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontFamily:"inherit",fontWeight:600,fontSize:"0.79rem",cursor:"pointer"}}>↺ Reset to Factory</button>
           <button onClick={applyToSettings} style={{padding:"5px 14px",borderRadius:8,border:"none",background:applyFlash?T.ok:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:600,fontSize:"0.79rem",cursor:"pointer",transition:"background 0.3s"}}>{applyFlash?"✔ Applied!":"Apply ▶"}</button>
         </div>
       </div>
@@ -753,11 +849,11 @@ function BackupPanel({entries,settings,defaults,onImport,onImportConfig,onClearE
   const CLEAR_OPTS=[
     {key:"all",   label:"⚠️ Clear EVERYTHING",  desc:"All entries + all config + theme. Full reset.",danger:true},
     {key:"entries",label:"🗑️ Clear all entries", desc:"Delete all logged entries. Config is kept."},
-    {key:"food",   label:"🍽️ Clear Food config", desc:"Reset food list to factory defaults."},
-    {key:"drinks", label:"💧 Clear Drinks config",desc:"Reset drinks list to factory defaults."},
-    {key:"exercise",label:"🏃 Clear Exercise config",desc:"Reset exercise types to factory defaults."},
-    {key:"medical",label:"🩺 Clear Medical config",desc:"Reset medical reading types to factory defaults."},
-    {key:"meds",   label:"💊 Clear Meds config",  desc:"Reset medications list to factory defaults."},
+    {key:"food",   label:"🍽️ Reset Food config",    desc:"Restore food list to factory defaults. Your entries are kept."},
+    {key:"drinks", label:"💧 Reset Drinks config",  desc:"Restore drinks list to factory defaults. Your entries are kept."},
+    {key:"exercise",label:"🏃 Reset Exercise config",desc:"Restore exercise types to factory defaults. Your entries are kept."},
+    {key:"medical",label:"🩺 Reset Medical config",  desc:"Restore medical reading types to factory defaults. Your entries are kept."},
+    {key:"meds",   label:"💊 Reset Meds config",     desc:"Restore medications list to factory defaults. Your entries are kept."},
   ];
 
   const doExport=()=>{
@@ -766,13 +862,7 @@ function BackupPanel({entries,settings,defaults,onImport,onImportConfig,onClearE
       const label=entrySub==="all"?"all":entrySub;
       downloadCSV(buildAllCSV(filtered),`jivanlog-entries-${label}-${today()}.csv`);
     } else {
-      const json=exportConfig(settings,cfgSub);
-      const blob=new Blob([json],{type:"application/json"});
-      const url=URL.createObjectURL(blob);
-      const a=document.createElement("a");a.href=url;
-      a.setAttribute("download",`jivanlog-config-${cfgSub}-${today()}.json`);
-      document.body.appendChild(a);a.click();
-      setTimeout(()=>{URL.revokeObjectURL(url);document.body.removeChild(a);},500);
+      downloadCSV(exportConfigCSV(settings,cfgSub),`jivanlog-config-${cfgSub}-${today()}.csv`);
     }
   };
 
@@ -781,7 +871,7 @@ function BackupPanel({entries,settings,defaults,onImport,onImportConfig,onClearE
     const r=new FileReader();
     r.onload=ev=>{
       if(section==="entries")onImport(ev.target.result);
-      else{try{const cfg=importConfig(ev.target.result);onImportConfig(cfg);}catch(err){alert("Import failed: "+err.message);}}
+      else{try{const cfg=importConfigCSV(ev.target.result);onImportConfig(cfg);}catch(err){alert("Import failed: "+err.message);}}
     };
     r.readAsText(f);
     e.target.value="";
@@ -824,10 +914,10 @@ function BackupPanel({entries,settings,defaults,onImport,onImportConfig,onClearE
       <div style={{fontSize:"0.76rem",color:T.textSub,marginBottom:8,lineHeight:1.5}}>
         {section==="entries"
           ?`Export ${entrySub==="all"?"all entries":entrySub+" entries"} as CSV. You can edit and re-import.`
-          :`Export ${cfgSub==="all"?"all config":cfgSub+" config"} as JSON. Re-import to restore lists & sub-types.`}
+          :`Export ${cfgSub==="all"?"all config":cfgSub+" config"} as CSV. Edit in Excel/Sheets, re-import to restore.`}
       </div>
       <button onClick={doExport} style={{width:"100%",padding:"10px",borderRadius:9,border:"none",background:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:600,fontSize:"0.85rem",cursor:"pointer"}}>
-        ⬇️ Download {section==="entries"?"CSV":"JSON"}
+        ⬇️ Download CSV
       </button>
     </div>
 
@@ -837,18 +927,18 @@ function BackupPanel({entries,settings,defaults,onImport,onImportConfig,onClearE
       <div style={{fontSize:"0.76rem",color:T.textSub,marginBottom:8,lineHeight:1.5}}>
         {section==="entries"
           ?"Import from a previously exported CSV. Duplicate IDs are skipped."
-          :"Import from a previously exported JSON config file. Existing lists will be replaced."}
+          :"Import from a previously exported config CSV. Existing lists will be replaced."}
       </div>
       <button onClick={()=>dataRef.current.click()} style={{width:"100%",padding:"10px",borderRadius:9,border:`1px solid ${T.accentBtn}`,background:"transparent",color:T.accent,fontFamily:"inherit",fontWeight:600,fontSize:"0.85rem",cursor:"pointer"}}>
-        ⬆️ Select {section==="entries"?"CSV":"JSON"} file…
+        ⬆️ Select CSV file…
       </button>
-      <input ref={dataRef} type="file" accept={section==="entries"?".csv":".json"} style={{display:"none"}} onChange={handleDataFile}/>
+      <input ref={dataRef} type="file" accept=".csv" style={{display:"none"}} onChange={handleDataFile}/>
     </div>
 
     {/* ── Clear / Danger Zone ── */}
     <div style={{marginTop:14}}>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
-        <div className="slabel" style={{marginBottom:0,color:T.danger}}>⚠️ Clear / Reset</div>
+        <div className="slabel" style={{marginBottom:0,color:T.danger}}>⚠️ Clear & Reset</div>
         <button onClick={()=>setShowClear(v=>!v)} style={{fontSize:"0.72rem",padding:"3px 10px",borderRadius:7,border:`1px solid ${T.danger}`,background:"transparent",color:T.danger,cursor:"pointer",fontFamily:"inherit"}}>
           {showClear?"Hide":"Show options"}
         </button>
