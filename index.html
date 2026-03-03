@@ -824,7 +824,7 @@ function BackupPanel({entries,settings,defaults,onImport,onImportConfig,onClearE
       <div style={{fontSize:"0.76rem",color:T.textSub,marginBottom:8,lineHeight:1.5}}>
         {section==="entries"
           ?`Export ${entrySub==="all"?"all entries":entrySub+" entries"} as CSV. You can edit and re-import.`
-          :`Export ${cfgSub==="all"?"all config":"""+cfgSub+"" config"} as JSON. Re-import to restore lists & sub-types.`}
+          :`Export ${cfgSub==="all"?"all config":cfgSub+" config"} as JSON. Re-import to restore lists & sub-types.`}
       </div>
       <button onClick={doExport} style={{width:"100%",padding:"10px",borderRadius:9,border:"none",background:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:600,fontSize:"0.85rem",cursor:"pointer"}}>
         ⬇️ Download {section==="entries"?"CSV":"JSON"}
