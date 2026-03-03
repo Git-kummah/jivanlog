@@ -44,7 +44,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.11";
+const APP_VERSION="v4.12";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -54,17 +54,12 @@ const LOGO_SVG=`data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http:/
 const FD={
   foodCategories:[{name:"Airline Meal",note:""},{name:"Alfam Chicken",note:""},{name:"Almonds",note:""},{name:"Apple",note:""},{name:"Avial",note:""},{name:"Beans Thoran",note:""},{name:"Beetroot Thoran",note:""},{name:"Black Channa",note:""},{name:"Boiled Egg",note:""},{name:"Broccoli",note:""},{name:"Chapati",note:""},{name:"Coconut Chicken",note:""},{name:"Coconut Gravy",note:""},{name:"Coconut Masala",note:""},{name:"Curd",note:""},{name:"Curd + ACV",note:""},{name:"Dal",note:""},{name:"Fish (Plain)",note:""},{name:"Fish Curry",note:""},{name:"Fish Fry",note:""},{name:"Green Gram in Coconut",note:""},{name:"Haryali Chicken",note:""},{name:"Idli",note:""},{name:"Kabuli Channa",note:""},{name:"Karela-Onion Saute",note:""},{name:"Ladies Finger Saute",note:""},{name:"Lettuce Salad",note:""},{name:"Minced Salad",note:""},{name:"Mixed Veg in Coconut",note:""},{name:"Omelette",note:""},{name:"Orange",note:""},{name:"Palak Paneer",note:""},{name:"Paneer",note:""},{name:"Paneer Tikka",note:""},{name:"Pear",note:""},{name:"Poha",note:""},{name:"Pumpkin + Kabuli Channa",note:""},{name:"Pumpkin Seeds",note:""},{name:"Rajma",note:""},{name:"Red Amaranthus",note:""},{name:"Rice",note:""},{name:"Roti",note:""},{name:"Salad (Cucumber)",note:""},{name:"Salad (Lettuce+Broccoli)",note:""},{name:"Sambar",note:""},{name:"Soya Chunks",note:""},{name:"Stuffed Omelette",note:""},{name:"Upma",note:""},{name:"Walnuts",note:""},{name:"Yogurt / Curd",note:""}],
   liquidTypes:["Warm Water","Plain Water","Cold Water","--------","Morning Drink","Morning Coffee","Milk Tea","Green Tea","Tulsi Mulethi Tea","Tulsi Ginger Tea","Black Coffee","Black Tea","Coconut Water","Buttermilk","Herbal Tea","Lemon Water","Turmeric Milk"],
-  exerciseTypes:[{name:"Morning Walk",subTypes:[],metrics:["time"]},{name:"Evening Walk",subTypes:[],metrics:["time"]},{name:"Additional Walk",subTypes:[],metrics:["time"]},{name:"Legs Up the Wall",subTypes:[],metrics:["time"]},{name:"Legs Up the Pillow",subTypes:[],metrics:["time"]},{name:"Seated Calf Raise",subTypes:[],metrics:["count"]},{name:"Seated Ankle Circles",subTypes:[],metrics:["count"]},{name:"Seated Knee Extension",subTypes:[],metrics:["count"]},{name:"Short Arc Quad",subTypes:[],metrics:["count"]},{name:"Straight Leg Raise",subTypes:[],metrics:["count"]},{name:"Sole-to-Sole",subTypes:[],metrics:["count"]},{name:"Running",subTypes:[],metrics:["distance","time"]},{name:"Cycling",subTypes:[],metrics:["distance","time"]}],
+  liquidNotes:{},
+  exerciseTypes:[{name:"Morning Walk",subTypes:[],metrics:["time"],note:""},{name:"Evening Walk",subTypes:[],metrics:["time"],note:""},{name:"Additional Walk",subTypes:[],metrics:["time"],note:""},{name:"Legs Up the Wall",subTypes:[],metrics:["time"],note:""},{name:"Legs Up the Pillow",subTypes:[],metrics:["time"],note:""},{name:"Seated Calf Raise",subTypes:[],metrics:["count"],note:""},{name:"Seated Ankle Circles",subTypes:[],metrics:["count"],note:""},{name:"Seated Knee Extension",subTypes:[],metrics:["count"],note:""},{name:"Short Arc Quad",subTypes:[],metrics:["count"],note:""},{name:"Straight Leg Raise",subTypes:[],metrics:["count"],note:""},{name:"Sole-to-Sole",subTypes:[],metrics:["count"],note:""},{name:"Running",subTypes:[],metrics:["distance","time"],note:""},{name:"Cycling",subTypes:[],metrics:["distance","time"],note:""}],
   // ── Medical presets now carry unit — fixes issue #1 ───────────────────────
   medicalPresets:[{name:"Sugar",unit:"mg/dL"},{name:"BP",unit:"Sys/Dia"},{name:"Weight",unit:"kg"},{name:"Height",unit:"cm"}],
   medications:["Glycomet 500 SR","Nexovas 10","Multi-Vitamins","Vitamin D (60K / Lumia)","Other"],
   // ── 3 named day templates (empty until user saves) ────────────────────────
-  templates:[
-    {name:"Home Day",  icon:"🏠",entries:[{"id":"h01","type":"medical","readingType":"Weight","value":"","unit":"kg","notes":"","date":"1970-01-01","timestamp":"1970-01-01T01:30:00.000Z"},{"id":"h02","type":"liquid","liquidType":"Warm Water","ml":600,"notes":"","date":"1970-01-01","timestamp":"1970-01-01T01:32:00.000Z"},{"id":"h03","type":"liquid","liquidType":"Warm Water","ml":300,"notes":"","date":"1970-01-01","timestamp":"1970-01-01T01:40:00.000Z"},{"id":"h04","type":"exercise","exType":"Morning Walk","time":30,"notes":"","date":"1970-01-01","timestamp":"1970-01-01T02:00:00.000Z"},{"id":"h05","type":"liquid","liquidType":"Warm Water","ml":300,"notes":"after walk","date":"1970-01-01","timestamp":"1970-01-01T02:35:00.000Z"},{"id":"h06","type":"medical","readingType":"Sugar","value":"","unit":"mg/dL","notes":"fasting","date":"1970-01-01","timestamp":"1970-01-01T02:45:00.000Z"},{"id":"h07","type":"liquid","liquidType":"Turmeric Milk","ml":200,"notes":"","date":"1970-01-01","timestamp":"1970-01-01T03:00:00.000Z"},{"id":"h08","type":"medication","med":"Glycomet 500 SR","timing":"Before breakfast","notes":"","date":"1970-01-01","timestamp":"1970-01-01T03:30:00.000Z"},{"id":"h09","type":"meal","mealType":"Breakfast","food":"Idli","qty":2,"unit":"count","notes":"","date":"1970-01-01","timestamp":"1970-01-01T03:40:00.000Z"},{"id":"h10","type":"medication","med":"Nexovas 10","timing":"After breakfast","notes":"","date":"1970-01-01","timestamp":"1970-01-01T04:10:00.000Z"},{"id":"h11","type":"medication","med":"Multi-Vitamins","timing":"After breakfast","notes":"","date":"1970-01-01","timestamp":"1970-01-01T04:10:00.000Z"},{"id":"h12","type":"liquid","liquidType":"Plain Water","ml":300,"notes":"","date":"1970-01-01","timestamp":"1970-01-01T05:00:00.000Z"},{"id":"h13","type":"medical","readingType":"Sugar","value":"","unit":"mg/dL","notes":"2h post breakfast","date":"1970-01-01","timestamp":"1970-01-01T05:45:00.000Z"},{"id":"h14","type":"exercise","exType":"Legs Up the Wall","time":10,"notes":"","date":"1970-01-01","timestamp":"1970-01-01T06:00:00.000Z"},{"id":"h15","type":"liquid","liquidType":"Plain Water","ml":300,"notes":"","date":"1970-01-01","timestamp":"1970-01-01T07:00:00.000Z"},{"id":"h16","type":"medication","med":"Glycomet 500 SR","timing":"Before lunch","notes":"","date":"1970-01-01","timestamp":"1970-01-01T07:30:00.000Z"},{"id":"h17","type":"meal","mealType":"Lunch","food":"Rice","qty":150,"unit":"g","notes":"","date":"1970-01-01","timestamp":"1970-01-01T07:45:00.000Z"},{"id":"h18","type":"medical","readingType":"Sugar","value":"","unit":"mg/dL","notes":"2h post lunch","date":"1970-01-01","timestamp":"1970-01-01T09:45:00.000Z"},{"id":"h19","type":"liquid","liquidType":"Buttermilk","ml":200,"notes":"","date":"1970-01-01","timestamp":"1970-01-01T10:00:00.000Z"},{"id":"h20","type":"meal","mealType":"Snack","food":"Almonds","qty":10,"unit":"count","notes":"","date":"1970-01-01","timestamp":"1970-01-01T10:30:00.000Z"},{"id":"h21","type":"liquid","liquidType":"Plain Water","ml":300,"notes":"","date":"1970-01-01","timestamp":"1970-01-01T11:30:00.000Z"},{"id":"h22","type":"exercise","exType":"Evening Walk","time":30,"notes":"","date":"1970-01-01","timestamp":"1970-01-01T12:30:00.000Z"},{"id":"h23","type":"medication","med":"Glycomet 500 SR","timing":"Before dinner","notes":"","date":"1970-01-01","timestamp":"1970-01-01T14:00:00.000Z"},{"id":"h24","type":"meal","mealType":"Dinner","food":"Rice","qty":100,"unit":"g","notes":"","date":"1970-01-01","timestamp":"1970-01-01T14:15:00.000Z"},{"id":"h25","type":"medication","med":"Nexovas 10","timing":"After dinner","notes":"","date":"1970-01-01","timestamp":"1970-01-01T14:45:00.000Z"},{"id":"h26","type":"liquid","liquidType":"Plain Water","ml":300,"notes":"","date":"1970-01-01","timestamp":"1970-01-01T15:00:00.000Z"}]},
-    {name:"Office Day",icon:"🏢",entries:[{"id":"o01","type":"medical","readingType":"Weight","value":"","unit":"kg","notes":"","date":"1970-01-01","timestamp":"1970-01-01T01:30:00.000Z"},{"id":"o02","type":"liquid","liquidType":"Warm Water","ml":600,"notes":"","date":"1970-01-01","timestamp":"1970-01-01T01:32:00.000Z"},{"id":"o03","type":"medical","readingType":"Sugar","value":"","unit":"mg/dL","notes":"fasting","date":"1970-01-01","timestamp":"1970-01-01T01:45:00.000Z"},{"id":"o04","type":"liquid","liquidType":"Turmeric Milk","ml":200,"notes":"","date":"1970-01-01","timestamp":"1970-01-01T02:00:00.000Z"},{"id":"o05","type":"medication","med":"Glycomet 500 SR","timing":"Before breakfast","notes":"","date":"1970-01-01","timestamp":"1970-01-01T02:15:00.000Z"},{"id":"o06","type":"meal","mealType":"Breakfast","food":"Idli","qty":2,"unit":"count","notes":"","date":"1970-01-01","timestamp":"1970-01-01T02:30:00.000Z"},{"id":"o07","type":"medication","med":"Nexovas 10","timing":"After breakfast","notes":"","date":"1970-01-01","timestamp":"1970-01-01T03:00:00.000Z"},{"id":"o08","type":"medication","med":"Multi-Vitamins","timing":"After breakfast","notes":"","date":"1970-01-01","timestamp":"1970-01-01T03:00:00.000Z"},{"id":"o09","type":"liquid","liquidType":"Plain Water","ml":500,"notes":"office bottle","date":"1970-01-01","timestamp":"1970-01-01T04:30:00.000Z"},{"id":"o10","type":"liquid","liquidType":"Black Coffee","ml":150,"notes":"","date":"1970-01-01","timestamp":"1970-01-01T05:00:00.000Z"},{"id":"o11","type":"medical","readingType":"Sugar","value":"","unit":"mg/dL","notes":"2h post breakfast","date":"1970-01-01","timestamp":"1970-01-01T04:45:00.000Z"},{"id":"o12","type":"medication","med":"Glycomet 500 SR","timing":"Before lunch","notes":"","date":"1970-01-01","timestamp":"1970-01-01T07:30:00.000Z"},{"id":"o13","type":"meal","mealType":"Lunch","food":"Rice","qty":150,"unit":"g","notes":"office lunch","date":"1970-01-01","timestamp":"1970-01-01T07:45:00.000Z"},{"id":"o14","type":"liquid","liquidType":"Plain Water","ml":300,"notes":"","date":"1970-01-01","timestamp":"1970-01-01T08:30:00.000Z"},{"id":"o15","type":"medical","readingType":"Sugar","value":"","unit":"mg/dL","notes":"2h post lunch","date":"1970-01-01","timestamp":"1970-01-01T09:45:00.000Z"},{"id":"o16","type":"meal","mealType":"Snack","food":"Almonds","qty":10,"unit":"count","notes":"desk snack","date":"1970-01-01","timestamp":"1970-01-01T11:00:00.000Z"},{"id":"o17","type":"liquid","liquidType":"Green Tea","ml":200,"notes":"","date":"1970-01-01","timestamp":"1970-01-01T11:00:00.000Z"},{"id":"o18","type":"medication","med":"Glycomet 500 SR","timing":"Before dinner","notes":"","date":"1970-01-01","timestamp":"1970-01-01T14:30:00.000Z"},{"id":"o19","type":"meal","mealType":"Dinner","food":"Rice","qty":100,"unit":"g","notes":"","date":"1970-01-01","timestamp":"1970-01-01T14:45:00.000Z"},{"id":"o20","type":"medication","med":"Nexovas 10","timing":"After dinner","notes":"","date":"1970-01-01","timestamp":"1970-01-01T15:15:00.000Z"},{"id":"o21","type":"liquid","liquidType":"Plain Water","ml":300,"notes":"","date":"1970-01-01","timestamp":"1970-01-01T15:30:00.000Z"}]},
-    {name:"Outing",    icon:"🌆",entries:[{"id":"g01","type":"medical","readingType":"Weight","value":"","unit":"kg","notes":"","date":"1970-01-01","timestamp":"1970-01-01T01:30:00.000Z"},{"id":"g02","type":"liquid","liquidType":"Warm Water","ml":500,"notes":"","date":"1970-01-01","timestamp":"1970-01-01T01:35:00.000Z"},{"id":"g03","type":"medical","readingType":"Sugar","value":"","unit":"mg/dL","notes":"fasting","date":"1970-01-01","timestamp":"1970-01-01T01:50:00.000Z"},{"id":"g04","type":"medication","med":"Glycomet 500 SR","timing":"Before breakfast","notes":"","date":"1970-01-01","timestamp":"1970-01-01T02:30:00.000Z"},{"id":"g05","type":"meal","mealType":"Breakfast","food":"Idli","qty":2,"unit":"count","notes":"","date":"1970-01-01","timestamp":"1970-01-01T02:45:00.000Z"},{"id":"g06","type":"medication","med":"Nexovas 10","timing":"After breakfast","notes":"","date":"1970-01-01","timestamp":"1970-01-01T03:15:00.000Z"},{"id":"g07","type":"medication","med":"Multi-Vitamins","timing":"After breakfast","notes":"","date":"1970-01-01","timestamp":"1970-01-01T03:15:00.000Z"},{"id":"g08","type":"liquid","liquidType":"Plain Water","ml":500,"notes":"carry bottle","date":"1970-01-01","timestamp":"1970-01-01T04:30:00.000Z"},{"id":"g09","type":"medical","readingType":"Sugar","value":"","unit":"mg/dL","notes":"2h post breakfast","date":"1970-01-01","timestamp":"1970-01-01T04:45:00.000Z"},{"id":"g10","type":"liquid","liquidType":"Coconut Water","ml":300,"notes":"","date":"1970-01-01","timestamp":"1970-01-01T06:00:00.000Z"},{"id":"g11","type":"medication","med":"Glycomet 500 SR","timing":"Before lunch","notes":"","date":"1970-01-01","timestamp":"1970-01-01T07:30:00.000Z"},{"id":"g12","type":"meal","mealType":"Lunch","food":"Rice","qty":150,"unit":"g","notes":"eating out","date":"1970-01-01","timestamp":"1970-01-01T08:00:00.000Z"},{"id":"g13","type":"liquid","liquidType":"Plain Water","ml":300,"notes":"","date":"1970-01-01","timestamp":"1970-01-01T09:00:00.000Z"},{"id":"g14","type":"medical","readingType":"Sugar","value":"","unit":"mg/dL","notes":"2h post lunch","date":"1970-01-01","timestamp":"1970-01-01T10:00:00.000Z"},{"id":"g15","type":"meal","mealType":"Snack","food":"Pear","qty":1,"unit":"count","notes":"","date":"1970-01-01","timestamp":"1970-01-01T11:30:00.000Z"},{"id":"g16","type":"medication","med":"Glycomet 500 SR","timing":"Before dinner","notes":"","date":"1970-01-01","timestamp":"1970-01-01T14:30:00.000Z"},{"id":"g17","type":"meal","mealType":"Dinner","food":"Roti","qty":2,"unit":"count","notes":"","date":"1970-01-01","timestamp":"1970-01-01T14:45:00.000Z"},{"id":"g18","type":"medication","med":"Nexovas 10","timing":"After dinner","notes":"","date":"1970-01-01","timestamp":"1970-01-01T15:15:00.000Z"},{"id":"g19","type":"liquid","liquidType":"Plain Water","ml":300,"notes":"","date":"1970-01-01","timestamp":"1970-01-01T15:30:00.000Z"}]},
-    {name:"Travel",    icon:"✈️",entries:[{"id":"t01","type":"medical","readingType":"Weight","value":"","unit":"kg","notes":"","date":"1970-01-01","timestamp":"1970-01-01T00:00:00.000Z"},{"id":"t02","type":"liquid","liquidType":"Warm Water","ml":500,"notes":"","date":"1970-01-01","timestamp":"1970-01-01T00:05:00.000Z"},{"id":"t03","type":"medical","readingType":"Sugar","value":"","unit":"mg/dL","notes":"fasting","date":"1970-01-01","timestamp":"1970-01-01T00:15:00.000Z"},{"id":"t04","type":"medication","med":"Glycomet 500 SR","timing":"Before breakfast","notes":"","date":"1970-01-01","timestamp":"1970-01-01T00:30:00.000Z"},{"id":"t05","type":"meal","mealType":"Breakfast","food":"Airline Meal","qty":1,"unit":"count","notes":"","date":"1970-01-01","timestamp":"1970-01-01T00:45:00.000Z"},{"id":"t06","type":"medication","med":"Nexovas 10","timing":"After breakfast","notes":"","date":"1970-01-01","timestamp":"1970-01-01T01:15:00.000Z"},{"id":"t07","type":"medication","med":"Multi-Vitamins","timing":"After breakfast","notes":"","date":"1970-01-01","timestamp":"1970-01-01T01:15:00.000Z"},{"id":"t08","type":"liquid","liquidType":"Plain Water","ml":500,"notes":"airport bottle","date":"1970-01-01","timestamp":"1970-01-01T02:30:00.000Z"},{"id":"t09","type":"medical","readingType":"Sugar","value":"","unit":"mg/dL","notes":"2h post breakfast","date":"1970-01-01","timestamp":"1970-01-01T02:45:00.000Z"},{"id":"t10","type":"liquid","liquidType":"Plain Water","ml":300,"notes":"in transit","date":"1970-01-01","timestamp":"1970-01-01T05:00:00.000Z"},{"id":"t11","type":"meal","mealType":"Snack","food":"Almonds","qty":10,"unit":"count","notes":"carry-on","date":"1970-01-01","timestamp":"1970-01-01T05:30:00.000Z"},{"id":"t12","type":"medication","med":"Glycomet 500 SR","timing":"Before lunch","notes":"","date":"1970-01-01","timestamp":"1970-01-01T07:30:00.000Z"},{"id":"t13","type":"meal","mealType":"Lunch","food":"Airline Meal","qty":1,"unit":"count","notes":"","date":"1970-01-01","timestamp":"1970-01-01T07:45:00.000Z"},{"id":"t14","type":"liquid","liquidType":"Plain Water","ml":300,"notes":"","date":"1970-01-01","timestamp":"1970-01-01T08:30:00.000Z"},{"id":"t15","type":"medical","readingType":"Sugar","value":"","unit":"mg/dL","notes":"2h post lunch","date":"1970-01-01","timestamp":"1970-01-01T09:45:00.000Z"},{"id":"t16","type":"liquid","liquidType":"Plain Water","ml":300,"notes":"","date":"1970-01-01","timestamp":"1970-01-01T11:30:00.000Z"},{"id":"t17","type":"medication","med":"Glycomet 500 SR","timing":"Before dinner","notes":"","date":"1970-01-01","timestamp":"1970-01-01T14:00:00.000Z"},{"id":"t18","type":"meal","mealType":"Dinner","food":"Rice","qty":100,"unit":"g","notes":"hotel","date":"1970-01-01","timestamp":"1970-01-01T14:15:00.000Z"},{"id":"t19","type":"medication","med":"Nexovas 10","timing":"After dinner","notes":"","date":"1970-01-01","timestamp":"1970-01-01T14:45:00.000Z"},{"id":"t20","type":"liquid","liquidType":"Plain Water","ml":300,"notes":"","date":"1970-01-01","timestamp":"1970-01-01T15:00:00.000Z"}]},
-  ],
 };
 const deepClone=o=>JSON.parse(JSON.stringify(o));
 
@@ -72,7 +67,6 @@ const FOOD_UNITS=["g","ml","count"];
 const MED_TIMES=["Before breakfast","After breakfast","Before lunch","After lunch","Before dinner","After dinner","Bedtime"];
 const MEAL_TYPES=["Breakfast","Lunch","Dinner","Snack"];
 const WATER_TYPES=["Warm Water","Plain Water","Cold Water"];
-const TEMPLATE_SUPPORTED=["meal","drinks","water","medical","medication"];
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 const genId   =()=>Date.now().toString(36)+Math.random().toString(36).slice(2);
@@ -185,12 +179,7 @@ function downloadCSV(csv,filename){
 function Saver({flash,onClick,T,label="Save"}){
   return<button onClick={onClick} style={{flexShrink:0,padding:"7px 14px",fontSize:"0.85rem",borderRadius:8,fontFamily:"inherit",fontWeight:500,cursor:"pointer",border:"none",background:flash?T.ok:T.accentBtn,color:"#fff",minWidth:52,transition:"all 0.15s"}}>{flash?"✔":label}</button>;
 }
-function ExportModal({modal,onClose,T}){
-  const taRef=useRef();const[status,setStatus]=useState("idle");if(!modal)return null;
-  const doDownload=()=>{downloadCSV(modal.csv,modal.filename);setStatus("done");setTimeout(()=>setStatus("idle"),2000);};
-  const doCopy=async()=>{try{if(navigator.clipboard?.writeText){await navigator.clipboard.writeText(modal.csv);setStatus("copied");setTimeout(()=>setStatus("idle"),2000);return;}if(taRef.current){taRef.current.select();document.execCommand("copy");setStatus("copied");setTimeout(()=>setStatus("idle"),2000);}}catch(e){setStatus("error");}};
-  return(<div style={{position:"fixed",inset:0,background:"#000b",zIndex:9990,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}><div style={{background:T.cardBg,border:`1px solid ${T.border}`,borderRadius:14,padding:16,width:"100%",maxWidth:440,maxHeight:"82vh",display:"flex",flexDirection:"column",gap:10}}><div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}><div style={{fontWeight:700,fontSize:"0.9rem",color:T.accent}}>📄 {modal.filename}</div><button onClick={onClose} style={{background:"none",border:"none",color:T.textMuted,fontSize:"1.3rem",cursor:"pointer",lineHeight:1}}>×</button></div><textarea ref={taRef} readOnly value={modal.csv} style={{flex:1,minHeight:180,fontSize:"0.68rem",fontFamily:"monospace",resize:"none",background:T.inputBg,color:T.text,border:`1px solid ${T.border}`,borderRadius:8,padding:8,outline:"none"}}/><div style={{display:"flex",gap:8}}><button onClick={doDownload} style={{flex:2,padding:"8px",borderRadius:8,border:"none",fontFamily:"inherit",fontWeight:600,fontSize:"0.85rem",cursor:"pointer",background:status==="done"?T.ok:T.accentBtn,color:"#fff",transition:"background 0.2s"}}>{status==="done"?"✔ Downloaded!":"⬇️ Download CSV"}</button><button onClick={doCopy} style={{flex:1,padding:"8px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontFamily:"inherit",cursor:"pointer",fontSize:"0.79rem"}}>{status==="copied"?"✔":"📋 Copy"}</button><button onClick={onClose} style={{flex:1,padding:"8px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontFamily:"inherit",cursor:"pointer"}}>Close</button></div></div></div>);
-}
+
 function LockScreen({T,onUnlock}){
   return(<div style={{position:"fixed",inset:0,background:T.lock,zIndex:9999,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:20}}><img src={LOGO_SVG} style={{width:72,height:72,borderRadius:18}} alt="JivanLog"/><div style={{color:T.accent,fontWeight:700,fontSize:"1.4rem",letterSpacing:"0.05em"}}>JivanLog</div><div style={{color:T.textMuted,fontSize:"0.85rem"}}>Session locked</div><button onClick={onUnlock} style={{marginTop:8,padding:"12px 36px",fontSize:"1rem",borderRadius:12,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>🔓 Tap to Unlock</button></div>);
 }
@@ -215,13 +204,10 @@ function App(){
   const[entries,setEntries]=useState([]);
   const[settings,setSettings]=useState(deepClone(FD));
   const[defaults,setDefaults]=useState(deepClone(FD));
-  const[presets,setPresets]=useState([deepClone(FD),deepClone(FD),deepClone(FD)]);
-  const[templates,setTemplates]=useState(deepClone(FD.templates));
   const[theme,setTheme]=useState("dark");
   const[dataLoaded,setDataLoaded]=useState(false);
   const[clock,setClock]=useState(nowTime());
   const[entryTime,setEntryTime]=useState(nowHHMM());
-  const[exportModal,setExportModal]=useState(null);
   const[syncStatus,setSyncStatus]=useState("idle");
   const entriesRef=useRef(null);
 
@@ -253,12 +239,10 @@ function App(){
     if(!user)return;
     (async()=>{
       try{
-        const[sett,defs,pres,th,tmpl]=await Promise.all([
+        const[sett,defs,th]=await Promise.all([
           fbDb.ref(`users/${user.uid}/settings`).get(),
           fbDb.ref(`users/${user.uid}/defaults`).get(),
-          fbDb.ref(`users/${user.uid}/presets`).get(),
           fbDb.ref(`users/${user.uid}/theme`).get(),
-          fbDb.ref(`users/${user.uid}/templates`).get(),
         ]);
         if(sett.exists()){
           const s=sett.val();
@@ -273,21 +257,7 @@ function App(){
             d.foodCategories=d.foodCategories.map(n=>({name:n,note:""}));
           setDefaults(d);
         }
-        if(pres.exists()){const p=pres.val();setPresets([p[0]||deepClone(FD),p[1]||deepClone(FD),p[2]||deepClone(FD)]);}
         if(th.exists())setTheme(th.val());
-        if(tmpl.exists()){
-          const t=tmpl.val();
-          // Merge: use Firebase entries only if they look valid (have type field)
-          const isValidEntries=arr=>Array.isArray(arr)&&arr.length>0&&arr[0]&&arr[0].type;
-          const merged=FD.templates.map((fd,i)=>{
-            if(!t[i])return fd;
-            // Keep FD entries if Firebase entries are empty or stale-formatted
-            const fbEntries=t[i].entries;
-            const entries=isValidEntries(fbEntries)?fbEntries:fd.entries;
-            return{...fd,...t[i],entries};
-          });
-          setTemplates(merged);
-        }
       }catch(e){console.error("Settings load:",e);}
     })();
   },[user]);
@@ -311,8 +281,6 @@ function App(){
   const saveEntries  =useCallback(n=>{persistEntries(n);},[persistEntries]);
   const saveSettings =useCallback(n=>{setSettings(n);persistKey("settings",n);},[persistKey]);
   const saveDefaults =useCallback(n=>{setDefaults(n);persistKey("defaults",n);},[persistKey]);
-  const savePresets  =useCallback(n=>{setPresets(n); persistKey("presets",n);},[persistKey]);
-  const saveTemplates=useCallback(n=>{setTemplates(n);persistKey("templates",n);},[persistKey]);
   const saveTheme    =useCallback(m=>{setTheme(m);   persistKey("theme",m);},[persistKey]);
 
   const addEntry=useCallback(entry=>{
@@ -321,7 +289,6 @@ function App(){
     saveEntries([...entries,{...entry,id:genId(),timestamp:d.toISOString(),date:today()}]);
   },[entries,saveEntries,entryTime]);
 
-  const addBatchEntries=useCallback(batch=>{saveEntries([...entries,...batch]);},[entries,saveEntries]);
   const updateEntry=useCallback((id,data)=>saveEntries(entries.map(e=>e.id===id?{...e,...data}:e)),[entries,saveEntries]);
   const deleteEntry=useCallback(id=>saveEntries(entries.filter(e=>e.id!==id)),[entries,saveEntries]);
 
@@ -386,7 +353,6 @@ function App(){
       `}</style>
 
       {locked&&<LockScreen T={T} onUnlock={()=>setLocked(false)}/>}
-      {exportModal&&<ExportModal modal={exportModal} T={T} onClose={()=>setExportModal(null)}/>}
 
       <div style={{display:"flex",alignItems:"center",gap:10,padding:"9px 13px 7px",background:T.navBg,borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
         <img src={LOGO_SVG} style={{width:32,height:32,borderRadius:8}} alt="logo"/>
@@ -405,8 +371,8 @@ function App(){
       <div style={{flex:1,overflowY:"auto",padding:"12px 13px"}}>
         {page==="home"    &&<HomePage entries={entries} settings={settings} onAdd={addEntry} entryTime={entryTime} setEntryTime={setEntryTime} T={T}/>}
         {page==="manage"  &&<ManagePage entries={entries} settings={settings} onUpdate={updateEntry} onDelete={deleteEntry} T={T}/>}
-        {page==="reports" &&<ReportsPage entries={entries} settings={settings} T={T} setModal={setExportModal}/>}
-        {page==="settings"&&<SettingsPage settings={settings} defaults={defaults} presets={presets} templates={templates} theme={theme} setSettings={saveSettings} setDefaults={saveDefaults} setPresets={savePresets} setTemplates={saveTemplates} setTheme={saveTheme} user={user} onSignOut={signOut} todayEntries={entries.filter(e=>e.date===today())} onLoadTemplate={addBatchEntries} entries={entries} onImport={handleImport} clearAll={clearAll} setModal={setExportModal} T={T}/>}
+        {page==="reports" &&<ReportsPage entries={entries} settings={settings} T={T}/>}
+        {page==="settings"&&<SettingsPage settings={settings} defaults={defaults} theme={theme} setSettings={saveSettings} setDefaults={saveDefaults} setTheme={saveTheme} user={user} onSignOut={signOut} entries={entries} onImport={handleImport} clearAll={clearAll} T={T}/>}
       </div>
 
       <nav style={{display:"flex",background:T.navBg,borderTop:`1px solid ${T.border}`,flexShrink:0}}>
@@ -450,40 +416,62 @@ function HomePage({entries,settings,onAdd,entryTime,setEntryTime,T}){
   );
 }
 
+// ── Shared time-input blur normaliser ────────────────────────────────────────
+const normTime=setter=>e=>{
+  const raw=e.target.value.replace(/[^0-9]/g,"");
+  if(!raw)return;
+  let h,mi;
+  if(raw.length<=2){h=+raw;mi=0;}
+  else if(raw.length===3){h=+raw[0];mi=+raw.slice(1);}
+  else{h=+raw.slice(0,2);mi=+raw.slice(2,4);}
+  h=Math.min(23,Math.max(0,h));mi=Math.min(59,Math.max(0,mi));
+  setter(String(h).padStart(2,"0")+":"+String(mi).padStart(2,"0"));
+};
+// ── Shared time input element ─────────────────────────────────────────────────
+const TimeInput=({value,onChange,T})=>(
+  <input type="text" title="Entry time" placeholder="9.20" value={value}
+    onChange={e=>onChange(e.target.value)} onBlur={normTime(onChange)}
+    maxLength={5} style={{width:58,fontSize:"0.8rem",padding:"6px 4px",
+    fontFamily:"'DM Mono',monospace",textAlign:"center",flexShrink:0}}/>
+);
+
 function MealEntry({settings,onAdd,entryTime,setEntryTime,T}){
   const[mt,setMt]=useState(autoMeal);const[food,setFood]=useState("");const[qty,setQty]=useState("");const[unit,setUnit]=useState("g");const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
   const foods=foodItems(settings.foodCategories||FD.foodCategories);
   const onFoodChange=name=>{setFood(name);const fi=foods.find(f=>f.name===name);if(fi&&fi.note)setNotes(fi.note);else setNotes("");};
   const save=()=>{if(!food||!qty)return;onAdd({type:"meal",mealType:mt,food,qty,unit,notes});setFood("");setQty("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
-  return(<div className="card"><div className="slabel">🍽️ Meal</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={mt} onChange={e=>setMt(e.target.value)} style={{flex:"0 0 95px"}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select><select value={food} onChange={e=>onFoodChange(e.target.value)} style={{flex:"2 1 80px",minWidth:0}}><option value="">Food item…</option>{[...foods].sort((a,b)=>a.name.localeCompare(b.name)).map(f=><option key={f.name} value={f.name}>{f.name}</option>)}</select><input type="number" placeholder="Qty" value={qty} onChange={e=>setQty(e.target.value)} style={{flex:"1 0 62px",width:62}}/><select value={unit} onChange={e=>setUnit(e.target.value)} style={{flex:"1 0 70px",width:70}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select></div><div style={{display:"flex",gap:6,alignItems:"center"}}><input type="text" title="Entry time" placeholder="9.20" value={entryTime} onChange={e=>setEntryTime(e.target.value)} onBlur={e=>{const raw=e.target.value.replace(/[^0-9]/g,"");if(!raw)return;let h,mi;if(raw.length<=2){h=+raw;mi=0;}else if(raw.length===3){h=+raw[0];mi=+raw.slice(1);}else{h=+raw.slice(0,2);mi=+raw.slice(2,4);}h=Math.min(23,Math.max(0,h));mi=Math.min(59,Math.max(0,mi));setEntryTime(String(h).padStart(2,"0")+":"+String(mi).padStart(2,"0"));}} maxLength={5} style={{width:58,fontSize:"0.8rem",padding:"6px 4px",fontFamily:"'DM Mono',monospace",textAlign:"center",flexShrink:0}}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
+  return(<div className="card"><div className="slabel">🍽️ Meal</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={mt} onChange={e=>setMt(e.target.value)} style={{flex:"0 0 95px"}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select><select value={food} onChange={e=>onFoodChange(e.target.value)} style={{flex:"2 1 80px",minWidth:0}}><option value="">Food item…</option>{[...foods].sort((a,b)=>a.name.localeCompare(b.name)).map(f=><option key={f.name} value={f.name}>{f.name}</option>)}</select><input type="number" placeholder="Qty" value={qty} onChange={e=>setQty(e.target.value)} style={{flex:"1 0 62px",width:62}}/><select value={unit} onChange={e=>setUnit(e.target.value)} style={{flex:"1 0 70px",width:70}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select></div><div style={{display:"flex",gap:6,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
 }
 function LiquidEntry({settings,onAdd,entryTime,setEntryTime,T}){
   const allTypes=(settings.liquidTypes||FD.liquidTypes||[]);
+  const liqNotes=settings.liquidNotes||FD.liquidNotes||{};
   const[liqType,setLiqType]=useState("Warm Water");
   const[ml,setMl]=useState("");
   const[notes,setNotes]=useState("");
   const[fl,setFl]=useState(false);
   const add=amt=>setMl(s=>String((+s||0)+amt));
+  const onTypeChange=t=>{setLiqType(t);setNotes(liqNotes[t]||"");};
   const save=()=>{if(!ml||+ml<=0)return;onAdd({type:"liquid",liquidType:liqType,ml:+ml,notes});setMl("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
   return(<div className="card"><div className="slabel">💧 Liquids</div>
     {/* Row 1: dropdown | quick-add buttons | qty */}
     <div style={{display:"flex",gap:5,marginBottom:7,alignItems:"center",flexWrap:"wrap"}}>
-      <select value={liqType} onChange={e=>setLiqType(e.target.value)} style={{flex:"2 1 110px",minWidth:0}}>
+      <select value={liqType} onChange={e=>onTypeChange(e.target.value)} style={{flex:"2 1 110px",minWidth:0}}>
         {allTypes.map((t,i)=>t==="--------"?<option key={i} disabled>── Drinks ──</option>:<option key={t}>{t}</option>)}
       </select>
       {[500,250,100,50].map(amt=><button key={amt} className="wbtn" onClick={()=>add(amt)} style={{padding:"5px 7px",fontSize:"0.78rem",flex:"0 0 auto"}}>{"+"+amt}</button>)}
       <input type="number" placeholder="ml" value={ml} onChange={e=>setMl(e.target.value)} style={{flex:"0 0 58px",textAlign:"center"}}/>
     </div>
     {/* Row 2: time | notes | Save */}
-    <div style={{display:"flex",gap:5,alignItems:"center"}}><input type="text" title="Entry time" placeholder="9.20" value={entryTime} onChange={e=>setEntryTime(e.target.value)} onBlur={e=>{const raw=e.target.value.replace(/[^0-9]/g,"");if(!raw)return;let h,mi;if(raw.length<=2){h=+raw;mi=0;}else if(raw.length===3){h=+raw[0];mi=+raw.slice(1);}else{h=+raw.slice(0,2);mi=+raw.slice(2,4);}h=Math.min(23,Math.max(0,h));mi=Math.min(59,Math.max(0,mi));setEntryTime(String(h).padStart(2,"0")+":"+String(mi).padStart(2,"0"));}} maxLength={5} style={{width:58,fontSize:"0.8rem",padding:"6px 4px",fontFamily:"'DM Mono',monospace",textAlign:"center",flexShrink:0}}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><button onClick={save} style={{flexShrink:0,padding:"6px 12px",fontSize:"0.85rem",borderRadius:8,fontFamily:"inherit",fontWeight:500,cursor:"pointer",border:"none",background:fl?T.ok:T.accentBtn,color:"#fff"}}>{fl?"✔":"Save"}</button></div>
+    <div style={{display:"flex",gap:5,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><button onClick={save} style={{flexShrink:0,padding:"6px 12px",fontSize:"0.85rem",borderRadius:8,fontFamily:"inherit",fontWeight:500,cursor:"pointer",border:"none",background:fl?T.ok:T.accentBtn,color:"#fff"}}>{fl?"✔":"Save"}</button></div>
   </div>);
 }
 function ExerciseEntry({settings,onAdd,entryTime,setEntryTime,T}){
   const[et,setEt]=useState("");const[sub,setSub]=useState("");const[dist,setDist]=useState("");const[min,setMin]=useState("");const[cnt,setCnt]=useState("");const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
-  const etObj=settings.exerciseTypes?.find(e=>e.name===et);
+  const etObj=(settings.exerciseTypes||FD.exerciseTypes)?.find(e=>e.name===et);
   const hasSub=etObj?.subTypes?.length>0;const hasDist=etObj?.metrics?.includes("distance");const hasTime=etObj?.metrics?.includes("time");const hasCnt=etObj?.metrics?.includes("count");
+  const onTypeChange=t=>{setEt(t);setSub("");const obj=(settings.exerciseTypes||FD.exerciseTypes)?.find(e=>e.name===t);setNotes(obj?.note||"");};
   const save=()=>{if(!et||(hasSub&&!sub))return;onAdd({type:"exercise",exType:et,subType:sub,dist,time:min,count:cnt,notes});setSub("");setDist("");setMin("");setCnt("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
-  return(<div className="card"><div className="slabel">🏃 Exercise</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={et} onChange={e=>{setEt(e.target.value);setSub("");}} style={{flex:"1 1 100px",minWidth:0}}><option value="">Type…</option>{(settings.exerciseTypes||[]).map(e=><option key={e.name}>{e.name}</option>)}</select>{hasSub&&<select value={sub} onChange={e=>setSub(e.target.value)} style={{flex:"1 1 110px",minWidth:0}}><option value="">Sub-type…</option>{etObj.subTypes.map(s=><option key={s}>{s}</option>)}</select>}{hasDist&&<input type="number" placeholder="km" value={dist} onChange={e=>setDist(e.target.value)} style={{flex:"0 0 52px"}}/>}{(hasDist||hasTime)&&<input type="number" placeholder="min" value={min} onChange={e=>setMin(e.target.value)} style={{flex:"0 0 52px"}}/>}{hasCnt&&<input type="number" placeholder="count" value={cnt} onChange={e=>setCnt(e.target.value)} style={{flex:"0 0 68px"}}/>}</div><div style={{display:"flex",gap:6,alignItems:"center"}}><input type="text" title="Entry time" placeholder="9.20" value={entryTime} onChange={e=>setEntryTime(e.target.value)} onBlur={e=>{const raw=e.target.value.replace(/[^0-9]/g,"");if(!raw)return;let h,mi;if(raw.length<=2){h=+raw;mi=0;}else if(raw.length===3){h=+raw[0];mi=+raw.slice(1);}else{h=+raw.slice(0,2);mi=+raw.slice(2,4);}h=Math.min(23,Math.max(0,h));mi=Math.min(59,Math.max(0,mi));setEntryTime(String(h).padStart(2,"0")+":"+String(mi).padStart(2,"0"));}} maxLength={5} style={{width:58,fontSize:"0.8rem",padding:"6px 4px",fontFamily:"'DM Mono',monospace",textAlign:"center",flexShrink:0}}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
+  return(<div className="card"><div className="slabel">🏃 Exercise</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={et} onChange={e=>onTypeChange(e.target.value)} style={{flex:"1 1 100px",minWidth:0}}><option value="">Type…</option>{(settings.exerciseTypes||[]).map(e=><option key={e.name}>{e.name}</option>)}</select>{hasSub&&<select value={sub} onChange={e=>setSub(e.target.value)} style={{flex:"1 1 110px",minWidth:0}}><option value="">Sub-type…</option>{etObj.subTypes.map(s=><option key={s}>{s}</option>)}</select>}{hasDist&&<input type="number" placeholder="km" value={dist} onChange={e=>setDist(e.target.value)} style={{flex:"0 0 52px"}}/>}{(hasDist||hasTime)&&<input type="number" placeholder="min" value={min} onChange={e=>setMin(e.target.value)} style={{flex:"0 0 52px"}}/>}{hasCnt&&<input type="number" placeholder="count" value={cnt} onChange={e=>setCnt(e.target.value)} style={{flex:"0 0 68px"}}/>}</div><div style={{display:"flex",gap:6,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
 }
 
 function MedicalEntry({settings,onAdd,entryTime,setEntryTime,T}){
@@ -499,7 +487,7 @@ function MedicalEntry({settings,onAdd,entryTime,setEntryTime,T}){
         {unit&&!val&&<span style={{position:"absolute",right:9,top:"50%",transform:"translateY(-50%)",fontSize:"0.74rem",color:T.textMuted,pointerEvents:"none",fontFamily:"'DM Mono',monospace"}}>{unit}</span>}
       </div>
     </div>
-    <div style={{display:"flex",gap:6}}><input type="text" title="Entry time" placeholder="9.20" value={entryTime} onChange={e=>setEntryTime(e.target.value)} onBlur={e=>{const raw=e.target.value.replace(/[^0-9]/g,"");if(!raw)return;let h,mi;if(raw.length<=2){h=+raw;mi=0;}else if(raw.length===3){h=+raw[0];mi=+raw.slice(1);}else{h=+raw.slice(0,2);mi=+raw.slice(2,4);}h=Math.min(23,Math.max(0,h));mi=Math.min(59,Math.max(0,mi));setEntryTime(String(h).padStart(2,"0")+":"+String(mi).padStart(2,"0"));}} maxLength={5} style={{width:58,fontSize:"0.8rem",padding:"6px 4px",fontFamily:"'DM Mono',monospace",textAlign:"center",flexShrink:0}}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><button onClick={save} style={{flexShrink:0,padding:"7px 14px",fontSize:"0.85rem",borderRadius:8,fontFamily:"inherit",fontWeight:500,cursor:"pointer",border:"none",background:fl?T.ok:T.accentBtn,color:"#fff",minWidth:52}}>{fl?"✔":"Save"}</button></div>
+    <div style={{display:"flex",gap:6}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><button onClick={save} style={{flexShrink:0,padding:"7px 14px",fontSize:"0.85rem",borderRadius:8,fontFamily:"inherit",fontWeight:500,cursor:"pointer",border:"none",background:fl?T.ok:T.accentBtn,color:"#fff",minWidth:52}}>{fl?"✔":"Save"}</button></div>
   </div>);
 }
 function MedEntry({settings,onAdd,entryTime,setEntryTime,T}){
@@ -511,7 +499,7 @@ function MedEntry({settings,onAdd,entryTime,setEntryTime,T}){
       <select value={timing} onChange={e=>setTiming(e.target.value)} style={{flex:"1 1 120px",minWidth:0}}>{MED_TIMES.map(t=><option key={t}>{t}</option>)}</select>
     </div>
     <div style={{display:"flex",gap:6}}>
-      <input type="text" title="Entry time" placeholder="9.20" value={entryTime} onChange={e=>setEntryTime(e.target.value)} onBlur={e=>{const raw=e.target.value.replace(/[^0-9]/g,"");if(!raw)return;let h,mi;if(raw.length<=2){h=+raw;mi=0;}else if(raw.length===3){h=+raw[0];mi=+raw.slice(1);}else{h=+raw.slice(0,2);mi=+raw.slice(2,4);}h=Math.min(23,Math.max(0,h));mi=Math.min(59,Math.max(0,mi));setEntryTime(String(h).padStart(2,"0")+":"+String(mi).padStart(2,"0"));}} maxLength={5} style={{width:58,fontSize:"0.8rem",padding:"6px 4px",fontFamily:"'DM Mono',monospace",textAlign:"center",flexShrink:0}}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/>
+      <TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/>
       <Saver flash={fl} onClick={save} T={T}/>
     </div>
   </div>);
@@ -608,7 +596,7 @@ function EditEntry({entry,settings,onSave,onCancel,T}){
 // ═══════════════════════════════════════════════════════════════════════════════
 // REPORTS
 // ═══════════════════════════════════════════════════════════════════════════════
-function ReportsPage({entries,settings,T,setModal}){
+function ReportsPage({entries,settings,T}){
   const[tab,setTab]=useState("view");const[vd,setVd]=useState(today());
   const[cd,setCd]=useState([today()]);const[ad,setAd]=useState(today());const[qr,setQr]=useState("");
   const d30=Array.from({length:30},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);});
@@ -616,7 +604,7 @@ function ReportsPage({entries,settings,T,setModal}){
   const medNames=medPresets.map(p=>typeof p==="string"?p:p.name);
   const rpt=date=>dayReport(entries.filter(e=>e.date===date),medPresets);
   const allRows=[{key:"water",label:"Water"},{key:"drinks",label:"Drinks"},{key:"medication",label:"Medications"},{key:"exercise",label:"Exercise"},{key:"Breakfast",label:"Breakfast"},{key:"Lunch",label:"Lunch"},{key:"Snack",label:"Snack"},{key:"Dinner",label:"Dinner"},...medNames.map(n=>({key:n,label:n}))];
-  const doExport=(csv,fn)=>setModal({filename:fn,csv});
+  const doExport=(csv,fn)=>downloadCSV(csv,fn);
   const applyQr=v=>{setQr(v);if(!v)return;const n=parseInt(v);setCd(Array.from({length:n},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);}));};
   return(<div><div style={{display:"flex",alignItems:"center",gap:4,marginBottom:10,flexWrap:"wrap"}}><span style={{fontWeight:700,fontSize:"0.92rem",marginRight:4}}>📊 Reports</span><button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} onClick={()=>doExport(buildViewCSV(entries,tab==="view"?[vd]:cd,medPresets),`jivanlog-view-${today()}.csv`)}>⬇️ Export view</button></div><div style={{display:"flex",gap:5,marginBottom:9,alignItems:"center"}}><button className={`tbtn${tab==="view"?" on":""}`} onClick={()=>setTab("view")}>View</button><button className={`tbtn${tab==="compare"?" on":""}`} onClick={()=>setTab("compare")}>Compare</button>{tab==="view"&&<select value={vd} onChange={e=>setVd(e.target.value)} style={{flex:1,fontSize:"0.79rem",padding:"5px 7px"}}>{d30.map(d=><option key={d} value={d}>{fmtDate(d)}{d===today()?" ★":""}</option>)}</select>}{tab==="compare"&&<><select value={qr} onChange={e=>applyQr(e.target.value)} style={{flex:"0 0 auto",fontSize:"0.79rem",padding:"5px 6px",width:110}}><option value="">Quick…</option>{[2,3,4,5,6,7,8,9,10].map(n=><option key={n} value={n}>Last {n} days</option>)}</select><select value={ad} onChange={e=>setAd(e.target.value)} style={{flex:1,fontSize:"0.79rem",padding:"5px 6px"}}>{d30.map(d=><option key={d} value={d}>{fmtShort(d)}{d===today()?" ★":""}</option>)}</select><button onClick={()=>{setQr("");if(!cd.includes(ad)&&cd.length<10)setCd(p=>[...p,ad].sort().reverse());}} style={{flexShrink:0,padding:"5px 11px",fontSize:"1.1rem",fontWeight:700,lineHeight:1,border:"none",borderRadius:8,background:T.accentBtn,color:"#fff",cursor:"pointer"}}>＋</button></>}</div>{tab==="compare"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8,alignItems:"center"}}>{cd.map(d=>(<div key={d} style={{display:"flex",alignItems:"center",gap:3,background:T.border,borderRadius:20,padding:"2px 9px",fontSize:"0.73rem"}}><span>{fmtShort(d)}</span>{cd.length>1&&<button onClick={()=>{setQr("");setCd(p=>p.filter(x=>x!==d));}} style={{background:"none",border:"none",color:T.textMuted,cursor:"pointer",fontSize:"0.85rem",padding:"0 0 0 3px"}}>×</button>}</div>))}<button className="tbtn" style={{padding:"2px 9px",fontSize:"0.72rem"}} onClick={()=>{setQr("");setCd([today()]);}} >Clear</button></div>}{tab==="view"&&<div className="card"><div style={{fontWeight:600,fontSize:"0.82rem",marginBottom:8,color:T.accent}}>{fmtDate(vd)}</div>{allRows.map(({label,key})=>{const v=rpt(vd)[key]||"-";return(<div key={key} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}><span style={{color:T.textMuted,fontSize:"0.76rem",minWidth:100,flexShrink:0}}>{label}</span><span style={{textAlign:"right",flex:1,paddingLeft:6,color:v==="-"?T.border:T.text}}>{v}</span></div>);})}</div>}{tab==="compare"&&<div style={{overflowX:"auto"}}><table className="ctbl"><thead><tr><th style={{minWidth:90}}>Category</th>{cd.map(d=><th key={d}>{fmtShort(d)}</th>)}</tr></thead><tbody>{allRows.map(({label,key})=>{const vals=cd.map(d=>rpt(d)[key]||"-");return(<tr key={key}><td style={{color:T.textMuted,fontWeight:600}}>{label}</td>{vals.map((v,i)=><td key={i} style={{color:v==="-"?T.border:T.text}}>{v}</td>)}</tr>);})}</tbody></table></div>}</div>);
 }
@@ -624,16 +612,14 @@ function ReportsPage({entries,settings,T,setModal}){
 // ═══════════════════════════════════════════════════════════════════════════════
 // SETTINGS
 // ═══════════════════════════════════════════════════════════════════════════════
-const STABS=[["general","General"],["daytpl","📋 Day Templates"],["backup","💾 Backup"]];
+const STABS=[["general","General"],["backup","💾 Backup"]];
 const CTABS=[["food","🍽️ Food"],["drinks","☕ Drinks"],["exercise","🏃 Exercise"],["medical","🩺 Medical"],["meds","💊 Meds"]];
 
-function BackupPanel({entries,onImport,clearAll,setModal,T}){
+function BackupPanel({entries,onImport,clearAll,T}){
   const fileRef=useRef();
   const[fl,setFl]=useState(false);
   const doExport=()=>{
-    const csv=buildAllCSV(entries);
-    const fn=`jivanlog-backup-${today()}.csv`;
-    setModal({filename:fn,csv});
+    downloadCSV(buildAllCSV(entries),`jivanlog-backup-${today()}.csv`);
   };
   const handleFile=e=>{
     const f=e.target.files[0];if(!f)return;
@@ -670,7 +656,7 @@ function BackupPanel({entries,onImport,clearAll,setModal,T}){
     </div>
   </div>);
 }
-function SettingsPage({settings,defaults,presets,templates,theme,setSettings,setDefaults,setPresets,setTemplates,setTheme,user,onSignOut,todayEntries,onLoadTemplate,entries,onImport,clearAll,setModal,T}){
+function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,user,onSignOut,entries,onImport,clearAll,T}){
   const[stab,setStab]=useState("general");const[ctab,setCtab]=useState("food");const[newItem,setNewItem]=useState("");const[applyFlash,setApplyFlash]=useState(false);
   // Default Config editor targets 'defaults'; Apply pushes defaults → settings
   const active=defaults;
@@ -678,6 +664,7 @@ function SettingsPage({settings,defaults,presets,templates,theme,setSettings,set
   const applyToSettings=()=>{if(!confirm("Apply Default config to active settings?\n\nEntry forms will immediately use this config."))return;setSettings(deepClone(defaults));setApplyFlash(true);setTimeout(()=>setApplyFlash(false),1800);};
   const addItem=key=>{if(!newItem.trim())return;const val=key==="foodCategories"?{name:newItem.trim(),note:""}:newItem.trim();updateActive(p=>({...p,[key]:[...(p[key]||[]),val]}));setNewItem("");};
   const removeItem=(key,item)=>updateActive(p=>({...p,[key]:(p[key]||[]).filter(x=>key==="foodCategories"?foodName(x)!==foodName(item):x!==item)}));
+  const updateLiquidNote=(name,note)=>updateActive(p=>({...p,liquidNotes:{...(p.liquidNotes||{}), [name]:note}}));
   const updateFoodNote=(name,note)=>updateActive(p=>{
     const fi=foodItems(p.foodCategories||[]);
     const updated=fi.map(f=>f.name===name?{...f,note}:f);
@@ -715,7 +702,7 @@ function SettingsPage({settings,defaults,presets,templates,theme,setSettings,set
         {CTABS.map(([k,l])=><button key={k} onClick={()=>{setCtab(k);setNewItem("");}} className={`tbtn${ctab===k?" on":""}`} style={{flexShrink:0,fontSize:"0.75rem"}}>{l}</button>)}
       </div>
       {ctab==="food"&&<><FoodList items={active.foodCategories||FD.foodCategories} onRemove={name=>removeItem("foodCategories",name)} onUpdateNote={(name,note)=>updateFoodNote(name,note)} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("foodCategories")} T={T}/></>}
-      {ctab==="drinks"&&<><EList items={(active.liquidTypes||[]).filter(t=>t!=="--------")} onRemove={item=>removeItem("liquidTypes",item)} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("liquidTypes")} T={T}/></>}
+      {ctab==="drinks"&&<><DrinkList types={active.liquidTypes||FD.liquidTypes} notes={active.liquidNotes||FD.liquidNotes||{}} onRemove={item=>removeItem("liquidTypes",item)} onUpdateNote={(n,v)=>updateLiquidNote(n,v)} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("liquidTypes")} T={T}/></>}
       {ctab==="exercise"&&<ExerciseSetting types={active.exerciseTypes||FD.exerciseTypes} onChange={v=>updateActive(p=>({...p,exerciseTypes:v}))} T={T}/>}
       {ctab==="medical"&&<MedicalPresetSetting presets={active.medicalPresets||FD.medicalPresets} onAdd={addMedPreset} onRemove={removeMedPreset} T={T}/>}
       {ctab==="meds"&&<EList items={active.medications||FD.medications} onRemove={item=>removeItem("medications",item)} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("medications")} T={T}/>}
@@ -723,8 +710,7 @@ function SettingsPage({settings,defaults,presets,templates,theme,setSettings,set
 
     
 
-    {stab==="daytpl"&&<TemplatesPanel templates={templates} setTemplates={setTemplates} settings={settings} todayEntries={todayEntries} onLoadTemplate={onLoadTemplate} T={T}/>}
-    {stab==="backup"&&<BackupPanel entries={entries} onImport={onImport} clearAll={clearAll} setModal={setModal} T={T}/>}
+    {stab==="backup"&&<BackupPanel entries={entries} onImport={onImport} clearAll={clearAll} T={T}/>}
   </div>);
 }
 
@@ -734,231 +720,33 @@ function SettingsPage({settings,defaults,presets,templates,theme,setSettings,set
 // ── Load: find today's earliest Weight entry as wake-up anchor,
 //          shift all template times by the same offset, preview, confirm
 // ═══════════════════════════════════════════════════════════════════════════════
-function TemplatesPanel({templates,setTemplates,settings,todayEntries,onLoadTemplate,T}){
-  const[selIdx,setSelIdx]=useState(0);
-  const[mode,setMode]=useState("view");       // view | add | preview
-  const[addType,setAddType]=useState("meal");
-  const[preview,setPreview]=useState([]);
-  const[excluded,setExcluded]=useState(new Set());
-  const[editIdx,setEditIdx]=useState(null);
-
-  const tpl=templates[selIdx]||{name:"",icon:"",entries:[]};
-  const hasEntries=tpl.entries&&tpl.entries.length>0;
-
-  const setTplEntries=fn=>{
-    const next=[...templates];
-    const cur=deepClone(next[selIdx]);
-    cur.entries=typeof fn==="function"?fn(cur.entries||[]):fn;
-    cur.savedAt=Date.now();
-    next[selIdx]=cur;
-    setTemplates(next);
-  };
-
-  // ── Entry label inside panel ──────────────────────────────────────────────
-  const eLabel=e=>{
-    if(!e)return"—";
-    if(e.type==="meal")       return[e.mealType,e.food,e.qty?(e.qty+(e.unit==="count"?"":e.unit)):null].filter(Boolean).join(" · ");
-    if(e.type==="liquid")     return[e.liquidType||e.drinkType,e.ml?e.ml+"ml":null].filter(Boolean).join(" · ");
-    if(e.type==="medical")    return[e.readingType,(e.value||"—")+(e.unit?" "+e.unit:"")].filter(Boolean).join(" · ");
-    if(e.type==="medication") return[e.med,e.timing].filter(Boolean).join(" · ");
-    if(e.type==="exercise")   return[e.exType,e.time?e.time+"min":null,e.dist?e.dist+"km":null].filter(Boolean).join(" · ");
-    if(e.type==="water")      return[(e.waterTemp||"Water"),e.ml?e.ml+"ml":null].filter(Boolean).join(" · ");
-    if(e.type==="drinks")     return[e.drinkType||e.liquidType,e.ml?e.ml+"ml":null].filter(Boolean).join(" · ");
-    return e.type||"—";
-  };
-  const tIcon=t=>({meal:"🍽️",liquid:"💧",medical:"🩺",medication:"💊",exercise:"🏃"}[t]||"•");
-
-  // ── Save today → template ─────────────────────────────────────────────────
-  const saveToTemplate=()=>{
-    const filtered=todayEntries.filter(e=>["meal","liquid","medical","medication","exercise"].includes(e.type));
-    if(!filtered.length){alert("No entries today to save.\n\nLog your full day first.");return;}
-    if(!confirm(`Save today's ${filtered.length} entries to ${tpl.icon} ${tpl.name}?\n\nThis will replace any existing entries.`))return;
-    setTplEntries(filtered.map(e=>({...e,id:genId()})));
-  };
-
-  // ── Load → today (with time shift) ───────────────────────────────────────
-  const buildPreview=()=>{
-    if(!hasEntries){alert("No entries stored in this template yet.");return;}
-    const weightEntry=todayEntries.find(e=>e.type==="medical"&&e.readingType==="Weight");
-    const baseHour=weightEntry?new Date(weightEntry.timestamp).getHours():7;
-    const tplEntries=[...(tpl.entries||[])].sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp));
-    const firstHour=tplEntries.length>0?new Date(tplEntries[0].timestamp).getHours():7;
-    const shift=(baseHour-firstHour)*3600000;
-    const shifted=tplEntries.map(e=>({...e,id:genId(),date:today(),timestamp:new Date(new Date(e.timestamp).getTime()+shift).toISOString()}));
-    setPreview(shifted);
-    setExcluded(new Set());
-    setMode("preview");
-  };
-  const doLoad=()=>{
-    const toLoad=preview.filter(e=>!excluded.has(e.id));
-    onLoadTemplate(toLoad);
-    setMode("view");
-  };
-
-  // ── Add entry to template ─────────────────────────────────────────────────
-  const handleAddEntry=entry=>{
-    const ts=makeTS(today(),entry._ttime||"08:00");
-    setTplEntries(prev=>[...prev,{...entry,id:genId(),date:today(),timestamp:ts}].sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)));
-    setMode("view");
-  };
-
-  // ── Delete entry ──────────────────────────────────────────────────────────
-  const deleteEntry=idx=>setTplEntries(prev=>prev.filter((_,i)=>i!==idx));
-
-  // ── Edit entry time ────────────────────────────────────────────────────────
-  const updateEntryTime=(idx,timeStr)=>{
-    setTplEntries(prev=>prev.map((e,i)=>{
-      if(i!==idx)return e;
-      return{...e,timestamp:makeTS(today(),timeStr)};
-    }));
-  };
-
-  // ── Preview mode ──────────────────────────────────────────────────────────
-  if(mode==="preview")return(
-    <div>
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
-        <button onClick={()=>setMode("view")} style={{background:"none",border:"none",color:T.accentBtn,cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:"0.82rem",padding:0}}>← Back</button>
-        <span style={{flex:1,fontWeight:600,fontSize:"0.85rem"}}>Load {tpl.icon} {tpl.name}</span>
-        <button onClick={doLoad} style={{padding:"7px 16px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:600,fontSize:"0.82rem",cursor:"pointer"}}>📥 Load ({preview.filter(e=>!excluded.has(e.id)).length})</button>
-      </div>
-      <div style={{fontSize:"0.72rem",color:T.textMuted,marginBottom:8}}>Untick entries to skip today:</div>
-      <div className="card" style={{padding:"6px 11px"}}>
-        {preview.map(e=>(
-          <div key={e.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:`1px solid ${T.border}22`}}>
-            <input type="checkbox" checked={!excluded.has(e.id)} onChange={()=>setExcluded(s=>{const n=new Set(s);n.has(e.id)?n.delete(e.id):n.add(e.id);return n;})} style={{flexShrink:0,width:16,height:16,margin:0,cursor:"pointer"}}/>
-            <span style={{fontSize:"0.82rem",flexShrink:0}}>{tIcon(e.type)}</span>
-            <span style={{fontSize:"0.68rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:42,flexShrink:0}}>{fmt24(e.timestamp)}</span>
-            <span style={{flex:1,fontSize:"0.78rem"}}>{eLabel(e)}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
-  // ── Edit entry mode ────────────────────────────────────────────────────────
-  if(mode==="edit"&&editIdx!==null){
-    const editEntry=tpl.entries?.[editIdx];
-    if(!editEntry)return null;
-    const [editTime,setEditTime]=useState(fmt24(editEntry.timestamp));
-    const saveEdit=newData=>{
-      const ts=makeTS(today(),editTime||"08:00");
-      setTplEntries(prev=>prev.map((e,i)=>i===editIdx?{...e,...newData,timestamp:ts,date:"1970-01-01"}:e));
-      setMode("view");setEditIdx(null);
-    };
-    return(
-      <div>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
-          <button onClick={()=>{setMode("view");setEditIdx(null);}} style={{background:"none",border:"none",color:T.accentBtn,cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:"0.82rem",padding:0}}>← Back</button>
-          <span style={{fontWeight:600,fontSize:"0.85rem"}}>Edit entry in {tpl.icon} {tpl.name}</span>
-        </div>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10,padding:"8px 11px",background:T.accentBg,borderRadius:8,border:`1px solid ${T.accentBtn}44`,fontSize:"0.8rem",color:T.accent}}>
-          <span>⏱ Entry time:</span>
-          <input type="text" inputMode="numeric" value={editTime} onChange={e=>setEditTime(e.target.value)} maxLength={5} style={{width:60,fontSize:"0.82rem",padding:"3px 6px",fontFamily:"'DM Mono',monospace",background:T.inputBg,border:`1px solid ${T.border}`,borderRadius:6,color:T.text}}/>
-        </div>
-        {editEntry.type==="meal"&&<MealEntry settings={settings} onAdd={saveEdit} T={T} initialData={editEntry}/>}
-        {editEntry.type==="liquid"&&<LiquidEntry settings={settings} onAdd={saveEdit} T={T} initialData={editEntry}/>}
-        {editEntry.type==="exercise"&&<ExerciseEntry settings={settings} onAdd={saveEdit} T={T} initialData={editEntry}/>}
-        {editEntry.type==="medical"&&<MedicalEntry settings={settings} onAdd={saveEdit} T={T} initialData={editEntry}/>}
-        {editEntry.type==="medication"&&<MedEntry settings={settings} onAdd={saveEdit} T={T} initialData={editEntry}/>}
-      </div>
-    );
-  }
-
-  // ── Add entry mode ─────────────────────────────────────────────────────────
-  if(mode==="add"){
-    const MODULE_TYPES=[["meal","Meal","🍽️"],["liquid","Liquid","💧"],["exercise","Exercise","🏃"],["medical","Medical","🩺"],["medication","Medication","💊"]];
-    return(
-      <div>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
-          <button onClick={()=>setMode("view")} style={{background:"none",border:"none",color:T.accentBtn,cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:"0.82rem",padding:0}}>← Back</button>
-          <span style={{fontWeight:600,fontSize:"0.85rem"}}>Add entry to {tpl.icon} {tpl.name}</span>
-        </div>
-        <div style={{display:"flex",gap:4,marginBottom:10,flexWrap:"wrap"}}>
-          {MODULE_TYPES.map(([k,,icon])=><button key={k} onClick={()=>setAddType(k)} className={`tbtn${addType===k?" on":""}`} style={{fontSize:"0.74rem"}}>{icon}</button>)}
-        </div>
-        <div style={{fontSize:"0.7rem",color:T.textMuted,marginBottom:8,padding:"4px 8px",background:T.even,borderRadius:6}}>
-          Time: <input type="text" inputMode="numeric" placeholder="HH:MM" maxLength={5} id="tpl-time-input" defaultValue="08:00" style={{width:60,fontSize:"0.8rem",padding:"2px 5px",fontFamily:"'DM Mono',monospace"}}/>
-          <span style={{marginLeft:6,color:T.textMuted}}>(will be used as entry time)</span>
-        </div>
-        {addType==="meal"&&<MealEntry settings={settings} onAdd={e=>{e._ttime=document.getElementById("tpl-time-input")?.value||"08:00";handleAddEntry(e);}} T={T}/>}
-        {addType==="liquid"&&<LiquidEntry settings={settings} onAdd={e=>{e._ttime=document.getElementById("tpl-time-input")?.value||"08:00";handleAddEntry(e);}} T={T}/>}
-        {addType==="exercise"&&<ExerciseEntry settings={settings} onAdd={e=>{e._ttime=document.getElementById("tpl-time-input")?.value||"08:00";handleAddEntry(e);}} T={T}/>}
-        {addType==="medical"&&<MedicalEntry settings={settings} onAdd={e=>{e._ttime=document.getElementById("tpl-time-input")?.value||"08:00";handleAddEntry(e);}} T={T}/>}
-        {addType==="medication"&&<MedEntry settings={settings} onAdd={e=>{e._ttime=document.getElementById("tpl-time-input")?.value||"08:00";handleAddEntry(e);}} T={T}/>}
-      </div>
-    );
-  }
-
-  // ── View mode ─────────────────────────────────────────────────────────────
-  return(
-    <div>
-      {/* Template selector */}
-      <div style={{display:"flex",gap:4,marginBottom:10}}>
-        {templates.map((t,i)=>(
-          <button key={i} onClick={()=>{setSelIdx(i);setMode("view");}} style={{flex:1,padding:"8px 4px",borderRadius:9,border:"1px solid",textAlign:"center",cursor:"pointer",fontFamily:"inherit",borderColor:selIdx===i?T.accentBtn:T.border,background:selIdx===i?T.accentBg:T.cardBg,color:selIdx===i?T.accent:T.textMuted}}>
-            <div style={{fontSize:"1.3rem"}}>{t.icon}</div>
-            <div style={{fontSize:"0.68rem",fontWeight:600,marginTop:2}}>{t.name}</div>
-            <div style={{fontSize:"0.6rem",color:T.textMuted,marginTop:1}}>{t.entries?.length?`${t.entries.length} entries`:"empty"}</div>
-          </button>
-        ))}
-      </div>
-
-      {/* Template info */}
-      <div style={{padding:"7px 11px",background:T.accentBg,borderRadius:8,border:`1px solid ${T.accentBtn}44`,marginBottom:10,fontSize:"0.75rem",color:T.accent}}>
-        <b>{tpl.icon} {tpl.name}</b>
-        {hasEntries
-          ?<span style={{color:T.textMuted,fontWeight:400,marginLeft:6}}>· {tpl.entries.length} entries · saved {tpl.savedAt?new Date(tpl.savedAt).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"2-digit"}):"—"}</span>
-          :<span style={{color:T.textMuted,fontWeight:400,marginLeft:6}}>· empty — add entries or save today here</span>}
-      </div>
-
-      {/* Actions */}
-      <div style={{display:"flex",gap:8,marginBottom:12}}>
-        <button onClick={buildPreview} style={{flex:1,padding:"10px",borderRadius:9,border:"none",background:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:600,fontSize:"0.85rem",cursor:"pointer"}}>
-          📥 Load into Today
-        </button>
-        <button onClick={saveToTemplate} style={{flex:1,padding:"10px",borderRadius:9,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontFamily:"inherit",fontWeight:600,fontSize:"0.85rem",cursor:"pointer"}}>
-          💾 Save Today Here
-        </button>
-      </div>
-
-      {/* Add entry button */}
-      <button onClick={()=>setMode("add")} style={{width:"100%",padding:"8px",borderRadius:8,border:`1px dashed ${T.accentBtn}88`,background:T.accentBg,color:T.accent,fontFamily:"inherit",fontWeight:600,fontSize:"0.82rem",cursor:"pointer",marginBottom:10}}>
-        ＋ Add entry to template
-      </button>
-
-      {/* Stored entries with edit/delete */}
-      {hasEntries&&<>
-        <div className="slabel">Stored entries</div>
-        <div className="card" style={{padding:"6px 11px"}}>
-          {[...(tpl.entries||[])].sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)).map((e,i)=>(
-            <div key={e.id||i} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0",borderBottom:`1px solid ${T.border}22`}}>
-              <span style={{fontSize:"0.85rem",flexShrink:0}}>{tIcon(e.type)}</span>
-              <input type="text" inputMode="numeric" defaultValue={fmt24(e.timestamp)} onBlur={ev=>updateEntryTime(i,ev.target.value)} maxLength={5} style={{width:44,fontSize:"0.68rem",padding:"1px 3px",fontFamily:"'DM Mono',monospace",color:T.textMuted,border:`1px solid ${T.border}`,borderRadius:4,background:"transparent",flexShrink:0}}/>
-              <span style={{flex:1,fontSize:"0.78rem"}}>{eLabel(e)}</span>
-              <button onClick={()=>{setEditIdx(i);setMode("edit");}} style={{background:"none",border:"none",color:T.textMuted,cursor:"pointer",fontSize:"0.9rem",padding:"0 2px",flexShrink:0}}>✏️</button>
-              <button onClick={()=>deleteEntry(i)} style={{background:"none",border:"none",color:T.danger,cursor:"pointer",fontSize:"1rem",padding:"0 2px",flexShrink:0}}>🗑️</button>
-            </div>
-          ))}
-        </div>
-      </>}
-
-      <button onClick={()=>{if(!confirm(`Reset ${tpl.icon} ${tpl.name} to built-in default entries?\n\nThis replaces all current entries.`))return;setTplEntries(deepClone(FD.templates[selIdx].entries));}} style={{width:"100%",padding:"7px",borderRadius:8,border:`1px solid ${T.accentBtn}66`,background:"transparent",color:T.accent,fontFamily:"inherit",fontSize:"0.78rem",cursor:"pointer",marginBottom:6}}>↺ Reset {tpl.icon} {tpl.name} to default</button>
-
-      <div style={{fontSize:"0.71rem",color:T.textMuted,lineHeight:1.7,marginTop:10,padding:"6px 8px",background:T.even,borderRadius:7,border:`1px solid ${T.border}`}}>
-        <b style={{color:T.textSub}}>How templates work:</b><br/>
-        1. Add entries manually (＋) or save today's log (💾)<br/>
-        2. Next day: tap <b>📥 Load into Today</b><br/>
-        3. Times auto-shift to match your wake-up Weight reading<br/>
-        4. Untick anything you're skipping today → tap Load
-      </div>
-    </div>
-  );
-}
 
 // ── Settings sub-components ───────────────────────────────────────────────────
 function MedicalPresetSetting({presets,onAdd,onRemove,T}){
   const[nm,setNm]=useState("");const[ut,setUt]=useState("");
   return(<div className="card"><div style={{display:"flex",gap:6,marginBottom:9,alignItems:"center"}}><input placeholder="Name (e.g. SpO2)" value={nm} onChange={e=>setNm(e.target.value)} onKeyDown={e=>e.key==="Enter"&&(onAdd(nm,ut),setNm(""),setUt(""))} style={{flex:2}}/><input placeholder="Unit (e.g. %)" value={ut} onChange={e=>setUt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&(onAdd(nm,ut),setNm(""),setUt(""))} style={{flex:1}}/><button onClick={()=>{onAdd(nm,ut);setNm("");setUt("");}} style={{flexShrink:0,padding:"7px 12px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div>{(presets||[]).map(p=>{const nm2=typeof p==="string"?p:p.name;const ut2=typeof p==="string"?"":p.unit;return(<div key={nm2} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}><span>{nm2}{ut2&&<span style={{color:T.textMuted,fontSize:"0.75rem",marginLeft:6}}>({ut2})</span>}</span><button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(nm2)}>🗑️</button></div>);})}</div>);
+}
+function DrinkList({types,notes,onRemove,onUpdateNote,newItem,setNew,onAdd,T}){
+  const drinks=(types||[]).filter(t=>t!=="--------");
+  return(<div className="card">
+    <div style={{display:"flex",gap:7,marginBottom:9}}>
+      <input placeholder="Add drink type…" value={newItem} onChange={e=>setNew(e.target.value)} onKeyDown={e=>e.key==="Enter"&&onAdd()}/>
+      <button onClick={onAdd} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button>
+    </div>
+    {[...drinks].sort().map(t=>(
+      <div key={t} style={{borderBottom:`1px solid ${T.border}`,paddingBottom:6,marginBottom:6}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:3}}>
+          <span style={{fontSize:"0.84rem",fontWeight:500}}>{t}</span>
+          <button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(t)}>🗑️</button>
+        </div>
+        <input placeholder="Default note (optional)"
+          value={notes[t]||""}
+          onChange={e=>onUpdateNote(t,e.target.value)}
+          style={{width:"100%",fontSize:"0.76rem",padding:"4px 7px",color:T.textSub}}
+        />
+      </div>
+    ))}
+  </div>);
 }
 function FoodList({items,onRemove,onUpdateNote,newItem,setNew,onAdd,T}){
   const fi=foodItems(items);
@@ -993,7 +781,8 @@ function ExerciseSetting({types,onChange,T}){
   const addSub=(i,s)=>{if(!s.trim())return;onChange(types.map((t,x)=>x===i?{...t,subTypes:[...t.subTypes,s.trim()].sort()}:t));};
   const remSub=(i,s)=>onChange(types.map((t,x)=>x===i?{...t,subTypes:t.subTypes.filter(v=>v!==s)}:t));
   const togM=(i,m)=>onChange(types.map((t,x)=>{if(x!==i)return t;const h=t.metrics.includes(m);return{...t,metrics:h?t.metrics.filter(v=>v!==m):[...t.metrics,m]};}));
-  return(<div><div className="card" style={{marginBottom:7}}><div style={{display:"flex",gap:7}}><input placeholder="New exercise type…" value={nn} onChange={e=>setNn(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button onClick={add} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div><div style={{fontSize:"0.7rem",color:T.textMuted,marginTop:5}}>New types default to time metric. Toggle below to change.</div></div>{types.map((t,i)=>(<div key={t.name} className="card" style={{marginBottom:7}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}}><span style={{fontWeight:600,fontSize:"0.85rem"}}>{t.name}</span><div style={{display:"flex",gap:5}}><button className="ibtn" onClick={()=>setEi(ei===i?null:i)}>{ei===i?"✖️":"✏️"}</button><button className="ibtn" style={{color:T.danger}} onClick={()=>rem(i)}>🗑️</button></div></div><div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:3}}>{["distance","time","count"].map(m=>(<button key={m} onClick={()=>togM(i,m)} style={{padding:"2px 9px",borderRadius:20,fontSize:"0.72rem",border:"1px solid",cursor:"pointer",borderColor:t.metrics.includes(m)?T.accentBtn:T.border,background:t.metrics.includes(m)?T.accentBg:"transparent",color:t.metrics.includes(m)?T.accent:T.textMuted}}>{m}</button>))}</div>{ei===i&&<div style={{marginTop:7}}><div className="slabel">Sub-types</div>{t.subTypes.map(s=>(<div key={s} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:"0.8rem",padding:"4px 0",borderBottom:`1px solid ${T.border}`}}><span>{s}</span><button className="ibtn" style={{color:T.danger}} onClick={()=>remSub(i,s)}>🗑️</button></div>))}<AddInline placeholder="Add sub-type…" onAdd={s=>addSub(i,s)} T={T}/></div>}</div>))}</div>);
+  return(<div><div className="card" style={{marginBottom:7}}><div style={{display:"flex",gap:7}}><input placeholder="New exercise type…" value={nn} onChange={e=>setNn(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button onClick={add} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div><div style={{fontSize:"0.7rem",color:T.textMuted,marginTop:5}}>New types default to time metric. Toggle below to change.</div></div>{types.map((t,i)=>(<div key={t.name} className="card" style={{marginBottom:7}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}}><span style={{fontWeight:600,fontSize:"0.85rem"}}>{t.name}</span><div style={{display:"flex",gap:5}}><button className="ibtn" onClick={()=>setEi(ei===i?null:i)}>{ei===i?"✖️":"✏️"}</button><button className="ibtn" style={{color:T.danger}} onClick={()=>rem(i)}>🗑️</button></div></div><div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:3}}>{["distance","time","count"].map(m=>(<button key={m} onClick={()=>togM(i,m)} style={{padding:"2px 9px",borderRadius:20,fontSize:"0.72rem",border:"1px solid",cursor:"pointer",borderColor:t.metrics.includes(m)?T.accentBtn:T.border,background:t.metrics.includes(m)?T.accentBg:"transparent",color:t.metrics.includes(m)?T.accent:T.textMuted}}>{m}</button>))}</div>
+              <input placeholder="Default note (optional, e.g. 30 min brisk)" value={t.note||""} onChange={e=>onChange(types.map((x,j)=>j===i?{...x,note:e.target.value}:x))} style={{width:"100%",fontSize:"0.76rem",padding:"4px 7px",marginBottom:3,color:T.textSub}}/>{ei===i&&<div style={{marginTop:7}}><div className="slabel">Sub-types</div>{t.subTypes.map(s=>(<div key={s} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:"0.8rem",padding:"4px 0",borderBottom:`1px solid ${T.border}`}}><span>{s}</span><button className="ibtn" style={{color:T.danger}} onClick={()=>remSub(i,s)}>🗑️</button></div>))}<AddInline placeholder="Add sub-type…" onAdd={s=>addSub(i,s)} T={T}/></div>}</div>))}</div>);
 }
 function AddInline({placeholder,onAdd,T}){
   const[v,setV]=useState("");
