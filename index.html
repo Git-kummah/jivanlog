@@ -44,7 +44,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.18";
+const APP_VERSION="v4.19";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -205,7 +205,7 @@ function App(){
   const[entries,setEntries]=useState([]);
   const[settings,setSettings]=useState(deepClone(FD));
   const[defaults,setDefaults]=useState(deepClone(FD));
-  const[theme,setTheme]=useState("dark");
+  const[theme,setTheme]=useState("system");
   const[dataLoaded,setDataLoaded]=useState(false);
   const[clock,setClock]=useState(nowTime());
   const[entryTime,setEntryTime]=useState(nowHHMM());
@@ -318,7 +318,7 @@ function App(){
     if(user){try{
       await Promise.all([dbDel(user.uid,"entries"),dbDel(user.uid,"settings"),dbDel(user.uid,"defaults"),dbDel(user.uid,"theme")]);
       const empty={foodCategories:[],liquidTypes:[],liquidNotes:{},liquidSubTypes:{},exerciseTypes:[],medicalPresets:[],medications:[]};
-      setSettings({...empty});setDefaults({...empty});setTheme("dark");
+      setSettings({...empty});setDefaults({...empty});setTheme("system");
     }catch(e){console.error(e);}}
   },[entries,user]);
 
