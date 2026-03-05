@@ -44,7 +44,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.16";
+const APP_VERSION="v4.17";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -217,6 +217,18 @@ function App(){
 
   useEffect(()=>{const t=setInterval(()=>setClock(nowTime()),1000);return()=>clearInterval(t);},[]);
 
+  // ── Auto-backup: once per calendar day on first open ─────────────────────
+  useEffect(()=>{
+    if(!dataLoaded||!user||!entries.length)return;
+    try{
+      const key=`jivanlog-lastBackup-${user.uid}`;
+      const last=localStorage.getItem(key);
+      if(last===today())return;          // already backed up today
+      downloadCSV(buildAllCSV(entries),`jivanlog-autobackup-${today()}.csv`);
+      localStorage.setItem(key,today());
+    }catch(e){console.warn("Auto-backup failed:",e);}
+  },[dataLoaded,user]);  // intentionally omit entries — run once when data first loads
+
   // Auth listener
   useEffect(()=>{
     const unsub=fbAuth.onAuthStateChanged(u=>{
@@ -305,7 +317,8 @@ function App(){
     downloadCSV(buildAllCSV(entries),`jivanlog-backup-full-${today()}.csv`);
     if(user){try{
       await Promise.all([dbDel(user.uid,"entries"),dbDel(user.uid,"settings"),dbDel(user.uid,"defaults"),dbDel(user.uid,"theme")]);
-      setSettings(deepClone(FD));setDefaults(deepClone(FD));setTheme("dark");
+      const empty={foodCategories:[],liquidTypes:[],liquidNotes:{},liquidSubTypes:{},exerciseTypes:[],medicalPresets:[],medications:[]};
+      setSettings({...empty});setDefaults({...empty});setTheme("dark");
     }catch(e){console.error(e);}}
   },[entries,user]);
 
@@ -314,9 +327,14 @@ function App(){
   },[user]);
 
   const onClearConfig=useCallback(async section=>{
-    const keyMap={food:["foodCategories"],drinks:["liquidTypes","liquidNotes","liquidSubTypes"],exercise:["exerciseTypes"],medical:["medicalPresets"],meds:["medications"]};
-    const keys=keyMap[section]||[];
-    const patch={};keys.forEach(k=>{patch[k]=deepClone(FD[k]);});
+    const emptyMap={
+      food:{foodCategories:[]},
+      drinks:{liquidTypes:[],liquidNotes:{},liquidSubTypes:{}},
+      exercise:{exerciseTypes:[]},
+      medical:{medicalPresets:[]},
+      meds:{medications:[]},
+    };
+    const patch=emptyMap[section]||{};
     const newDef={...defaults,...patch};const newSet={...settings,...patch};
     setDefaults(newDef);setSettings(newSet);
     if(user){try{await Promise.all([dbSet(user.uid,"defaults",newDef),dbSet(user.uid,"settings",newSet)]);}catch(e){}}
@@ -849,11 +867,11 @@ function BackupPanel({entries,settings,defaults,onImport,onImportConfig,onClearE
   const CLEAR_OPTS=[
     {key:"all",   label:"⚠️ Clear EVERYTHING",  desc:"All entries + all config + theme. Full reset.",danger:true},
     {key:"entries",label:"🗑️ Clear all entries", desc:"Delete all logged entries. Config is kept."},
-    {key:"food",   label:"🍽️ Reset Food config",    desc:"Restore food list to factory defaults. Your entries are kept."},
-    {key:"drinks", label:"💧 Reset Drinks config",  desc:"Restore drinks list to factory defaults. Your entries are kept."},
-    {key:"exercise",label:"🏃 Reset Exercise config",desc:"Restore exercise types to factory defaults. Your entries are kept."},
-    {key:"medical",label:"🩺 Reset Medical config",  desc:"Restore medical reading types to factory defaults. Your entries are kept."},
-    {key:"meds",   label:"💊 Reset Meds config",     desc:"Restore medications list to factory defaults. Your entries are kept."},
+    {key:"food",   label:"🍽️ Clear Food config",    desc:"Delete all food items. List becomes empty. Entries are kept."},
+    {key:"drinks", label:"💧 Clear Drinks config",  desc:"Delete all drink types. List becomes empty. Entries are kept."},
+    {key:"exercise",label:"🏃 Clear Exercise config",desc:"Delete all exercise types. List becomes empty. Entries are kept."},
+    {key:"medical",label:"🩺 Clear Medical config",  desc:"Delete all medical reading types. List becomes empty. Entries are kept."},
+    {key:"meds",   label:"💊 Clear Meds config",     desc:"Delete all medications. List becomes empty. Entries are kept."},
   ];
 
   const doExport=()=>{
