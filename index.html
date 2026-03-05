@@ -44,7 +44,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.17";
+const APP_VERSION="v4.18";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -52,14 +52,14 @@ const LOGO_SVG=`data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http:/
 
 // ── CONSTANTS ─────────────────────────────────────────────────────────────────
 const FD={
-  foodCategories:[{name:"Airline Meal",note:"",subTypes:[]},{name:"Alfam Chicken",note:"",subTypes:[]},{name:"Almonds",note:"",subTypes:[]},{name:"Apple",note:"",subTypes:[]},{name:"Avial",note:"",subTypes:[]},{name:"Beans Thoran",note:"",subTypes:[]},{name:"Beetroot Thoran",note:"",subTypes:[]},{name:"Black Channa",note:"",subTypes:[]},{name:"Boiled Egg",note:"",subTypes:[]},{name:"Broccoli",note:"",subTypes:[]},{name:"Chapati",note:"",subTypes:[]},{name:"Coconut Chicken",note:"",subTypes:[]},{name:"Coconut Gravy",note:"",subTypes:[]},{name:"Coconut Masala",note:"",subTypes:[]},{name:"Curd",note:"",subTypes:[]},{name:"Curd + ACV",note:"",subTypes:[]},{name:"Dal",note:"",subTypes:[]},{name:"Fish (Plain)",note:"",subTypes:[]},{name:"Fish Curry",note:"",subTypes:[]},{name:"Fish Fry",note:"",subTypes:[]},{name:"Green Gram in Coconut",note:"",subTypes:[]},{name:"Haryali Chicken",note:"",subTypes:[]},{name:"Idli",note:"",subTypes:[]},{name:"Kabuli Channa",note:"",subTypes:[]},{name:"Karela-Onion Saute",note:"",subTypes:[]},{name:"Ladies Finger Saute",note:"",subTypes:[]},{name:"Lettuce Salad",note:"",subTypes:[]},{name:"Minced Salad",note:"",subTypes:[]},{name:"Mixed Veg in Coconut",note:"",subTypes:[]},{name:"Omelette",note:"",subTypes:[]},{name:"Orange",note:"",subTypes:[]},{name:"Palak Paneer",note:"",subTypes:[]},{name:"Paneer",note:"",subTypes:[]},{name:"Paneer Tikka",note:"",subTypes:[]},{name:"Pear",note:"",subTypes:[]},{name:"Poha",note:"",subTypes:[]},{name:"Pumpkin + Kabuli Channa",note:"",subTypes:[]},{name:"Pumpkin Seeds",note:"",subTypes:[]},{name:"Rajma",note:"",subTypes:[]},{name:"Red Amaranthus",note:"",subTypes:[]},{name:"Rice",note:"",subTypes:[]},{name:"Roti",note:"",subTypes:[]},{name:"Salad (Cucumber)",note:"",subTypes:[]},{name:"Salad (Lettuce+Broccoli)",note:"",subTypes:[]},{name:"Sambar",note:"",subTypes:[]},{name:"Soya Chunks",note:"",subTypes:[]},{name:"Stuffed Omelette",note:"",subTypes:[]},{name:"Upma",note:"",subTypes:[]},{name:"Walnuts",note:"",subTypes:[]},{name:"Yogurt / Curd",note:"",subTypes:[]}],
-  liquidTypes:["Warm Water","Plain Water","Cold Water","--------","Morning Drink","Morning Coffee","Milk Tea","Green Tea","Tulsi Mulethi Tea","Tulsi Ginger Tea","Black Coffee","Black Tea","Coconut Water","Buttermilk","Herbal Tea","Lemon Water","Turmeric Milk"],
-  liquidNotes:{},
-  liquidSubTypes:{},
-  exerciseTypes:[{name:"Morning Walk",subTypes:[],metrics:["time"],note:"",subTypes:[]},{name:"Evening Walk",subTypes:[],metrics:["time"],note:"",subTypes:[]},{name:"Additional Walk",subTypes:[],metrics:["time"],note:"",subTypes:[]},{name:"Legs Up the Wall",subTypes:[],metrics:["time"],note:"",subTypes:[]},{name:"Legs Up the Pillow",subTypes:[],metrics:["time"],note:"",subTypes:[]},{name:"Seated Calf Raise",subTypes:[],metrics:["count"],note:"",subTypes:[]},{name:"Seated Ankle Circles",subTypes:[],metrics:["count"],note:"",subTypes:[]},{name:"Seated Knee Extension",subTypes:[],metrics:["count"],note:"",subTypes:[]},{name:"Short Arc Quad",subTypes:[],metrics:["count"],note:"",subTypes:[]},{name:"Straight Leg Raise",subTypes:[],metrics:["count"],note:"",subTypes:[]},{name:"Sole-to-Sole",subTypes:[],metrics:["count"],note:"",subTypes:[]},{name:"Running",subTypes:[],metrics:["distance","time"],note:"",subTypes:[]},{name:"Cycling",subTypes:[],metrics:["distance","time"],note:"",subTypes:[]}],
+  foodCategories:[{name:"Airline Meal",note:"",subTypes:[]},{name:"Lentils",note:"",subTypes:["Black Channa","Kabuli Channa","Rajma"]},{name:"Pulses",note:"",subTypes:["Green Gram","Red Gram","Channa Dal","Ambar Dal","Moong Dal"]},{name:"Thorans",note:"",subTypes:["Beans","Cabbage","Beetroot","Cheera"]},{name:"Chicken",note:"",subTypes:["Grilled","Tandoori"]},{name:"Egg",note:"",subTypes:["Boiled","Omlette","Burji","Salad"]},{name:"Salads",note:"",subTypes:["Lettuce","Cucumber","Brocolli"]},{name:"Curd Salad",note:"400g curd + 205g Cucumber + 15g Jalapeno + 15g beetroot + 5g beet vinegar",subTypes:[]},{name:"Paneer",note:"",subTypes:["Saute","Tikka","Curry"]},{name:"Nuts",note:"",subTypes:["Almonds","Walnuts"]},{name:"Seeds",note:"",subTypes:["7-Mix","Aliva","Black Sesame","Pumpkin"]},{name:"Fruits",note:"",subTypes:["Apple","Orange","Pear"]},{name:"Veg Saute",note:"",subTypes:["Karela","Kundri","Ladies Finger","Mix"]},{name:"Soya Chunks",note:"",subTypes:[]}],
+  liquidTypes:["Warm Water","Plain Water","Morning Drink","Morning Coffee","Milk Tea","Herbal Tea"],
+  liquidNotes:{"Morning Drink":"Warm water + 1Tsp Aliva seeds + cinnamon + turmeric + pepper + saffron honey","Morning Coffee":"60ml Milk + 1/4 Tsp Stevia","Milk Tea":"60ml Milk + 1/4 Tsp Stevia"},
+  liquidSubTypes:{"Herbal Tea":["Tulsi Ginger Chamomile","Tulsi Ginger Tumeric","Tulsi Honey Chamomile","Tulsi Muleti"]},
+  exerciseTypes:[{name:"Morning Walk",subTypes:[],metrics:["time","distance"],note:""},{name:"Additional Walk",subTypes:[],metrics:["time","distance"],note:""},{name:"Legs Up The Pillow",subTypes:[],metrics:["time"],note:""},{name:"Legs Up The Wall",subTypes:[],metrics:["time"],note:""}],
   // ── Medical presets now carry unit — fixes issue #1 ───────────────────────
   medicalPresets:[{name:"Sugar",unit:"mg/dL"},{name:"BP",unit:"Sys/Dia"},{name:"Weight",unit:"kg"},{name:"Height",unit:"cm"}],
-  medications:["Glycomet 500 SR","Nexovas 10","Multi-Vitamins","Vitamin D (60K / Lumia)","Other"],
+  medications:["Nexovas 10","Glycomet SR 500","50+ Muti-Vit","Calcium + Vit-D"],
   // ── 3 named day templates (empty until user saves) ────────────────────────
 };
 const deepClone=o=>JSON.parse(JSON.stringify(o));
@@ -814,7 +814,7 @@ function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,
   const addItem=key=>{if(!newItem.trim())return;const val=key==="foodCategories"?{name:newItem.trim(),note:"",subTypes:[]}:newItem.trim();updateActive(p=>({...p,[key]:[...(p[key]||[]),val]}));setNewItem("");};
   const removeItem=(key,item)=>updateActive(p=>({...p,[key]:(p[key]||[]).filter(x=>key==="foodCategories"?foodName(x)!==foodName(item):x!==item)}));
   const updateFood=newArr=>updateActive(p=>({...p,foodCategories:newArr}));
-  const updateDrink=(field,val)=>updateActive(p=>({...p,[field==="notes"?"liquidNotes":"liquidSubTypes"]:val}));
+  const updateDrink=(field,val)=>{const fmap={notes:"liquidNotes",subTypes:"liquidSubTypes",types:"liquidTypes"};updateActive(p=>({...p,[fmap[field]||field]:val}));};
   const addMedPreset=(name,unit)=>{if(!name.trim())return;const ex=active?.medicalPresets||[];if(ex.some(p=>(typeof p==="string"?p:p.name)===name.trim()))return;updateActive(p=>({...p,medicalPresets:[...(p.medicalPresets||[]),{name:name.trim(),unit:unit.trim()}]}));};
   const removeMedPreset=name=>updateActive(p=>({...p,medicalPresets:(p.medicalPresets||[]).filter(x=>(typeof x==="string"?x:x.name)!==name)}));
   return(<div>
@@ -846,8 +846,8 @@ function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,
       {ctab==="food"&&<FoodSetting items={active.foodCategories||FD.foodCategories} onRemove={name=>removeItem("foodCategories",name)} onUpdate={updateFood} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("foodCategories")} T={T}/>}
       {ctab==="drinks"&&<DrinkSetting types={active.liquidTypes||FD.liquidTypes} notes={active.liquidNotes||FD.liquidNotes||{}} subTypes={active.liquidSubTypes||FD.liquidSubTypes||{}} onRemove={item=>removeItem("liquidTypes",item)} onUpdate={updateDrink} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("liquidTypes")} T={T}/>}
       {ctab==="exercise"&&<ExerciseSetting types={active.exerciseTypes||FD.exerciseTypes} onChange={v=>updateActive(p=>({...p,exerciseTypes:v}))} T={T}/>}
-      {ctab==="medical"&&<MedicalPresetSetting presets={active.medicalPresets||FD.medicalPresets} onAdd={addMedPreset} onRemove={removeMedPreset} T={T}/>}
-      {ctab==="meds"&&<EList items={active.medications||FD.medications} onRemove={item=>removeItem("medications",item)} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("medications")} T={T}/>}
+      {ctab==="medical"&&<MedicalPresetSetting presets={active.medicalPresets||FD.medicalPresets} onAdd={addMedPreset} onRemove={removeMedPreset} onReorder={arr=>updateActive(p=>({...p,medicalPresets:arr}))} T={T}/>}
+      {ctab==="meds"&&<EList items={active.medications||FD.medications} onRemove={item=>removeItem("medications",item)} onReorder={arr=>updateActive(p=>({...p,medications:arr}))} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("medications")} T={T}/>}
     </>}
 
     {stab==="backup"&&<BackupPanel entries={entries} settings={settings} defaults={defaults} onImport={onImport} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} T={T}/>}
@@ -980,16 +980,31 @@ function BackupPanel({entries,settings,defaults,onImport,onImportConfig,onClearE
 
 
 // ── Settings sub-components ───────────────────────────────────────────────────
-function MedicalPresetSetting({presets,onAdd,onRemove,T}){
+function MedicalPresetSetting({presets,onAdd,onRemove,onReorder,T}){
   const[nm,setNm]=useState("");const[ut,setUt]=useState("");
-  return(<div className="card"><div style={{display:"flex",gap:6,marginBottom:9,alignItems:"center"}}><input placeholder="Name (e.g. SpO2)" value={nm} onChange={e=>setNm(e.target.value)} onKeyDown={e=>e.key==="Enter"&&(onAdd(nm,ut),setNm(""),setUt(""))} style={{flex:2}}/><input placeholder="Unit (e.g. %)" value={ut} onChange={e=>setUt(e.target.value)} onKeyDown={e=>e.key==="Enter"&&(onAdd(nm,ut),setNm(""),setUt(""))} style={{flex:1}}/><button onClick={()=>{onAdd(nm,ut);setNm("");setUt("");}} style={{flexShrink:0,padding:"7px 12px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div>{(presets||[]).map(p=>{const nm2=typeof p==="string"?p:p.name;const ut2=typeof p==="string"?"":p.unit;return(<div key={nm2} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}><span>{nm2}{ut2&&<span style={{color:T.textMuted,fontSize:"0.75rem",marginLeft:6}}>({ut2})</span>}</span><button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(nm2)}>🗑️</button></div>);})}</div>);
+  const add=()=>{if(!nm.trim())return;onAdd(nm.trim(),ut.trim());setNm("");setUt("");};
+  return(<div><div className="card" style={{marginBottom:7}}>
+    <div style={{display:"flex",gap:7,marginBottom:7}}><input placeholder="Reading name…" value={nm} onChange={e=>setNm(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><input placeholder="Unit…" value={ut} onChange={e=>setUt(e.target.value)} style={{width:80}} onKeyDown={e=>e.key==="Enter"&&add()}/><button onClick={add} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div>
+  </div>
+  {(presets||[]).map((p,i)=>{const nm2=typeof p==="string"?p:p.name;const ut2=typeof p==="string"?"":p.unit;return(<div key={nm2} style={{display:"flex",alignItems:"center",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}>
+    <ReorderBtns i={i} total={(presets||[]).length} onMove={(idx,dir)=>{const moved=moveItem(presets,idx,dir);onReorder(moved);}} T={T}/>
+    <span style={{flex:1}}>{nm2}{ut2&&<span style={{color:T.textMuted,fontSize:"0.75rem",marginLeft:6}}>({ut2})</span>}</span>
+    <button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(nm2)}>🗑️</button>
+  </div>);})}</div>);
 }
+
+// ── Shared reorder helpers ────────────────────────────────────────────────────
+const moveItem=(arr,i,dir)=>{const a=[...arr];const j=i+dir;if(j<0||j>=a.length)return a;[a[i],a[j]]=[a[j],a[i]];return a;};
+const ReorderBtns=({i,total,onMove,T})=>(<div style={{display:"flex",flexDirection:"column",gap:1,marginRight:4,flexShrink:0}}><button className="ibtn" onClick={()=>onMove(i,-1)} disabled={i===0} style={{padding:"0 3px",fontSize:"0.65rem",opacity:i===0?0.2:1,lineHeight:1.3}}>▲</button><button className="ibtn" onClick={()=>onMove(i,1)} disabled={i===total-1} style={{padding:"0 3px",fontSize:"0.65rem",opacity:i===total-1?0.2:1,lineHeight:1.3}}>▼</button></div>);
+
 function FoodSetting({items,onRemove,onUpdate,newItem,setNew,onAdd,T}){
   const[ei,setEi]=useState(null);
   const fi=foodItems(items);
   const upd=(name,patch)=>onUpdate(fi.map(f=>f.name===name?{...f,...patch}:f));
-  const addSub=(name,s)=>{if(!s.trim())return;const f=fi.find(x=>x.name===name);upd(name,{subTypes:[...(f.subTypes||[]),s.trim()].sort()});};
+  const move=(i,dir)=>onUpdate(moveItem(fi,i,dir));
+  const addSub=(name,s)=>{if(!s.trim())return;const f=fi.find(x=>x.name===name);upd(name,{subTypes:[...(f.subTypes||[]),s.trim()]});};
   const remSub=(name,s)=>{const f=fi.find(x=>x.name===name);upd(name,{subTypes:(f.subTypes||[]).filter(v=>v!==s)});};
+  const moveSub=(name,i,dir)=>{const f=fi.find(x=>x.name===name);upd(name,{subTypes:moveItem(f.subTypes||[],i,dir)});};
   return(<div>
     <div className="card" style={{marginBottom:7}}>
       <div style={{display:"flex",gap:7}}>
@@ -997,72 +1012,107 @@ function FoodSetting({items,onRemove,onUpdate,newItem,setNew,onAdd,T}){
         <button onClick={onAdd} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button>
       </div>
     </div>
-    {[...fi].sort((a,b)=>a.name.localeCompare(b.name)).map(item=>(
+    {fi.map((item,i)=>(
       <div key={item.name} className="card" style={{marginBottom:7}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
-          <span style={{fontWeight:600,fontSize:"0.85rem"}}>{item.name}</span>
-          <div style={{display:"flex",gap:5}}>
-            <button className="ibtn" onClick={()=>setEi(ei===item.name?null:item.name)}>{ei===item.name?"✖️":"✏️"}</button>
-            <button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(item.name)}>🗑️</button>
-          </div>
+        <div style={{display:"flex",alignItems:"center",marginBottom:4}}>
+          <ReorderBtns i={i} total={fi.length} onMove={move} T={T}/>
+          <span style={{fontWeight:600,fontSize:"0.85rem",flex:1}}>{item.name}</span>
+          <button className="ibtn" onClick={()=>setEi(ei===item.name?null:item.name)}>{ei===item.name?"✖️":"✏️"}</button>
+          <button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(item.name)}>🗑️</button>
         </div>
         <input placeholder="Default note (optional)" value={item.note||""} onChange={e=>upd(item.name,{note:e.target.value})} style={{width:"100%",fontSize:"0.76rem",padding:"4px 7px",marginBottom:ei===item.name?6:0,color:T.textSub}}/>
         {ei===item.name&&<div style={{marginTop:5}}>
           <div className="slabel">Sub-types</div>
-          {(item.subTypes||[]).map(s=>(<div key={s} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:"0.8rem",padding:"4px 0",borderBottom:`1px solid ${T.border}`}}><span>{s}</span><button className="ibtn" style={{color:T.danger}} onClick={()=>remSub(item.name,s)}>🗑️</button></div>))}
+          {(item.subTypes||[]).map((s,si)=>(<div key={s} style={{display:"flex",alignItems:"center",fontSize:"0.8rem",padding:"3px 0",borderBottom:`1px solid ${T.border}`}}>
+            <ReorderBtns i={si} total={(item.subTypes||[]).length} onMove={(idx,dir)=>moveSub(item.name,idx,dir)} T={T}/>
+            <span style={{flex:1}}>{s}</span>
+            <button className="ibtn" style={{color:T.danger}} onClick={()=>remSub(item.name,s)}>🗑️</button>
+          </div>))}
           <AddInline placeholder="Add sub-type..." onAdd={s=>addSub(item.name,s)} T={T}/>
         </div>}
       </div>
     ))}
   </div>);
 }
+
 function DrinkSetting({types,notes,subTypes,onRemove,onUpdate,newItem,setNew,onAdd,T}){
   const[ei,setEi]=useState(null);
   const drinks=(types||[]).filter(t=>t!=="--------");
   const updNote=(name,note)=>onUpdate("notes",{...notes,[name]:note});
   const updSubs=(name,subs)=>onUpdate("subTypes",{...subTypes,[name]:subs});
-  const addSub=(name,s)=>{if(!s.trim())return;updSubs(name,[...((subTypes||{})[name]||[]),s.trim()].sort());};
+  const move=(i,dir)=>{const moved=moveItem(drinks,i,dir);onUpdate("types",[...moved]);};
+  const addSub=(name,s)=>{if(!s.trim())return;updSubs(name,[...((subTypes||{})[name]||[]),s.trim()]);};
   const remSub=(name,s)=>updSubs(name,((subTypes||{})[name]||[]).filter(v=>v!==s));
+  const moveSub=(name,i,dir)=>updSubs(name,moveItem((subTypes||{})[name]||[],i,dir));
   return(<div>
     <div className="card" style={{marginBottom:7}}>
       <div style={{display:"flex",gap:7}}>
-        <input placeholder="Add drink type…" value={newItem} onChange={e=>setNew(e.target.value)} onKeyDown={e=>e.key==="Enter"&&onAdd()}/>
+        <input placeholder="Add drink type..." value={newItem} onChange={e=>setNew(e.target.value)} onKeyDown={e=>e.key==="Enter"&&onAdd()}/>
         <button onClick={onAdd} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button>
       </div>
     </div>
-    {[...drinks].sort().map(name=>(
+    {drinks.map((name,i)=>(
       <div key={name} className="card" style={{marginBottom:7}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4}}>
-          <span style={{fontWeight:600,fontSize:"0.85rem"}}>{name}</span>
-          <div style={{display:"flex",gap:5}}>
-            <button className="ibtn" onClick={()=>setEi(ei===name?null:name)}>{ei===name?"✖️":"✏️"}</button>
-            <button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(name)}>🗑️</button>
-          </div>
+        <div style={{display:"flex",alignItems:"center",marginBottom:4}}>
+          <ReorderBtns i={i} total={drinks.length} onMove={move} T={T}/>
+          <span style={{fontWeight:600,fontSize:"0.85rem",flex:1}}>{name}</span>
+          <button className="ibtn" onClick={()=>setEi(ei===name?null:name)}>{ei===name?"✖️":"✏️"}</button>
+          <button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(name)}>🗑️</button>
         </div>
         <input placeholder="Default note (optional)" value={(notes||{})[name]||""} onChange={e=>updNote(name,e.target.value)} style={{width:"100%",fontSize:"0.76rem",padding:"4px 7px",marginBottom:ei===name?6:0,color:T.textSub}}/>
         {ei===name&&<div style={{marginTop:5}}>
           <div className="slabel">Sub-types</div>
-          {((subTypes||{})[name]||[]).map(s=>(<div key={s} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:"0.8rem",padding:"4px 0",borderBottom:`1px solid ${T.border}`}}><span>{s}</span><button className="ibtn" style={{color:T.danger}} onClick={()=>remSub(name,s)}>🗑️</button></div>))}
-          <AddInline placeholder="Add sub-type…" onAdd={s=>addSub(name,s)} T={T}/>
+          {((subTypes||{})[name]||[]).map((s,si)=>(<div key={s} style={{display:"flex",alignItems:"center",fontSize:"0.8rem",padding:"3px 0",borderBottom:`1px solid ${T.border}`}}>
+            <ReorderBtns i={si} total={((subTypes||{})[name]||[]).length} onMove={(idx,dir)=>moveSub(name,idx,dir)} T={T}/>
+            <span style={{flex:1}}>{s}</span>
+            <button className="ibtn" style={{color:T.danger}} onClick={()=>remSub(name,s)}>🗑️</button>
+          </div>))}
+          <AddInline placeholder="Add sub-type..." onAdd={s=>addSub(name,s)} T={T}/>
         </div>}
       </div>
     ))}
   </div>);
 }
 
-function EList({items,onRemove,newItem,setNew,onAdd,T}){
-  return(<div className="card"><div style={{display:"flex",gap:7,marginBottom:9}}><input placeholder="Add new item…" value={newItem} onChange={e=>setNew(e.target.value)} onKeyDown={e=>e.key==="Enter"&&onAdd()}/><button onClick={onAdd} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div>{[...(items||[])].sort().map(item=>(<div key={item} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}><span>{item}</span><button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(item)}>🗑️</button></div>))}</div>);
+function EList({items,onRemove,onReorder,newItem,setNew,onAdd,T}){
+  return(<div className="card"><div style={{display:"flex",gap:7,marginBottom:9}}><input placeholder="Add new item…" value={newItem} onChange={e=>setNew(e.target.value)} onKeyDown={e=>e.key==="Enter"&&onAdd()}/><button onClick={onAdd} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div>
+  {(items||[]).map((item,i)=>(<div key={item} style={{display:"flex",alignItems:"center",padding:"4px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}>
+    {onReorder&&<ReorderBtns i={i} total={(items||[]).length} onMove={(idx,dir)=>onReorder(moveItem(items,idx,dir))} T={T}/>}
+    <span style={{flex:1}}>{item}</span>
+    <button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(item)}>🗑️</button>
+  </div>))}
+  </div>);
 }
 function ExerciseSetting({types,onChange,T}){
   const[ei,setEi]=useState(null);const[nn,setNn]=useState("");
-  const add=()=>{if(!nn.trim())return;onChange([...types,{name:nn.trim(),subTypes:[],metrics:["time"]}]);setNn("");};
+  const add=()=>{if(!nn.trim())return;onChange([...types,{name:nn.trim(),subTypes:[],metrics:["time"],note:""}]);setNn("");};
   const rem=i=>onChange(types.filter((_,x)=>x!==i));
-  const addSub=(i,s)=>{if(!s.trim())return;onChange(types.map((t,x)=>x===i?{...t,subTypes:[...t.subTypes,s.trim()].sort()}:t));};
+  const move=(i,dir)=>onChange(moveItem(types,i,dir));
+  const addSub=(i,s)=>{if(!s.trim())return;onChange(types.map((t,x)=>x===i?{...t,subTypes:[...(t.subTypes||[]),s.trim()]}:t));};
   const remSub=(i,s)=>onChange(types.map((t,x)=>x===i?{...t,subTypes:t.subTypes.filter(v=>v!==s)}:t));
+  const moveSub=(i,si,dir)=>onChange(types.map((t,x)=>x===i?{...t,subTypes:moveItem(t.subTypes||[],si,dir)}:t));
   const togM=(i,m)=>onChange(types.map((t,x)=>{if(x!==i)return t;const h=t.metrics.includes(m);return{...t,metrics:h?t.metrics.filter(v=>v!==m):[...t.metrics,m]};}));
-  return(<div><div className="card" style={{marginBottom:7}}><div style={{display:"flex",gap:7}}><input placeholder="New exercise type…" value={nn} onChange={e=>setNn(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button onClick={add} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div><div style={{fontSize:"0.7rem",color:T.textMuted,marginTop:5}}>New types default to time metric. Toggle below to change.</div></div>{types.map((t,i)=>(<div key={t.name} className="card" style={{marginBottom:7}}><div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}}><span style={{fontWeight:600,fontSize:"0.85rem"}}>{t.name}</span><div style={{display:"flex",gap:5}}><button className="ibtn" onClick={()=>setEi(ei===i?null:i)}>{ei===i?"✖️":"✏️"}</button><button className="ibtn" style={{color:T.danger}} onClick={()=>rem(i)}>🗑️</button></div></div><div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:3}}>{["distance","time","count"].map(m=>(<button key={m} onClick={()=>togM(i,m)} style={{padding:"2px 9px",borderRadius:20,fontSize:"0.72rem",border:"1px solid",cursor:"pointer",borderColor:t.metrics.includes(m)?T.accentBtn:T.border,background:t.metrics.includes(m)?T.accentBg:"transparent",color:t.metrics.includes(m)?T.accent:T.textMuted}}>{m}</button>))}</div>
-              <input placeholder="Default note (optional, e.g. 30 min brisk)" value={t.note||""} onChange={e=>onChange(types.map((x,j)=>j===i?{...x,note:e.target.value}:x))} style={{width:"100%",fontSize:"0.76rem",padding:"4px 7px",marginBottom:3,color:T.textSub}}/>{ei===i&&<div style={{marginTop:7}}><div className="slabel">Sub-types</div>{t.subTypes.map(s=>(<div key={s} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:"0.8rem",padding:"4px 0",borderBottom:`1px solid ${T.border}`}}><span>{s}</span><button className="ibtn" style={{color:T.danger}} onClick={()=>remSub(i,s)}>🗑️</button></div>))}<AddInline placeholder="Add sub-type…" onAdd={s=>addSub(i,s)} T={T}/></div>}</div>))}</div>);
+  return(<div><div className="card" style={{marginBottom:7}}><div style={{display:"flex",gap:7}}><input placeholder="New exercise type…" value={nn} onChange={e=>setNn(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button onClick={add} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div><div style={{fontSize:"0.7rem",color:T.textMuted,marginTop:5}}>New types default to time metric. Toggle below to change.</div></div>
+  {types.map((t,i)=>(<div key={t.name} className="card" style={{marginBottom:7}}>
+    <div style={{display:"flex",alignItems:"center",marginBottom:5}}>
+      <ReorderBtns i={i} total={types.length} onMove={move} T={T}/>
+      <span style={{fontWeight:600,fontSize:"0.85rem",flex:1}}>{t.name}</span>
+      <div style={{display:"flex",gap:5}}><button className="ibtn" onClick={()=>setEi(ei===i?null:i)}>{ei===i?"✖️":"✏️"}</button><button className="ibtn" style={{color:T.danger}} onClick={()=>rem(i)}>🗑️</button></div>
+    </div>
+    <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:3}}>{["distance","time","count"].map(m=>(<button key={m} onClick={()=>togM(i,m)} style={{padding:"2px 9px",borderRadius:20,fontSize:"0.72rem",border:"1px solid",cursor:"pointer",borderColor:t.metrics.includes(m)?T.accentBtn:T.border,background:t.metrics.includes(m)?T.accentBg:"transparent",color:t.metrics.includes(m)?T.accent:T.textMuted}}>{m}</button>))}</div>
+    <input placeholder="Default note (optional, e.g. 30 min brisk)" value={t.note||""} onChange={e=>onChange(types.map((x,j)=>j===i?{...x,note:e.target.value}:x))} style={{width:"100%",fontSize:"0.76rem",padding:"4px 7px",marginBottom:3,color:T.textSub}}/>
+    {ei===i&&<div style={{marginTop:7}}><div className="slabel">Sub-types</div>
+      {(t.subTypes||[]).map((s,si)=>(<div key={s} style={{display:"flex",alignItems:"center",fontSize:"0.8rem",padding:"3px 0",borderBottom:`1px solid ${T.border}`}}>
+        <ReorderBtns i={si} total={(t.subTypes||[]).length} onMove={(idx,dir)=>moveSub(i,idx,dir)} T={T}/>
+        <span style={{flex:1}}>{s}</span>
+        <button className="ibtn" style={{color:T.danger}} onClick={()=>remSub(i,s)}>🗑️</button>
+      </div>))}
+      <AddInline placeholder="Add sub-type…" onAdd={s=>addSub(i,s)} T={T}/>
+    </div>}
+  </div>))}
+  </div>);
 }
+
 function AddInline({placeholder,onAdd,T}){
   const[v,setV]=useState("");
   return(<div style={{display:"flex",gap:6,marginTop:6}}><input placeholder={placeholder} value={v} onChange={e=>setV(e.target.value)} onKeyDown={e=>{if(e.key==="Enter"){onAdd(v);setV("");}}} style={{fontSize:"0.78rem"}}/><button onClick={()=>{onAdd(v);setV("");}} style={{flexShrink:0,padding:"5px 9px",fontSize:"0.78rem",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div>);
