@@ -16,7 +16,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check-compat.js"></script>
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
   <style>html,body,#root{height:100%;margin:0;padding:0;background:#0a1628}*{-webkit-tap-highlight-color:transparent;box-sizing:border-box}</style>
 </head>
 <body>
@@ -44,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.19";
+const APP_VERSION="v4.20";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -173,7 +174,15 @@ function parseAndMergeCSV(csvText,existingEntries){
 
 // ── DOWNLOAD ──────────────────────────────────────────────────────────────────
 function downloadCSV(csv,filename){
-  try{const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.setAttribute("download",filename);document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},1000);}catch(e){alert("Download failed: "+e.message);}
+  try{
+    const prefix=(localStorage.getItem("jivanlog-dl-prefix")||"").trim();
+    const fname=prefix?prefix.replace(/[/\\]+$/,"")+"/"+filename:filename;
+    const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});
+    const url=URL.createObjectURL(blob);const a=document.createElement("a");
+    a.href=url;a.setAttribute("download",fname);
+    document.body.appendChild(a);a.click();
+    setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},1000);
+  }catch(e){alert("Download failed: "+e.message);}
 }
 
 // ── SHARED COMPONENTS ─────────────────────────────────────────────────────────
@@ -507,7 +516,7 @@ function MealEntry({settings,onAdd,entryTime,setEntryTime,T}){
   const hasFoodSub=foodObj?.subTypes?.length>0;
   const onFoodChange=name=>{setFood(name);setFoodSub("");const fi=foods.find(f=>f.name===name);setNotes(fi?.note||"");};
   const save=()=>{if(!food||!qty)return;onAdd({type:"meal",mealType:mt,food,foodSubType:foodSub,qty,unit,notes});setFood("");setFoodSub("");setQty("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
-  return(<div className="card"><div className="slabel">🍽️ Meal</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={mt} onChange={e=>setMt(e.target.value)} style={{flex:"0 0 95px"}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select><select value={food} onChange={e=>onFoodChange(e.target.value)} style={{flex:"2 1 80px",minWidth:0}}><option value="">Food item…</option>{[...foods].sort((a,b)=>a.name.localeCompare(b.name)).map(f=><option key={f.name} value={f.name}>{f.name}</option>)}</select>{hasFoodSub&&<select value={foodSub} onChange={e=>setFoodSub(e.target.value)} style={{flex:"1 1 90px",minWidth:0}}><option value="">Sub-type…</option>{foodObj.subTypes.map(s=><option key={s}>{s}</option>)}</select>}<input type="number" placeholder="Qty" value={qty} onChange={e=>setQty(e.target.value)} style={{flex:"1 0 62px",width:62}}/><select value={unit} onChange={e=>setUnit(e.target.value)} style={{flex:"1 0 70px",width:70}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select></div><div style={{display:"flex",gap:6,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
+  return(<div className="card"><div className="slabel">🍽️ Meal</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6}}><select value={mt} onChange={e=>setMt(e.target.value)} style={{flex:"0 0 95px"}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select><select value={food} onChange={e=>onFoodChange(e.target.value)} style={{flex:"2 1 80px",minWidth:0}}><option value="">Food item…</option>{foods.map(f=><option key={f.name} value={f.name}>{f.name}</option>)}</select>{hasFoodSub&&<select value={foodSub} onChange={e=>setFoodSub(e.target.value)} style={{flex:"1 1 80px",minWidth:0}}><option value="">Sub-type…</option>{foodObj.subTypes.map(s=><option key={s}>{s}</option>)}</select>}</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6}}><input type="number" placeholder="Qty" value={qty} onChange={e=>setQty(e.target.value)} style={{flex:"0 0 62px",width:62}}/><select value={unit} onChange={e=>setUnit(e.target.value)} style={{flex:"0 0 66px",width:66}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select></div><div style={{display:"flex",gap:6,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
 }
 function LiquidEntry({settings,onAdd,entryTime,setEntryTime,T}){
   const allTypes=(settings.liquidTypes||FD.liquidTypes||[]);
@@ -562,8 +571,22 @@ function MedicalEntry({settings,onAdd,entryTime,setEntryTime,T}){
     <div style={{display:"flex",gap:6}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><button onClick={save} style={{flexShrink:0,padding:"7px 14px",fontSize:"0.85rem",borderRadius:8,fontFamily:"inherit",fontWeight:500,cursor:"pointer",border:"none",background:fl?T.ok:T.accentBtn,color:"#fff",minWidth:52}}>{fl?"✔":"Save"}</button></div>
   </div>);
 }
+
+// ── Auto-derive medication timing from current time ─────────────────────────
+function autoMedTiming(timeStr){
+  const[h,m]=timeStr.split(":").map(Number);
+  const mins=h*60+(m||0);
+  if(mins<10*60)return"Before breakfast";
+  if(mins<11*60)return"After breakfast";
+  if(mins<13*60)return"Before lunch";
+  if(mins<14*60)return"After lunch";
+  if(mins<20*60)return"Before dinner";
+  if(mins<22*60)return"After dinner";
+  return"Bedtime";
+}
 function MedEntry({settings,onAdd,entryTime,setEntryTime,T}){
-  const[med,setMed]=useState("");const[timing,setTiming]=useState("After dinner");const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
+  const[med,setMed]=useState("");const[timing,setTiming]=useState(()=>autoMedTiming(entryTime));const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
+  useEffect(()=>setTiming(autoMedTiming(entryTime)),[entryTime]);
   const save=()=>{if(!med)return;onAdd({type:"medication",med,timing,notes});setMed("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
   return(<div className="card"><div className="slabel">💊 Medication</div>
     <div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6}}>
@@ -674,6 +697,285 @@ function EditEntry({entry,settings,onSave,onCancel,T}){
 // ═══════════════════════════════════════════════════════════════════════════════
 // REPORTS
 // ═══════════════════════════════════════════════════════════════════════════════
+
+// ── Download prefix setting ───────────────────────────────────────────────────
+function DownloadPrefixSetting({T}){
+  const[val,setVal]=React.useState(()=>localStorage.getItem("jivanlog-dl-prefix")||"");
+  const save=()=>{localStorage.setItem("jivanlog-dl-prefix",val.trim());alert("Saved! Downloads will use this prefix.");};
+  return(<div className="card" style={{marginBottom:8}}>
+    <div className="slabel">📁 Download Filename Prefix</div>
+    <div style={{fontSize:"0.72rem",color:T.textMuted,marginBottom:6}}>
+      Prepended to every downloaded filename. Example: <span style={{fontFamily:"monospace"}}>JivanLog/</span> makes files save as <span style={{fontFamily:"monospace"}}>JivanLog/jivanlog-autobackup-2026-03-13.csv</span>. Browser controls the actual folder.
+    </div>
+    <div style={{display:"flex",gap:7}}>
+      <input value={val} onChange={e=>setVal(e.target.value)} placeholder="e.g. JivanLog/ (optional)" style={{flex:1,fontFamily:"monospace",fontSize:"0.8rem"}}/>
+      <button onClick={save} style={{padding:"6px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:600,cursor:"pointer",fontSize:"0.8rem"}}>Save</button>
+      {val&&<button onClick={()=>{setVal("");localStorage.removeItem("jivanlog-dl-prefix");}} style={{padding:"6px 10px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontFamily:"inherit",cursor:"pointer",fontSize:"0.8rem"}}>✕</button>}
+    </div>
+  </div>);
+}
+
+// ── Trends data helpers ───────────────────────────────────────────────────────
+function parseMedVal(v){
+  if(!v)return null;
+  // BP: "120/80" → take systolic only for primary line; expose both
+  if(typeof v==="string"&&v.includes("/")){
+    const [s,d]=v.split("/").map(Number);
+    return isNaN(s)?null:{sys:s,dia:isNaN(d)?null:d};
+  }
+  const n=parseFloat(v);
+  return isNaN(n)?null:n;
+}
+
+function isoWeek(dateStr){
+  const d=new Date(dateStr+"T00:00:00");
+  const day=d.getDay()||7;
+  d.setDate(d.getDate()+4-day);
+  const y=d.getFullYear();
+  const start=new Date(y,0,1);
+  const w=Math.ceil((((d-start)/86400000)+1)/7);
+  return `${y}-W${String(w).padStart(2,"0")}`;
+}
+function isoMonth(dateStr){return dateStr.slice(0,7);}
+function isoYear(dateStr){return dateStr.slice(0,4);}
+
+// Build {label, values:[]} series for a given metric, range and aggregation
+function buildTrendSeries(entries, metricName, rangeKey, aggMode){
+  // Filter medical entries for this metric
+  const med=entries.filter(e=>e.type==="medical"&&(e.readingType||e.detail1)===metricName);
+  if(!med.length)return null;
+
+  const now=new Date();
+  // Date boundaries
+  const cutoffs={
+    "7d":  7,  "30d": 30, "90d": 90,
+    "12w": 84, "25w":175, "12m":365
+  };
+  const days=cutoffs[rangeKey]||30;
+  const cutoff=new Date(now); cutoff.setDate(cutoff.getDate()-days);
+  const inRange=med.filter(e=>new Date(e.date+"T00:00:00")>=cutoff);
+
+  // Group key function
+  const isWeekly=rangeKey==="12w"||rangeKey==="25w";
+  const isMonthly=rangeKey==="12m";
+  const groupFn=isMonthly?isoMonth:isWeekly?isoWeek:d=>d;
+
+  // Bucket entries
+  const buckets={};
+  inRange.forEach(e=>{
+    const key=groupFn(e.date);
+    if(!buckets[key])buckets[key]=[];
+    const raw=e.value??e.detail2??e.detail1;
+    const v=parseMedVal(raw);
+    if(v!==null)buckets[key].push({v,time:e.time||"00:00",date:e.date});
+  });
+
+  const sortedKeys=Object.keys(buckets).sort();
+
+  // Aggregate per bucket
+  function aggBucket(items){
+    if(!items.length)return null;
+    // items: [{v, time, date}]
+    // For BP v is {sys,dia}
+    const isBP=typeof items[0].v==="object";
+    if(isBP){
+      const sysList=items.map(i=>i.v.sys).filter(x=>x!==null);
+      const diaList=items.map(i=>i.v.dia).filter(x=>x!==null);
+      const agg=(arr,mode)=>{
+        if(!arr.length)return null;
+        arr.sort((a,b)=>a-b);
+        if(mode==="first"){const sorted=[...items].sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time));const fv=parseMedVal(sorted[0].v.sys!==undefined?`${sorted[0].v.sys}/${sorted[0].v.dia}`:null);return sorted[0].v.sys;}
+        if(mode==="last"){const sorted=[...items].sort((a,b)=>b.date.localeCompare(a.date)||b.time.localeCompare(a.time));return sorted[0].v.sys;}
+        return Math.round(arr.reduce((s,x)=>s+x,0)/arr.length);
+      };
+      return{sys:agg(sysList,aggMode),dia:agg(diaList,aggMode),isBP:true};
+    }
+    const nums=items.map(i=>i.v).filter(x=>typeof x==="number");
+    if(!nums.length)return null;
+    if(aggMode==="first"){const sorted=[...items].sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time));return sorted[0].v;}
+    if(aggMode==="last"){const sorted=[...items].sort((a,b)=>b.date.localeCompare(a.date)||b.time.localeCompare(a.time));return sorted[0].v;}
+    return Math.round((nums.reduce((s,x)=>s+x,0)/nums.length)*10)/10;
+  }
+
+  const labels=[];const primary=[];const secondary=[];
+  sortedKeys.forEach(k=>{
+    const agg=aggBucket(buckets[k]);
+    if(agg===null)return;
+    // Format label
+    if(isMonthly)labels.push(k.slice(0,7)); // YYYY-MM
+    else if(isWeekly)labels.push(k);         // YYYY-Www
+    else labels.push(k.slice(5));             // MM-DD
+    if(agg&&agg.isBP){
+      primary.push(agg.sys);secondary.push(agg.dia);
+    } else {
+      primary.push(agg);
+    }
+  });
+  return{labels,primary,secondary,isBP:primary.length&&buckets[sortedKeys[0]]&&typeof aggBucket(buckets[sortedKeys[0]])==="object"&&aggBucket(buckets[sortedKeys[0]])&&aggBucket(buckets[sortedKeys[0]]).isBP};
+}
+
+// ── TrendsPanel ───────────────────────────────────────────────────────────────
+const TREND_RANGES=[
+  {key:"7d",  label:"7 Days"},
+  {key:"30d", label:"30 Days"},
+  {key:"90d", label:"90 Days"},
+  {key:"12w", label:"12 Weeks"},
+  {key:"25w", label:"25 Weeks"},
+  {key:"12m", label:"12 Months"},
+];
+const AGG_MODES=[
+  {key:"avg",   label:"Avg"},
+  {key:"first", label:"First"},
+  {key:"last",  label:"Last"},
+];
+const TREND_METRICS=["Sugar","BP","Weight"];
+
+function TrendsPanel({entries,settings,T}){
+  const[metric,setMetric]=React.useState("Sugar");
+  const[range,setRange]=React.useState("30d");
+  const[agg,setAgg]=React.useState("avg");
+  const canvasRef=React.useRef(null);
+  const chartRef=React.useRef(null);
+
+  // Resolve available metrics from settings
+  const medPresets=settings.medicalPresets||FD.medicalPresets;
+  const availMetrics=medPresets.map(p=>typeof p==="string"?p:p.name).filter(n=>
+    entries.some(e=>e.type==="medical"&&(e.readingType||e.detail1)===n)
+  );
+
+  React.useEffect(()=>{
+    const series=buildTrendSeries(entries,metric,range,agg);
+    const canvas=canvasRef.current;
+    if(!canvas)return;
+
+    // Destroy previous chart
+    if(chartRef.current){chartRef.current.destroy();chartRef.current=null;}
+
+    if(!series||!series.labels.length){
+      const ctx=canvas.getContext("2d");
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle=T.textMuted;ctx.font="14px Arial";ctx.textAlign="center";
+      ctx.fillText("No data for this metric and range.",canvas.width/2,canvas.height/2);
+      return;
+    }
+
+    const isDark=document.documentElement.getAttribute("data-theme")==="dark"||
+      (document.documentElement.getAttribute("data-theme")==="system"&&window.matchMedia("(prefers-color-scheme:dark)").matches);
+
+    const gridColor=isDark?"rgba(255,255,255,0.1)":"rgba(0,0,0,0.08)";
+    const textColor=isDark?"#aaa":"#555";
+
+    const datasets=[];
+    const rangeLabel=TREND_RANGES.find(r=>r.key===range)?.label||range;
+    const aggLabel=AGG_MODES.find(a=>a.key===agg)?.label||agg;
+
+    if(series.isBP){
+      datasets.push({
+        label:`${metric} Systolic (${aggLabel})`,
+        data:series.primary,
+        borderColor:"#e53935",backgroundColor:"rgba(229,57,53,0.12)",
+        tension:0.35,pointRadius:3,pointHoverRadius:6,fill:false,
+      });
+      if(series.secondary&&series.secondary.length){
+        datasets.push({
+          label:`${metric} Diastolic (${aggLabel})`,
+          data:series.secondary,
+          borderColor:"#fb8c00",backgroundColor:"rgba(251,140,0,0.12)",
+          tension:0.35,pointRadius:3,pointHoverRadius:6,fill:false,
+        });
+      }
+    } else {
+      const colors={Sugar:["#1a73e8","rgba(26,115,232,0.1)"],Weight:["#0b8457","rgba(11,132,87,0.1)"],BP:["#e53935","rgba(229,57,53,0.1)"]};
+      const [bc,bgc]=colors[metric]||["#1a73e8","rgba(26,115,232,0.1)"];
+      datasets.push({
+        label:`${metric} (${aggLabel}, ${rangeLabel})`,
+        data:series.primary,
+        borderColor:bc,backgroundColor:bgc,
+        tension:0.35,pointRadius:3,pointHoverRadius:6,fill:true,
+      });
+    }
+
+    // Unit for Y axis
+    const unit=(()=>{
+      const p=medPresets.find(p=>(typeof p==="string"?p:p.name)===metric);
+      return p&&typeof p==="object"?p.unit||"":"";
+    })();
+
+    const ctx=canvas.getContext("2d");
+    chartRef.current=new Chart(ctx,{
+      type:"line",
+      data:{labels:series.labels,datasets},
+      options:{
+        responsive:true,
+        maintainAspectRatio:false,
+        interaction:{mode:"index",intersect:false},
+        plugins:{
+          legend:{display:true,labels:{color:textColor,font:{size:11}}},
+          tooltip:{
+            callbacks:{
+              label:ctx=>{
+                const v=ctx.parsed.y;
+                if(v===null||v===undefined)return null;
+                return` ${ctx.dataset.label.split("(")[0].trim()}: ${v}${unit?" "+unit:""}`;
+              }
+            }
+          }
+        },
+        scales:{
+          x:{ticks:{color:textColor,maxRotation:45,font:{size:10}},grid:{color:gridColor}},
+          y:{ticks:{color:textColor,font:{size:10},callback:(v)=>unit?`${v} ${unit}`:v},grid:{color:gridColor}},
+        }
+      }
+    });
+
+    return()=>{if(chartRef.current){chartRef.current.destroy();chartRef.current=null;}};
+  },[metric,range,agg,entries,T]);
+
+  // Count data points for selected metric
+  const dataCount=entries.filter(e=>e.type==="medical"&&(e.readingType||e.detail1)===metric).length;
+
+  return(<div>
+    <div className="card" style={{marginBottom:8}}>
+      <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8}}>
+        {(availMetrics.length?availMetrics:TREND_METRICS).map(m=>(
+          <button key={m} onClick={()=>setMetric(m)}
+            className={`tbtn${metric===m?" on":""}`}
+            style={{fontSize:"0.78rem"}}>{m}</button>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8}}>
+        {TREND_RANGES.map(r=>(
+          <button key={r.key} onClick={()=>setRange(r.key)}
+            className={`tbtn${range===r.key?" on":""}`}
+            style={{fontSize:"0.75rem",padding:"4px 8px"}}>{r.label}</button>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:5,marginBottom:4,alignItems:"center"}}>
+        <span style={{fontSize:"0.72rem",color:T.textMuted}}>Reading:</span>
+        {AGG_MODES.map(a=>(
+          <button key={a.key} onClick={()=>setAgg(a.key)}
+            className={`tbtn${agg===a.key?" on":""}`}
+            style={{fontSize:"0.75rem",padding:"4px 10px"}}>{a.label}</button>
+        ))}
+        <span style={{fontSize:"0.7rem",color:T.textMuted,marginLeft:"auto"}}>{dataCount} readings</span>
+      </div>
+    </div>
+    <div className="card" style={{padding:"8px 4px"}}>
+      <div style={{position:"relative",height:280}}>
+        <canvas ref={canvasRef} style={{width:"100%",height:"100%"}}/>
+      </div>
+      <div style={{fontSize:"0.68rem",color:T.textMuted,textAlign:"center",marginTop:6}}>
+        {agg==="avg"?"Average per period"
+          :agg==="first"?"First reading of each period"
+          :"Last reading of each period"}
+        {(range==="12w"||range==="25w")?" · Weekly buckets"
+          :range==="12m"?" · Monthly buckets"
+          :" · Daily values"}
+      </div>
+    </div>
+  </div>);
+}
+
 function ReportsPage({entries,settings,T}){
   const[tab,setTab]=useState("view");const[vd,setVd]=useState(today());
   const[cd,setCd]=useState([today()]);const[ad,setAd]=useState(today());const[qr,setQr]=useState("");
@@ -684,7 +986,9 @@ function ReportsPage({entries,settings,T}){
   const allRows=[{key:"water",label:"Water"},{key:"drinks",label:"Drinks"},{key:"medication",label:"Medications"},{key:"exercise",label:"Exercise"},{key:"Breakfast",label:"Breakfast"},{key:"Lunch",label:"Lunch"},{key:"Snack",label:"Snack"},{key:"Dinner",label:"Dinner"},...medNames.map(n=>({key:n,label:n}))];
   const doExport=(csv,fn)=>downloadCSV(csv,fn);
   const applyQr=v=>{setQr(v);if(!v)return;const n=parseInt(v);setCd(Array.from({length:n},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);}));};
-  return(<div><div style={{display:"flex",alignItems:"center",gap:4,marginBottom:10,flexWrap:"wrap"}}><span style={{fontWeight:700,fontSize:"0.92rem",marginRight:4}}>📊 Reports</span><button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} onClick={()=>doExport(buildViewCSV(entries,tab==="view"?[vd]:cd,medPresets),`jivanlog-view-${today()}.csv`)}>⬇️ Export view</button></div><div style={{display:"flex",gap:5,marginBottom:9,alignItems:"center"}}><button className={`tbtn${tab==="view"?" on":""}`} onClick={()=>setTab("view")}>View</button><button className={`tbtn${tab==="compare"?" on":""}`} onClick={()=>setTab("compare")}>Compare</button>{tab==="view"&&<select value={vd} onChange={e=>setVd(e.target.value)} style={{flex:1,fontSize:"0.79rem",padding:"5px 7px"}}>{d30.map(d=><option key={d} value={d}>{fmtDate(d)}{d===today()?" ★":""}</option>)}</select>}{tab==="compare"&&<><select value={qr} onChange={e=>applyQr(e.target.value)} style={{flex:"0 0 auto",fontSize:"0.79rem",padding:"5px 6px",width:110}}><option value="">Quick…</option>{[2,3,4,5,6,7,8,9,10].map(n=><option key={n} value={n}>Last {n} days</option>)}</select><select value={ad} onChange={e=>setAd(e.target.value)} style={{flex:1,fontSize:"0.79rem",padding:"5px 6px"}}>{d30.map(d=><option key={d} value={d}>{fmtShort(d)}{d===today()?" ★":""}</option>)}</select><button onClick={()=>{setQr("");if(!cd.includes(ad)&&cd.length<10)setCd(p=>[...p,ad].sort().reverse());}} style={{flexShrink:0,padding:"5px 11px",fontSize:"1.1rem",fontWeight:700,lineHeight:1,border:"none",borderRadius:8,background:T.accentBtn,color:"#fff",cursor:"pointer"}}>＋</button></>}</div>{tab==="compare"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8,alignItems:"center"}}>{cd.map(d=>(<div key={d} style={{display:"flex",alignItems:"center",gap:3,background:T.border,borderRadius:20,padding:"2px 9px",fontSize:"0.73rem"}}><span>{fmtShort(d)}</span>{cd.length>1&&<button onClick={()=>{setQr("");setCd(p=>p.filter(x=>x!==d));}} style={{background:"none",border:"none",color:T.textMuted,cursor:"pointer",fontSize:"0.85rem",padding:"0 0 0 3px"}}>×</button>}</div>))}<button className="tbtn" style={{padding:"2px 9px",fontSize:"0.72rem"}} onClick={()=>{setQr("");setCd([today()]);}} >Clear</button></div>}{tab==="view"&&<div className="card"><div style={{fontWeight:600,fontSize:"0.82rem",marginBottom:8,color:T.accent}}>{fmtDate(vd)}</div>{allRows.map(({label,key})=>{const v=rpt(vd)[key]||"-";return(<div key={key} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}><span style={{color:T.textMuted,fontSize:"0.76rem",minWidth:100,flexShrink:0}}>{label}</span><span style={{textAlign:"right",flex:1,paddingLeft:6,color:v==="-"?T.border:T.text}}>{v}</span></div>);})}</div>}{tab==="compare"&&<div style={{overflowX:"auto"}}><table className="ctbl"><thead><tr><th style={{minWidth:90}}>Category</th>{cd.map(d=><th key={d}>{fmtShort(d)}</th>)}</tr></thead><tbody>{allRows.map(({label,key})=>{const vals=cd.map(d=>rpt(d)[key]||"-");return(<tr key={key}><td style={{color:T.textMuted,fontWeight:600}}>{label}</td>{vals.map((v,i)=><td key={i} style={{color:v==="-"?T.border:T.text}}>{v}</td>)}</tr>);})}</tbody></table></div>}</div>);
+  return(<div><div style={{display:"flex",alignItems:"center",gap:4,marginBottom:10,flexWrap:"wrap"}}><span style={{fontWeight:700,fontSize:"0.92rem",marginRight:4}}>📊 Reports</span><button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} onClick={()=>doExport(buildViewCSV(entries,tab==="view"?[vd]:cd,medPresets),`jivanlog-view-${today()}.csv`)}>⬇️ Export view</button></div><div style={{display:"flex",gap:5,marginBottom:9,alignItems:"center"}}><button className={`tbtn${tab==="view"?" on":""}`} onClick={()=>setTab("view")}>View</button><button className={`tbtn${tab==="compare"?" on":""}`} onClick={()=>setTab("compare")}>Compare</button><button className={`tbtn${tab==="trends"?" on":""}`} onClick={()=>setTab("trends")}>📈 Trends</button>{tab==="view"&&<select value={vd} onChange={e=>setVd(e.target.value)} style={{flex:1,fontSize:"0.79rem",padding:"5px 7px"}}>{d30.map(d=><option key={d} value={d}>{fmtDate(d)}{d===today()?" ★":""}</option>)}</select>}{tab==="compare"&&<><select value={qr} onChange={e=>applyQr(e.target.value)} style={{flex:"0 0 auto",fontSize:"0.79rem",padding:"5px 6px",width:110}}><option value="">Quick…</option>{[2,3,4,5,6,7,8,9,10].map(n=><option key={n} value={n}>Last {n} days</option>)}</select><select value={ad} onChange={e=>setAd(e.target.value)} style={{flex:1,fontSize:"0.79rem",padding:"5px 6px"}}>{d30.map(d=><option key={d} value={d}>{fmtShort(d)}{d===today()?" ★":""}</option>)}</select><button onClick={()=>{setQr("");if(!cd.includes(ad)&&cd.length<10)setCd(p=>[...p,ad].sort().reverse());}} style={{flexShrink:0,padding:"5px 11px",fontSize:"1.1rem",fontWeight:700,lineHeight:1,border:"none",borderRadius:8,background:T.accentBtn,color:"#fff",cursor:"pointer"}}>＋</button></>}</div>{tab==="compare"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8,alignItems:"center"}}>{cd.map(d=>(<div key={d} style={{display:"flex",alignItems:"center",gap:3,background:T.border,borderRadius:20,padding:"2px 9px",fontSize:"0.73rem"}}><span>{fmtShort(d)}</span>{cd.length>1&&<button onClick={()=>{setQr("");setCd(p=>p.filter(x=>x!==d));}} style={{background:"none",border:"none",color:T.textMuted,cursor:"pointer",fontSize:"0.85rem",padding:"0 0 0 3px"}}>×</button>}</div>))}<button className="tbtn" style={{padding:"2px 9px",fontSize:"0.72rem"}} onClick={()=>{setQr("");setCd([today()]);}} >Clear</button></div>}{tab==="view"&&<div className="card"><div style={{fontWeight:600,fontSize:"0.82rem",marginBottom:8,color:T.accent}}>{fmtDate(vd)}</div>{allRows.map(({label,key})=>{const v=rpt(vd)[key]||"-";return(<div key={key} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}><span style={{color:T.textMuted,fontSize:"0.76rem",minWidth:100,flexShrink:0}}>{label}</span><span style={{textAlign:"right",flex:1,paddingLeft:6,color:v==="-"?T.border:T.text}}>{v}</span></div>);})}</div>}{tab==="compare"&&<div style={{overflowX:"auto"}}><table className="ctbl"><thead><tr><th style={{minWidth:90}}>Category</th>{cd.map(d=><th key={d}>{fmtShort(d)}</th>)}</tr></thead><tbody>{allRows.map(({label,key})=>{const vals=cd.map(d=>rpt(d)[key]||"-");return(<tr key={key}><td style={{color:T.textMuted,fontWeight:600}}>{label}</td>{vals.map((v,i)=><td key={i} style={{color:v==="-"?T.border:T.text}}>{v}</td>)}</tr>);})}</tbody></table></div>}
+    {tab==="trends"&&<TrendsPanel entries={entries} settings={settings} T={T}/>}
+  </div>);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -833,6 +1137,7 @@ function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,
         <div style={{fontSize:"0.62rem",color:T.border,fontFamily:"'DM Mono',monospace",marginLeft:4,alignSelf:"flex-end"}}>{APP_VERSION}</div>
       </div>
       <div className="card"><div className="slabel">🎨 Theme</div><div style={{display:"flex",gap:6}}>{[["dark","🌙 Dark"],["light","☀️ Light"],["system","💻 System"]].map(([m,l])=><button key={m} onClick={()=>setTheme(m)} style={{flex:1,padding:"7px 4px",borderRadius:8,border:"1px solid",fontSize:"0.78rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit",borderColor:theme===m?T.accentBtn:T.border,background:theme===m?T.accentBg:T.cardBg,color:theme===m?T.accent:T.textMuted}}>{l}</button>)}</div></div>
+      <DownloadPrefixSetting T={T}/>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"10px 0 6px"}}>
         <div className="slabel" style={{marginBottom:0}}>⚙️ Default Config</div>
         <div style={{display:"flex",gap:6}}>
