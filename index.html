@@ -743,7 +743,7 @@ function buildTrendSeries(entries, metricName, rangeKey, aggMode){
     if(!buckets[key])buckets[key]=[];
     const raw=e.value??e.detail2??e.detail1;
     const v=parseMedVal(raw);
-    if(v!==null)buckets[key].push({v,time:e.time||"00:00",date:e.date});
+    if(v!==null)buckets[key].push({v,ts:e.timestamp||e.date,date:e.date});
   });
 
   const sortedKeys=Object.keys(buckets).sort();
@@ -752,8 +752,8 @@ function buildTrendSeries(entries, metricName, rangeKey, aggMode){
   function aggBucket(items){
     if(!items.length)return null;
     // Sort helpers — sort items[] by date+time ascending/descending
-    const asc=(a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time);
-    const desc=(a,b)=>b.date.localeCompare(a.date)||b.time.localeCompare(a.time);
+    const asc=(a,b)=>a.ts.localeCompare(b.ts);
+    const desc=(a,b)=>b.ts.localeCompare(a.ts);
     const isBP=typeof items[0].v==="object";
     if(isBP){
       // Sort items chronologically, then pick first or last by position
