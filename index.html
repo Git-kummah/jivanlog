@@ -1358,10 +1358,10 @@ const EMOJI_GRID=[
   "🍗","🥚","🧀","🫘","🥗","🥛","🥬","🥦","🥒","🌽","🫚","🥜","🌰","🌱",
   "🍎","🍊","🍋","🍇","🍓","🥭","🍌","🍐","🍑","🫐","🍒","🥝","🍅",
   "🍚","🍜","🍝","🍛","🍲","🫕","🍱","🥘","🍖","🍔","🥪","🫓","🥙","🌯",
-  "🍕","🥗","🥙","🧆","🫔","🧁","🍰","🍩","🍪","🎂","🍫","🍬","🍭",
+  "🍕","🧆","🫔","🧁","🍰","🍩","🍪","🎂","🍫","🍬","🍭",
   "🧺","🥩","🐟","🦐","🦑","🦪","🥟","🍣","🍤","🧇","🥞","🧈","🍳",
   // Drinks
-  "💧","♨️","🌅","☕","🍵","🌿","🧃","🥤","🍺","🍷","🥛","🍹","🧋","🫖",
+  "💧","♨️","🌅","☕","🍵","🌿","🧃","🥤","🍺","🍷","🍹","🧋","🫖",
   "🥂","🍸","🍾","🫗",
   // Exercise
   "🌄","🚶","🏃","🧘","🦵","🛌","🏊","🚴","🏋️","💪","⚽","🎾","🏸","🧗",
@@ -1373,33 +1373,114 @@ const EMOJI_GRID=[
 ];
 
 function EmojiPicker({current, onSelect, onClose, T}){
-  const[q,setQ]=React.useState("");
-  const filtered=q?EMOJI_GRID.filter(e=>{
-    // simple filter — just show all, search isn't needed for emoji grid
-    return true;
-  }):EMOJI_GRID;
+  const LABELS={
+    "🍗":"chicken poultry meat","🥚":"egg boiled omlette burji","🧀":"paneer cheese dairy",
+    "🫘":"beans lentils dal pulses channa rajma gram soya ambar moong","🥗":"salad greens lettuce curd",
+    "🥛":"milk curd dairy yogurt","🥬":"greens thoran cheera spinach cabbage",
+    "🥦":"broccoli veg vegetable saute","🥒":"cucumber karela kundri ladies finger okra",
+    "🌽":"corn maize veg","🫚":"oil beet beetroot","🥜":"nuts almonds walnut peanut cashew",
+    "🌰":"chestnut nut","🌱":"seeds flax chia aliva sesame pumpkin",
+    "🍎":"apple fruit","🍊":"orange fruit citrus","🍋":"lemon citrus",
+    "🍇":"grapes fruit","🍓":"strawberry berry fruit","🥭":"mango fruit",
+    "🍌":"banana fruit","🍐":"pear fruit","🍑":"peach fruit",
+    "🫐":"blueberry berry","🍒":"cherry fruit","🥝":"kiwi fruit","🍅":"tomato",
+    "🍚":"rice biryani pulao","🍜":"noodles soup","🍝":"pasta","🍛":"curry",
+    "🍲":"stew soup curry","🫕":"stew pot curry","🍱":"bento meal box",
+    "🥘":"paella stew rice","🍖":"mutton lamb beef meat","🍔":"burger",
+    "🥪":"sandwich","🫓":"roti bread chapati paratha naan","🥙":"wrap pita",
+    "🌯":"wrap burrito","🍕":"pizza","🧆":"falafel","🫔":"taco wrap",
+    "🧁":"cupcake sweet","🍰":"cake sweet dessert","🍩":"donut sweet",
+    "🍪":"cookie biscuit","🎂":"cake birthday","🍫":"chocolate sweet",
+    "🍬":"candy sweet","🍭":"lollipop candy","🧺":"basket fruits bowl",
+    "🥩":"steak meat beef","🐟":"fish seafood salmon tuna","🦐":"prawn shrimp seafood",
+    "🦑":"squid seafood","🦪":"oyster seafood","🥟":"dumpling","🍣":"sushi",
+    "🍤":"shrimp prawn fried","🧇":"waffle breakfast","🥞":"pancake breakfast",
+    "🧈":"butter dairy","🍳":"egg fried breakfast omlette",
+    "💧":"water plain hydration","♨️":"warm hot water","🌅":"morning sunrise drink",
+    "☕":"coffee espresso cappuccino latte","🍵":"tea milk chai",
+    "🌿":"herbal tulsi ginger chamomile green",
+    "🧃":"juice fruit drink","🥤":"soda shake smoothie cola","🍺":"beer alcohol",
+    "🍷":"wine alcohol","🍹":"cocktail juice tropical","🧋":"bubble tea boba",
+    "🫖":"teapot herbal brew","🥂":"champagne celebrate","🍸":"cocktail drink",
+    "🍾":"champagne bottle","🫗":"pour drink",
+    "🌄":"morning walk sunrise","🚶":"walk stroll additional","🏃":"run jog exercise",
+    "🧘":"yoga stretch meditation wall pillow legs","🦵":"legs stretching",
+    "🛌":"rest sleep pillow lying","🏊":"swim pool","🚴":"cycle bike ride",
+    "🏋️":"gym weights lift strength","💪":"pushup plank squat workout strength",
+    "⚽":"football sport","🎾":"tennis sport","🏸":"badminton sport",
+    "🧗":"climb wall rock","🤸":"gymnastics flexibility","🏄":"surf water sport",
+    "⛷️":"ski winter sport","🎿":"ski snow sport","🥊":"boxing martial arts",
+    "🤼":"wrestling sport","🏇":"horse riding","🧜":"swim water",
+    "🤺":"fencing sport","🛹":"skateboard","🤾":"handball sport","🪂":"parachute skydive",
+    "🩸":"sugar blood glucose hba1c","❤️":"bp blood pressure heart cardiac",
+    "⚖️":"weight scale body mass","📏":"height measure length",
+    "🌡️":"temperature fever body","💨":"oxygen breathing spo2",
+    "🫀":"heart cholesterol cardio lipid","🫁":"lung breathing respiratory",
+    "🧠":"brain mental cognitive","🦷":"teeth dental","👁️":"eye vision",
+    "💉":"injection vaccine","🩺":"medical stethoscope doctor","🩹":"wound bandage",
+    "💊":"pill tablet capsule medication vitamin calcium nexovas glycomet",
+    "🌟":"star special","✅":"check done tick","🔵":"blue circle",
+    "🟢":"green circle","🟡":"yellow circle","🟠":"orange circle",
+    "🔴":"red circle","🟣":"purple circle","⭐":"star favourite",
+    "🎯":"target goal","📌":"pin mark",
+  };
+  const[q,setQ]=useState("");
+  const[custom,setCustom]=useState("");
+  const lq=q.trim().toLowerCase();
+  const filtered=lq
+    ?EMOJI_GRID.filter(em=>(LABELS[em]||"").toLowerCase().includes(lq)||em===lq)
+    :EMOJI_GRID;
+  const customEmoji=[...custom.trim()][0]||"";
   return(
     <div style={{position:"absolute",zIndex:999,top:"110%",left:0,
       background:T.cardBg,border:`1px solid ${T.border}`,borderRadius:10,
-      boxShadow:"0 4px 20px rgba(0,0,0,0.25)",padding:10,width:260}}>
-      <div style={{display:"flex",flexWrap:"wrap",gap:3,maxHeight:200,overflowY:"auto"}}>
-        {EMOJI_GRID.map(em=>(
-          <button key={em} onClick={()=>{onSelect(em);onClose();}}
-            style={{fontSize:"1.3rem",padding:"3px 4px",border:`2px solid ${em===current?T.accentBtn:"transparent"}`,
-              borderRadius:6,cursor:"pointer",background:"transparent",lineHeight:1}}>
-            {em}
-          </button>
-        ))}
+      boxShadow:"0 4px 20px rgba(0,0,0,0.25)",padding:10,width:272}}>
+      <input autoFocus value={q} onChange={e=>setQ(e.target.value)}
+        placeholder="🔍 Search… chicken, walk, sugar"
+        style={{width:"100%",boxSizing:"border-box",marginBottom:7,padding:"6px 8px",
+          borderRadius:7,border:`1px solid ${T.border}`,background:T.cardBg,
+          color:T.text,fontSize:"0.78rem",fontFamily:"inherit"}}/>
+      <div style={{display:"flex",flexWrap:"wrap",gap:3,maxHeight:186,overflowY:"auto",marginBottom:7}}>
+        {filtered.length
+          ?filtered.map(em=>(
+            <button key={em} onClick={()=>{onSelect(em);onClose();}}
+              title={LABELS[em]||em}
+              style={{fontSize:"1.3rem",padding:"3px 4px",
+                border:`2px solid ${em===current?T.accentBtn:"transparent"}`,
+                borderRadius:6,cursor:"pointer",background:"transparent",lineHeight:1}}>
+              {em}
+            </button>
+          ))
+          :<span style={{fontSize:"0.75rem",color:T.textMuted,padding:"8px 4px",display:"block"}}>
+            No match — paste any emoji below ↓
+          </span>
+        }
       </div>
-      <div style={{display:"flex",gap:6,marginTop:8}}>
+      <div style={{display:"flex",gap:5,marginBottom:7,alignItems:"center"}}>
+        <input value={custom} onChange={e=>setCustom(e.target.value)}
+          placeholder="Paste any emoji  e.g. 🫙 🧬 🪴"
+          style={{flex:1,padding:"5px 8px",borderRadius:7,
+            border:`1px solid ${T.border}`,background:T.cardBg,
+            color:T.text,fontSize:"1.1rem",fontFamily:"inherit"}}/>
+        {customEmoji&&
+          <button onClick={()=>{onSelect(customEmoji);onClose();}}
+            style={{padding:"5px 11px",borderRadius:7,border:"none",
+              background:T.accentBtn,color:"#fff",cursor:"pointer",
+              fontSize:"0.8rem",fontFamily:"inherit",fontWeight:600,flexShrink:0}}>
+            Use {customEmoji}
+          </button>}
+      </div>
+      <div style={{display:"flex",gap:6}}>
         {current&&<button onClick={()=>{onSelect("");onClose();}}
           style={{flex:1,padding:"5px 8px",borderRadius:7,border:`1px solid ${T.border}`,
-            background:"transparent",color:T.textMuted,cursor:"pointer",fontSize:"0.75rem",fontFamily:"inherit"}}>
+            background:"transparent",color:T.textMuted,cursor:"pointer",
+            fontSize:"0.75rem",fontFamily:"inherit"}}>
           ✕ Clear (use auto)
         </button>}
         <button onClick={onClose}
           style={{flex:1,padding:"5px 8px",borderRadius:7,border:`1px solid ${T.border}`,
-            background:"transparent",color:T.textMuted,cursor:"pointer",fontSize:"0.75rem",fontFamily:"inherit"}}>
+            background:"transparent",color:T.textMuted,cursor:"pointer",
+            fontSize:"0.75rem",fontFamily:"inherit"}}>
           Cancel
         </button>
       </div>
