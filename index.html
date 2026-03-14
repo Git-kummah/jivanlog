@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.21";
+const APP_VERSION="v4.22";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -634,6 +634,8 @@ function EditEntry({entry,settings,onSave,onCancel,T}){
   const[editTime,setEditTime]=useState(fmt24(entry.timestamp));
   const mp=settings.medicalPresets||FD.medicalPresets;
   const liqTypes=(settings.liquidTypes||FD.liquidTypes).filter(t=>t!=="--------");
+  const liqIcons=settings.liquidIcons||{};
+  const medIcons=settings.medicationIcons||{};
   const eo=(settings.exerciseTypes||FD.exerciseTypes).find(e=>e.name===d.exType);
   const hasDist=eo?.metrics?.includes("distance");
   const hasTime=eo?.metrics?.includes("time");
@@ -1546,7 +1548,7 @@ function FoodSetting({items,onRemove,onUpdate,newItem,setNew,onAdd,T}){
   </div>);
 }
 
-function DrinkSetting({types,notes,subTypes,onRemove,onUpdate,newItem,setNew,onAdd,T}){
+function DrinkSetting({types,notes,subTypes,icons,onRemove,onUpdate,onIconUpdate,newItem,setNew,onAdd,T}){
   const[ei,setEi]=useState(null);
   const drinks=(types||[]).filter(t=>t!=="--------");
   const updNote=(name,note)=>onUpdate("notes",{...notes,[name]:note});
@@ -1586,7 +1588,7 @@ function DrinkSetting({types,notes,subTypes,onRemove,onUpdate,newItem,setNew,onA
   </div>);
 }
 
-function EList({items,onRemove,onReorder,newItem,setNew,onAdd,T}){
+function EList({items,onRemove,onReorder,icons,onIconUpdate,newItem,setNew,onAdd,T}){
   return(<div className="card"><div style={{display:"flex",gap:7,marginBottom:9}}><input placeholder="Add new item…" value={newItem} onChange={e=>setNew(e.target.value)} onKeyDown={e=>e.key==="Enter"&&onAdd()}/><button onClick={onAdd} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div>
   {(items||[]).map((item,i)=>(<div key={item} style={{display:"flex",alignItems:"center",padding:"4px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}>
     {onReorder&&<ReorderBtns i={i} total={(items||[]).length} onMove={(idx,dir)=>onReorder(moveItem(items,idx,dir))} T={T}/>}
