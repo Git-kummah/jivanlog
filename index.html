@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.20";
+const APP_VERSION="v4.21";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -514,6 +514,7 @@ function LiquidEntry({settings,onAdd,entryTime,setEntryTime,T}){
   const allTypes=(settings.liquidTypes||FD.liquidTypes||[]);
   const liqNotes=settings.liquidNotes||FD.liquidNotes||{};
   const liqSubTypes=settings.liquidSubTypes||FD.liquidSubTypes||{};
+  const liqIcons=settings.liquidIcons||{};
   const[liqType,setLiqType]=useState("Warm Water");
   const[liqSub,setLiqSub]=useState("");
   const[ml,setMl]=useState("");
@@ -584,7 +585,7 @@ function MedEntry({settings,onAdd,entryTime,setEntryTime,T}){
   return(<div className="card"><div className="slabel">💊 Medication</div>
     <div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6}}>
       <select value={med} onChange={e=>setMed(e.target.value)} style={{flex:"1 1 140px",minWidth:0}}><option value="">Medication…</option>{(settings.medications||[]).map(m=><option key={m}>{pickIcon(m,"medication",medIcons[m]||"")} {m}</option>)}</select>
-      <select value={timing} onChange={e=>setTiming(e.target.value)} style={{flex:"1 1 120px",minWidth:0}}>{MED_TIMES.map(t=><option key={t}>{pickIcon(t,"drink",liqIcons[t]||"")} {t}</option>)}</select>
+      <select value={timing} onChange={e=>setTiming(e.target.value)} style={{flex:"1 1 120px",minWidth:0}}>{MED_TIMES.map(t=><option key={t}>{t}</option>)}</select>
     </div>
     <div style={{display:"flex",gap:6}}>
       <TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/>
@@ -677,7 +678,7 @@ function EditEntry({entry,settings,onSave,onCancel,T}){
       </div>}
       {d.type==="medication"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}>
         <select value={d.med} onChange={e=>set("med",e.target.value)} style={{flex:"1 1 130px"}}>{(settings.medications||FD.medications).map(m=><option key={m}>{pickIcon(m,"medication",medIcons[m]||"")} {m}</option>)}</select>
-        <select value={d.timing} onChange={e=>set("timing",e.target.value)} style={{flex:"1 1 110px"}}>{MED_TIMES.map(t=><option key={t}>{pickIcon(t,"drink",liqIcons[t]||"")} {t}</option>)}</select>
+        <select value={d.timing} onChange={e=>set("timing",e.target.value)} style={{flex:"1 1 110px"}}>{MED_TIMES.map(t=><option key={t}>{t}</option>)}</select>
       </div>}
       <div style={{display:"flex",gap:6}}>
         <button onClick={onCancel} style={{flex:1,padding:"7px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer"}}>Cancel</button>
