@@ -597,8 +597,7 @@ function TLE({e,settings,T}){
   // Enrich medical unit from presets if not saved on entry (handles old Firebase entries)
   const resolvedUnit=e.unit||(e.type==="medical"&&settings?((settings.medicalPresets||FD.medicalPresets||[]).find(p=>(p.name||p)===e.readingType)||{}).unit||"":"");
   let m="";
-  if(e.type==="meal")       const foodObj2=(settings?.foodCategories||FD.foodCategories||[]).find(f=>(f.name||f)===e.food)||{};
-  if(e.type==="meal")       m=`${e.mealType} · ${pickIcon(e.food,"food",foodObj2.icon||"")} ${e.food}${e.foodSubType?" · "+e.foodSubType:""} · ${e.unit==="count"?e.qty:e.qty+e.unit}`;
+  if(e.type==="meal")       {const foodObj2=(settings?.foodCategories||FD.foodCategories||[]).find(f=>(f.name||f)===e.food)||{};m=`${e.mealType} · ${pickIcon(e.food,"food",foodObj2.icon||"")} ${e.food}${e.foodSubType?" · "+e.foodSubType:""} · ${e.unit==="count"?e.qty:e.qty+e.unit}`;}
   if(e.type==="liquid")     m=`${e.liquidType}${e.liquidSubType?" · "+e.liquidSubType:""}${e.ml?" · "+e.ml+"ml":""}`;
   if(e.type==="exercise")   {const exObj2=(settings?.exerciseTypes||FD.exerciseTypes||[]).find(x=>x.name===e.exType)||{};m=`${pickIcon(e.exType,"exercise",exObj2.icon||"")} ${e.exType}`;if(e.subType)m+=` · ${e.subType}`;if(e.dist)m+=` · ${e.dist}km`;if(e.time)m+=` · ${e.time}min`;if(e.count)m+=` · x${e.count}`;}
   // water is handled by the liquid branch above (shows "Warm Water · 600ml")
@@ -619,8 +618,7 @@ function ManagePage({entries,settings,onUpdate,onDelete,T}){
 function ManageRow({e,onEdit,onDelete,T}){
   const ic={meal:"🍽️",liquid:"💧",drinks:"☕",exercise:"🏃",water:"💧",medical:"🩺",medication:"💊"};
   let m="";
-  if(e.type==="meal")       const foodObj2=(settings?.foodCategories||FD.foodCategories||[]).find(f=>(f.name||f)===e.food)||{};
-  if(e.type==="meal")       m=`${e.mealType} · ${pickIcon(e.food,"food",foodObj2.icon||"")} ${e.food}${e.foodSubType?" · "+e.foodSubType:""} · ${e.unit==="count"?e.qty:e.qty+e.unit}`;
+  if(e.type==="meal")       {const foodObj2=(settings?.foodCategories||FD.foodCategories||[]).find(f=>(f.name||f)===e.food)||{};m=`${e.mealType} · ${pickIcon(e.food,"food",foodObj2.icon||"")} ${e.food}${e.foodSubType?" · "+e.foodSubType:""} · ${e.unit==="count"?e.qty:e.qty+e.unit}`;}
   if(e.type==="liquid")     m=`${e.liquidType}${e.liquidSubType?" · "+e.liquidSubType:""}${e.ml?" · "+e.ml+"ml":""}`;
   if(e.type==="exercise")   {const exObj2=(settings?.exerciseTypes||FD.exerciseTypes||[]).find(x=>x.name===e.exType)||{};m=`${pickIcon(e.exType,"exercise",exObj2.icon||"")} ${e.exType}`;if(e.subType)m+=` · ${e.subType}`;if(e.dist)m+=` · ${e.dist}km`;if(e.time)m+=` · ${e.time}min`;if(e.count)m+=` · x${e.count}`;}
   if(e.type==="liquid" && ["Warm Water","Plain Water","Cold Water"].includes(e.liquidType))      m=`${e.waterTemp||""} ${e.ml}ml`.trim();
