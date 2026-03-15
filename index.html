@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.22";
+const APP_VERSION="v4.23";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -261,15 +261,25 @@ function App(){
         ]);
         if(sett.exists()){
           const s=sett.val();
-          // Normalise foodCategories: old string[] → new {name,note}[]
-          if(s.foodCategories&&typeof s.foodCategories[0]==="string")
-            s.foodCategories=s.foodCategories.map(n=>({name:n,note:"",subTypes:[]}));
+          // Normalise foodCategories: ensure all items are objects with note+icon fields
+          if(s.foodCategories)
+            s.foodCategories=s.foodCategories.map(f=>typeof f==="string"?{name:f,note:"",subTypes:[],icon:""}:{note:"",icon:"",...f});
+          // Normalise exerciseTypes: ensure note+icon fields
+          if(s.exerciseTypes)
+            s.exerciseTypes=s.exerciseTypes.map(e=>typeof e==="string"?{name:e,metrics:["time"],note:"",subTypes:[],icon:""}:{note:"",icon:"",...e});
+          // Normalise medicalPresets: ensure icon field
+          if(s.medicalPresets)
+            s.medicalPresets=s.medicalPresets.map(p=>typeof p==="string"?{name:p,unit:"",icon:""}:{icon:"",...p});
           setSettings(s);
         }
         if(defs.exists()){
           const d=defs.val();
-          if(d.foodCategories&&typeof d.foodCategories[0]==="string")
-            d.foodCategories=d.foodCategories.map(n=>({name:n,note:"",subTypes:[]}));
+          if(d.foodCategories)
+            d.foodCategories=d.foodCategories.map(f=>typeof f==="string"?{name:f,note:"",subTypes:[],icon:""}:{note:"",icon:"",...f});
+          if(d.exerciseTypes)
+            d.exerciseTypes=d.exerciseTypes.map(e=>typeof e==="string"?{name:e,metrics:["time"],note:"",subTypes:[],icon:""}:{note:"",icon:"",...e});
+          if(d.medicalPresets)
+            d.medicalPresets=d.medicalPresets.map(p=>typeof p==="string"?{name:p,unit:"",icon:""}:{icon:"",...p});
           setDefaults(d);
         }
         if(th.exists())setTheme(th.val());
@@ -614,9 +624,9 @@ function ManagePage({entries,settings,onUpdate,onDelete,T}){
   const[sel,setSel]=useState(today());const[eid,setEid]=useState(null);
   const dates=Array.from({length:10},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);});
   const dayE=entries.filter(e=>e.date===sel).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
-  return(<div><div style={{fontWeight:600,fontSize:"0.92rem",marginBottom:10}}>📋 Manage Records</div><select value={sel} onChange={e=>{setSel(e.target.value);setEid(null);}} style={{marginBottom:10}}>{dates.map(d=><option key={d} value={d}>{fmtDate(d)}{d===today()?" (Today)":""}</option>)}</select>{dayE.length===0?<div style={{color:T.textMuted,fontSize:"0.82rem",textAlign:"center",padding:22}}>No entries for this date</div>:dayE.map(e=>eid===e.id?<EditEntry key={e.id} entry={e} settings={settings} T={T} onSave={d=>{onUpdate(e.id,d);setEid(null);}} onCancel={()=>setEid(null)}/>:<ManageRow key={e.id} e={e} T={T} onEdit={()=>setEid(e.id)} onDelete={()=>{if(confirm("Delete this entry?"))onDelete(e.id);}}/>)}</div>);
+  return(<div><div style={{fontWeight:600,fontSize:"0.92rem",marginBottom:10}}>📋 Manage Records</div><select value={sel} onChange={e=>{setSel(e.target.value);setEid(null);}} style={{marginBottom:10}}>{dates.map(d=><option key={d} value={d}>{fmtDate(d)}{d===today()?" (Today)":""}</option>)}</select>{dayE.length===0?<div style={{color:T.textMuted,fontSize:"0.82rem",textAlign:"center",padding:22}}>No entries for this date</div>:dayE.map(e=>eid===e.id?<EditEntry key={e.id} entry={e} settings={settings} T={T} onSave={d=>{onUpdate(e.id,d);setEid(null);}} onCancel={()=>setEid(null)}/>:<ManageRow key={e.id} e={e} settings={settings} T={T} onEdit={()=>setEid(e.id)} onDelete={()=>{if(confirm("Delete this entry?"))onDelete(e.id);}}/>)}</div>);
 }
-function ManageRow({e,onEdit,onDelete,T}){
+function ManageRow({e,settings,onEdit,onDelete,T}){
   const ic={meal:"🍽️",liquid:"💧",drinks:"☕",exercise:"🏃",water:"💧",medical:"🩺",medication:"💊"};
   let m="";
   if(e.type==="meal")       {const foodObj2=(settings?.foodCategories||FD.foodCategories||[]).find(f=>(f.name||f)===e.food)||{};m=`${e.mealType} · ${pickIcon(e.food,"food",foodObj2.icon||"")} ${e.food}${e.foodSubType?" · "+e.foodSubType:""} · ${e.unit==="count"?e.qty:e.qty+e.unit}`;}
