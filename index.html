@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.25";
+const APP_VERSION="v4.26";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -65,7 +65,7 @@ const FD={
 };
 const deepClone=o=>JSON.parse(JSON.stringify(o));
 
-const FOOD_UNITS=["g","ml","count"];
+const FOOD_UNITS=["g","ml","Tsp","Tbsp","count"];
 const MED_TIMES=["Before breakfast","After breakfast","Before lunch","After lunch","Before dinner","After dinner","Bedtime"];
 const MEAL_TYPES=["Breakfast","Lunch","Dinner","Snack"];
 const WATER_TYPES=["Warm Water","Plain Water","Cold Water"];
@@ -266,7 +266,7 @@ function App(){
             s.foodCategories=s.foodCategories.map(f=>typeof f==="string"?{name:f,note:"",subTypes:[],icon:""}:{note:"",icon:"",...f});
           // Normalise exerciseTypes: ensure note+icon fields
           if(s.exerciseTypes)
-            s.exerciseTypes=s.exerciseTypes.map(e=>typeof e==="string"?{name:e,metrics:["time"],note:"",subTypes:[],icon:""}:{note:"",icon:"",...e});
+            s.exerciseTypes=s.exerciseTypes.map(e=>typeof e==="string"?{name:e,metrics:["time"],note:"",subTypes:[],icon:""}:{metrics:["time"],note:"",icon:"",...e});
           // Normalise medicalPresets: ensure icon field
           if(s.medicalPresets)
             s.medicalPresets=s.medicalPresets.map(p=>typeof p==="string"?{name:p,unit:"",icon:""}:{icon:"",...p});
@@ -277,7 +277,7 @@ function App(){
           if(d.foodCategories)
             d.foodCategories=d.foodCategories.map(f=>typeof f==="string"?{name:f,note:"",subTypes:[],icon:""}:{note:"",icon:"",...f});
           if(d.exerciseTypes)
-            d.exerciseTypes=d.exerciseTypes.map(e=>typeof e==="string"?{name:e,metrics:["time"],note:"",subTypes:[],icon:""}:{note:"",icon:"",...e});
+            d.exerciseTypes=d.exerciseTypes.map(e=>typeof e==="string"?{name:e,metrics:["time"],note:"",subTypes:[],icon:""}:{metrics:["time"],note:"",icon:"",...e});
           if(d.medicalPresets)
             d.medicalPresets=d.medicalPresets.map(p=>typeof p==="string"?{name:p,unit:"",icon:""}:{icon:"",...p});
           setDefaults(d);
@@ -519,7 +519,7 @@ function MealEntry({settings,onAdd,entryTime,setEntryTime,T}){
   const onFoodChange=name=>{setFood(name);setFoodSub("");const fi=foods.find(f=>f.name===name);setNotes(fi?.note||"");};
   useEffect(()=>{if(food){const fi=foods.find(f=>f.name===food);setNotes(fi?.note||"");}},[food,(foods.find(f=>f.name===food)||{}).note]);
   const save=()=>{if(!food||!qty)return;onAdd({type:"meal",mealType:mt,food,foodSubType:foodSub,qty,unit,notes});setFood("");setFoodSub("");setQty("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
-  return(<div className="card"><div className="slabel">🍽️ Meal</div><div style={{display:"flex",gap:4,alignItems:"center",marginBottom:6,flexWrap:"nowrap"}}><select value={mt} onChange={e=>setMt(e.target.value)} style={{flex:"0 0 84px",minWidth:0,fontSize:"0.82rem"}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select><select value={food} onChange={e=>onFoodChange(e.target.value)} style={{flex:"1 1 60px",minWidth:0,fontSize:"0.82rem"}}><option value="">Food…</option>{foods.map(f=><option key={f.name} value={f.name}>{pickIcon(f.name,"food",f.icon||"")} {f.name}</option>)}</select>{hasFoodSub&&<select value={foodSub} onChange={e=>setFoodSub(e.target.value)} style={{flex:"1 1 55px",minWidth:0,fontSize:"0.82rem"}}><option value="">Sub…</option>{foodObj.subTypes.map(s=><option key={s}>{s}</option>)}</select>}<input type="number" placeholder="Qty" value={qty} onChange={e=>setQty(e.target.value)} style={{flex:"0 0 50px",width:50,fontSize:"0.82rem"}}/><select value={unit} onChange={e=>setUnit(e.target.value)} style={{flex:"0 0 52px",width:52,fontSize:"0.82rem"}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select></div><div style={{display:"flex",gap:6,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
+  return(<div className="card"><div className="slabel">🍽️ Meal</div><div style={{display:"flex",gap:3,alignItems:"center",marginBottom:6,flexWrap:"nowrap"}}><select value={mt} onChange={e=>setMt(e.target.value)} style={{flex:"0 0 76px",minWidth:0,fontSize:"0.78rem"}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select><select value={food} onChange={e=>onFoodChange(e.target.value)} style={{flex:"1 1 50px",minWidth:0,fontSize:"0.78rem"}}><option value="">Food…</option>{foods.map(f=><option key={f.name} value={f.name}>{pickIcon(f.name,"food",f.icon||"")} {f.name}</option>)}</select>{hasFoodSub&&<select value={foodSub} onChange={e=>setFoodSub(e.target.value)} style={{flex:"1 1 45px",minWidth:0,fontSize:"0.78rem"}}><option value="">Sub…</option>{foodObj.subTypes.map(s=><option key={s}>{s}</option>)}</select>}<input type="number" placeholder="Qty" value={qty} onChange={e=>setQty(e.target.value)} style={{flex:"0 0 46px",width:46,fontSize:"0.78rem"}}/><select value={unit} onChange={e=>setUnit(e.target.value)} style={{flex:"0 0 48px",width:48,fontSize:"0.78rem"}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select></div><div style={{display:"flex",gap:6,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
 }
 function LiquidEntry({settings,onAdd,entryTime,setEntryTime,T}){
   const allTypes=(settings.liquidTypes||FD.liquidTypes||[]);
@@ -536,7 +536,7 @@ function LiquidEntry({settings,onAdd,entryTime,setEntryTime,T}){
   const hasLiqSub=curSubTypes.length>0;
   const onTypeChange=t=>{setLiqType(t);setLiqSub("");setNotes(liqNotes[t]||"");};
   useEffect(()=>{setNotes(liqNotes[liqType]||"");},[liqNotes[liqType],liqType]);
-  const save=()=>{if(!ml||+ml<=0)return;onAdd({type:"liquid",liquidType:liqType,liquidSubType:liqSub,ml:+ml,notes});setMl("");setLiqSub("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
+  const save=()=>{if(!ml||+ml<=0)return;onAdd({type:"liquid",liquidType:liqType,liquidSubType:liqSub,ml:+ml,notes});setMl("");setLiqSub("");setNotes(liqNotes[liqType]||"");setFl(true);setTimeout(()=>setFl(false),1200);};
   return(<div className="card"><div className="slabel">💧 Liquids</div>
     {/* Row 1: dropdown | quick-add buttons | qty */}
     <div style={{display:"flex",gap:5,marginBottom:7,alignItems:"center",flexWrap:"wrap"}}>
