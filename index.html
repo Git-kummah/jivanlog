@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.28";
+const APP_VERSION="v4.29";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -266,7 +266,7 @@ function App(){
             s.foodCategories=s.foodCategories.map(f=>typeof f==="string"?{name:f,note:"",subTypes:[],icon:""}:{note:"",icon:"",...f});
           // Normalise exerciseTypes: ensure note+icon fields
           if(s.exerciseTypes)
-            s.exerciseTypes=s.exerciseTypes.map(e=>typeof e==="string"?{name:e,metrics:["time"],note:"",subTypes:[],icon:""}:{metrics:["time"],note:"",icon:"",...e});
+            s.exerciseTypes=s.exerciseTypes.map(e=>typeof e==="string"?{name:e,metrics:["time"],note:"",subTypes:[],icon:""}:{...e,metrics:e.metrics&&e.metrics.length?e.metrics:["time"],note:e.note||"",icon:e.icon||""});
           // Normalise medicalPresets: ensure icon field
           if(s.medicalPresets)
             s.medicalPresets=s.medicalPresets.map(p=>typeof p==="string"?{name:p,unit:"",icon:""}:{icon:"",...p});
@@ -277,7 +277,7 @@ function App(){
           if(d.foodCategories)
             d.foodCategories=d.foodCategories.map(f=>typeof f==="string"?{name:f,note:"",subTypes:[],icon:""}:{note:"",icon:"",...f});
           if(d.exerciseTypes)
-            d.exerciseTypes=d.exerciseTypes.map(e=>typeof e==="string"?{name:e,metrics:["time"],note:"",subTypes:[],icon:""}:{metrics:["time"],note:"",icon:"",...e});
+            d.exerciseTypes=d.exerciseTypes.map(e=>typeof e==="string"?{name:e,metrics:["time"],note:"",subTypes:[],icon:""}:{...e,metrics:e.metrics&&e.metrics.length?e.metrics:["time"],note:e.note||"",icon:e.icon||""});
           if(d.medicalPresets)
             d.medicalPresets=d.medicalPresets.map(p=>typeof p==="string"?{name:p,unit:"",icon:""}:{icon:"",...p});
           setDefaults(d);
@@ -513,7 +513,7 @@ const TimeInput=({value,onChange,T})=>(
 
 function MealEntry({settings,defaults,onAdd,entryTime,setEntryTime,T}){
   const[mt,setMt]=useState(autoMeal);const[food,setFood]=useState("");const[foodSub,setFoodSub]=useState("");const[qty,setQty]=useState("");const[unit,setUnit]=useState("g");const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
-  const foods=foodItems(settings.foodCategories||defaults?.foodCategories||FD.foodCategories);
+  const foods=foodItems((settings.foodCategories&&settings.foodCategories.length?settings.foodCategories:null)||(defaults?.foodCategories&&defaults.foodCategories.length?defaults.foodCategories:null)||FD.foodCategories);
   const foodObj=foods.find(f=>f.name===food);
   const hasFoodSub=foodObj?.subTypes?.length>0;
   const onFoodChange=name=>{setFood(name);setFoodSub("");const fi=foods.find(f=>f.name===name);setNotes(fi?.note||"");};
@@ -523,7 +523,7 @@ function MealEntry({settings,defaults,onAdd,entryTime,setEntryTime,T}){
 }
 function LiquidEntry({settings,defaults,onAdd,entryTime,setEntryTime,T}){
   const allTypes=(settings.liquidTypes||defaults?.liquidTypes||FD.liquidTypes||[]);
-  const liqNotes=settings.liquidNotes||defaults?.liquidNotes||FD.liquidNotes||{};
+  const liqNotes=Object.assign({},FD.liquidNotes||{},defaults?.liquidNotes||{},settings.liquidNotes||{});
   const liqSubTypes=settings.liquidSubTypes||defaults?.liquidSubTypes||FD.liquidSubTypes||{};
   const liqIcons=settings.liquidIcons||{};
   const[liqType,setLiqType]=useState("Warm Water");
@@ -553,7 +553,7 @@ function LiquidEntry({settings,defaults,onAdd,entryTime,setEntryTime,T}){
 }
 function ExerciseEntry({settings,defaults,onAdd,entryTime,setEntryTime,T}){
   const[et,setEt]=useState("");const[sub,setSub]=useState("");const[dist,setDist]=useState("");const[min,setMin]=useState("");const[cnt,setCnt]=useState("");const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
-  const exTypes=settings.exerciseTypes||defaults?.exerciseTypes||FD.exerciseTypes;
+  const exTypes=(settings.exerciseTypes&&settings.exerciseTypes.length?settings.exerciseTypes:null)||(defaults?.exerciseTypes&&defaults.exerciseTypes.length?defaults.exerciseTypes:null)||FD.exerciseTypes;
   const etObj=exTypes?.find(e=>e.name===et);
   const hasSub=etObj?.subTypes?.length>0;const hasDist=etObj?.metrics?.includes("distance");const hasTime=etObj?.metrics?.includes("time");const hasCnt=etObj?.metrics?.includes("count");
   const onTypeChange=t=>{setEt(t);setSub("");const obj=exTypes?.find(e=>e.name===t);setNotes(obj?.note||"");};
