@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.33";
+const APP_VERSION="v4.34";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -576,7 +576,13 @@ function ExerciseEntry({settings,onAdd,entryTime,setEntryTime,T}){
   const[et,setEt]=useState("");const[sub,setSub]=useState("");const[dist,setDist]=useState("");const[min,setMin]=useState("");const[cnt,setCnt]=useState("");const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
   const exTypes=settings.exerciseTypes||FD.exerciseTypes;
   const etObj=exTypes?.find(e=>e.name===et);
-  const hasSub=etObj?.subTypes?.length>0;const hasDist=etObj?.metrics?.includes("distance");const hasTime=etObj?.metrics?.includes("time");const hasCnt=etObj?.metrics?.includes("count");
+  // For metrics: merge stored metrics with FD defaults - FD is authoritative for known types
+  const fdEx=FD.exerciseTypes?.find(e=>e.name===et);
+  const storedMetrics=etObj?.metrics;
+  // Validate stored metrics are a proper array of strings
+  const validMetrics=Array.isArray(storedMetrics)&&storedMetrics.length&&typeof storedMetrics[0]==="string";
+  const etMetrics=validMetrics?storedMetrics:fdEx?.metrics||["time"];
+  const hasSub=etObj?.subTypes?.length>0;const hasDist=etMetrics.includes("distance");const hasTime=etMetrics.includes("time");const hasCnt=etMetrics.includes("count");
   const onTypeChange=t=>{setEt(t);setSub("");const obj=exTypes?.find(e=>e.name===t);setNotes(obj?.note||"");};
   // Re-sync when Firebase settings arrive — ensures metrics/notes are current
   useEffect(()=>{
