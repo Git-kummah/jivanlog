@@ -16,7 +16,8 @@
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check-compat.js"></script>
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
   <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
   <style>html,body,#root{height:100%;margin:0;padding:0;background:#0a1628}*{-webkit-tap-highlight-color:transparent;box-sizing:border-box}</style>
 </head>
 <body>
@@ -44,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.19";
+const APP_VERSION="v4.30";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -64,7 +65,7 @@ const FD={
 };
 const deepClone=o=>JSON.parse(JSON.stringify(o));
 
-const FOOD_UNITS=["g","ml","count"];
+const FOOD_UNITS=["g","ml","Tsp","Tbsp","count"];
 const MED_TIMES=["Before breakfast","After breakfast","Before lunch","After lunch","Before dinner","After dinner","Bedtime"];
 const MEAL_TYPES=["Breakfast","Lunch","Dinner","Snack"];
 const WATER_TYPES=["Warm Water","Plain Water","Cold Water"];
@@ -260,15 +261,25 @@ function App(){
         ]);
         if(sett.exists()){
           const s=sett.val();
-          // Normalise foodCategories: old string[] → new {name,note}[]
-          if(s.foodCategories&&typeof s.foodCategories[0]==="string")
-            s.foodCategories=s.foodCategories.map(n=>({name:n,note:"",subTypes:[]}));
+          // Normalise foodCategories: ensure all items are objects with note+icon fields
+          if(s.foodCategories)
+            s.foodCategories=s.foodCategories.map(f=>typeof f==="string"?{name:f,note:"",subTypes:[],icon:""}:{note:"",icon:"",...f});
+          // Normalise exerciseTypes: ensure note+icon fields
+          if(s.exerciseTypes)
+            s.exerciseTypes=s.exerciseTypes.map(e=>typeof e==="string"?{name:e,metrics:["time"],note:"",subTypes:[],icon:""}:{...e,metrics:e.metrics&&e.metrics.length?e.metrics:["time"],note:e.note||"",icon:e.icon||""});
+          // Normalise medicalPresets: ensure icon field
+          if(s.medicalPresets)
+            s.medicalPresets=s.medicalPresets.map(p=>typeof p==="string"?{name:p,unit:"",icon:""}:{icon:"",...p});
           setSettings(s);
         }
         if(defs.exists()){
           const d=defs.val();
-          if(d.foodCategories&&typeof d.foodCategories[0]==="string")
-            d.foodCategories=d.foodCategories.map(n=>({name:n,note:"",subTypes:[]}));
+          if(d.foodCategories)
+            d.foodCategories=d.foodCategories.map(f=>typeof f==="string"?{name:f,note:"",subTypes:[],icon:""}:{note:"",icon:"",...f});
+          if(d.exerciseTypes)
+            d.exerciseTypes=d.exerciseTypes.map(e=>typeof e==="string"?{name:e,metrics:["time"],note:"",subTypes:[],icon:""}:{...e,metrics:e.metrics&&e.metrics.length?e.metrics:["time"],note:e.note||"",icon:e.icon||""});
+          if(d.medicalPresets)
+            d.medicalPresets=d.medicalPresets.map(p=>typeof p==="string"?{name:p,unit:"",icon:""}:{icon:"",...p});
           setDefaults(d);
         }
         if(th.exists())setTheme(th.val());
@@ -506,14 +517,16 @@ function MealEntry({settings,onAdd,entryTime,setEntryTime,T}){
   const foodObj=foods.find(f=>f.name===food);
   const hasFoodSub=foodObj?.subTypes?.length>0;
   const onFoodChange=name=>{setFood(name);setFoodSub("");const fi=foods.find(f=>f.name===name);setNotes(fi?.note||"");};
+  useEffect(()=>{if(food){const fi=foods.find(f=>f.name===food);setNotes(fi?.note||"");}},[food,(foods.find(f=>f.name===food)||{}).note]);
   const save=()=>{if(!food||!qty)return;onAdd({type:"meal",mealType:mt,food,foodSubType:foodSub,qty,unit,notes});setFood("");setFoodSub("");setQty("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
-  return(<div className="card"><div className="slabel">🍽️ Meal</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={mt} onChange={e=>setMt(e.target.value)} style={{flex:"0 0 95px"}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select><select value={food} onChange={e=>onFoodChange(e.target.value)} style={{flex:"2 1 80px",minWidth:0}}><option value="">Food item…</option>{[...foods].sort((a,b)=>a.name.localeCompare(b.name)).map(f=><option key={f.name} value={f.name}>{f.name}</option>)}</select>{hasFoodSub&&<select value={foodSub} onChange={e=>setFoodSub(e.target.value)} style={{flex:"1 1 90px",minWidth:0}}><option value="">Sub-type…</option>{foodObj.subTypes.map(s=><option key={s}>{s}</option>)}</select>}<input type="number" placeholder="Qty" value={qty} onChange={e=>setQty(e.target.value)} style={{flex:"1 0 62px",width:62}}/><select value={unit} onChange={e=>setUnit(e.target.value)} style={{flex:"1 0 70px",width:70}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select></div><div style={{display:"flex",gap:6,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
+  return(<div className="card"><div className="slabel">🍽️ Meal</div><div style={{display:"flex",gap:4,alignItems:"center",marginBottom:6,flexWrap:"nowrap"}}><select value={mt} onChange={e=>setMt(e.target.value)} style={{flex:"0 0 76px",minWidth:0}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select><select value={food} onChange={e=>onFoodChange(e.target.value)} style={{flex:"1 1 55px",minWidth:0}}><option value="">Food…</option>{foods.map(f=><option key={f.name} value={f.name}>{pickIcon(f.name,"food",f.icon||"")} {f.name}</option>)}</select>{hasFoodSub&&<select value={foodSub} onChange={e=>setFoodSub(e.target.value)} style={{flex:"1 1 50px",minWidth:0}}><option value="">Sub…</option>{foodObj.subTypes.map(s=><option key={s}>{s}</option>)}</select>}<input type="number" placeholder="Qty" value={qty} onChange={e=>setQty(e.target.value)} style={{flex:"0 0 54px",width:54}}/><select value={unit} onChange={e=>setUnit(e.target.value)} style={{flex:"0 0 60px",width:60}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select></div><div style={{display:"flex",gap:6,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
 }
 function LiquidEntry({settings,onAdd,entryTime,setEntryTime,T}){
   const allTypes=(settings.liquidTypes||FD.liquidTypes||[]);
   const liqNotes=settings.liquidNotes||FD.liquidNotes||{};
   const liqSubTypes=settings.liquidSubTypes||FD.liquidSubTypes||{};
-  const[liqType,setLiqType]=useState("Warm Water");
+  const liqIcons=settings.liquidIcons||{};
+  const[liqType,setLiqType]=useState(allTypes.filter(t=>t!=="--------")[0]||"Warm Water");
   const[liqSub,setLiqSub]=useState("");
   const[ml,setMl]=useState("");
   const[notes,setNotes]=useState("");
@@ -522,29 +535,34 @@ function LiquidEntry({settings,onAdd,entryTime,setEntryTime,T}){
   const curSubTypes=liqSubTypes[liqType]||[];
   const hasLiqSub=curSubTypes.length>0;
   const onTypeChange=t=>{setLiqType(t);setLiqSub("");setNotes(liqNotes[t]||"");};
-  const save=()=>{if(!ml||+ml<=0)return;onAdd({type:"liquid",liquidType:liqType,liquidSubType:liqSub,ml:+ml,notes});setMl("");setLiqSub("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
+  // Seed notes when settings load from Firebase (async)
+  useEffect(()=>{setNotes(liqNotes[liqType]||"");},[settings]);
+  const save=()=>{if(!ml||+ml<=0)return;onAdd({type:"liquid",liquidType:liqType,liquidSubType:liqSub,ml:+ml,notes});setMl("");setLiqSub("");setNotes(liqNotes[liqType]||"");setFl(true);setTimeout(()=>setFl(false),1200);};
   return(<div className="card"><div className="slabel">💧 Liquids</div>
-    {/* Row 1: dropdown | quick-add buttons | qty */}
     <div style={{display:"flex",gap:5,marginBottom:7,alignItems:"center",flexWrap:"wrap"}}>
       <select value={liqType} onChange={e=>onTypeChange(e.target.value)} style={{flex:"2 1 110px",minWidth:0}}>
-        {allTypes.map((t,i)=>t==="--------"?<option key={i} disabled>── Drinks ──</option>:<option key={t}>{t}</option>)}
+        {allTypes.map((t,i)=>t==="--------"?<option key={i} disabled>── Drinks ──</option>:<option key={t}>{pickIcon(t,"drink",liqIcons[t]||"")} {t}</option>)}
       </select>
       {hasLiqSub&&<select value={liqSub} onChange={e=>setLiqSub(e.target.value)} style={{flex:"1 1 90px",minWidth:0}}><option value="">Sub-type…</option>{curSubTypes.map(s=><option key={s}>{s}</option>)}</select>}
-      {[500,250,100,50].map(amt=><button key={amt} className="wbtn" onClick={()=>add(amt)} style={{padding:"5px 7px",fontSize:"0.78rem",flex:"0 0 auto"}}>{"+"+amt}</button>)}
+      {[500,250,100,50].map(amt=><button key={amt} className="wbtn" onClick={()=>add(amt)} style={{padding:"5px 7px",fontSize:"0.78rem",flex:"0 0 auto"}}>{"+"+(amt)}</button>)}
       <input type="number" placeholder="ml" value={ml} onChange={e=>setMl(e.target.value)} style={{flex:"0 0 58px",textAlign:"center"}}/>
     </div>
-    {/* Row 2: time | notes | Save */}
     <div style={{display:"flex",gap:5,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><button onClick={save} style={{flexShrink:0,padding:"6px 12px",fontSize:"0.85rem",borderRadius:8,fontFamily:"inherit",fontWeight:500,cursor:"pointer",border:"none",background:fl?T.ok:T.accentBtn,color:"#fff"}}>{fl?"✔":"Save"}</button></div>
   </div>);
 }
+
 function ExerciseEntry({settings,onAdd,entryTime,setEntryTime,T}){
   const[et,setEt]=useState("");const[sub,setSub]=useState("");const[dist,setDist]=useState("");const[min,setMin]=useState("");const[cnt,setCnt]=useState("");const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
-  const etObj=(settings.exerciseTypes||FD.exerciseTypes)?.find(e=>e.name===et);
+  const exTypes=settings.exerciseTypes||FD.exerciseTypes;
+  const etObj=exTypes?.find(e=>e.name===et);
   const hasSub=etObj?.subTypes?.length>0;const hasDist=etObj?.metrics?.includes("distance");const hasTime=etObj?.metrics?.includes("time");const hasCnt=etObj?.metrics?.includes("count");
-  const onTypeChange=t=>{setEt(t);setSub("");const obj=(settings.exerciseTypes||FD.exerciseTypes)?.find(e=>e.name===t);setNotes(obj?.note||"");};
+  const onTypeChange=t=>{setEt(t);setSub("");const obj=exTypes?.find(e=>e.name===t);setNotes(obj?.note||"");};
+  // Seed notes when settings load from Firebase (async)
+  useEffect(()=>{if(et){const obj=exTypes?.find(e=>e.name===et);setNotes(obj?.note||"");}},[settings]);
   const save=()=>{if(!et||(hasSub&&!sub))return;onAdd({type:"exercise",exType:et,subType:sub,dist,time:min,count:cnt,notes});setSub("");setDist("");setMin("");setCnt("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
-  return(<div className="card"><div className="slabel">🏃 Exercise</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={et} onChange={e=>onTypeChange(e.target.value)} style={{flex:"1 1 100px",minWidth:0}}><option value="">Type…</option>{(settings.exerciseTypes||[]).map(e=><option key={e.name}>{e.name}</option>)}</select>{hasSub&&<select value={sub} onChange={e=>setSub(e.target.value)} style={{flex:"1 1 110px",minWidth:0}}><option value="">Sub-type…</option>{etObj.subTypes.map(s=><option key={s}>{s}</option>)}</select>}{hasDist&&<input type="number" placeholder="km" value={dist} onChange={e=>setDist(e.target.value)} style={{flex:"0 0 52px"}}/>}{(hasDist||hasTime)&&<input type="number" placeholder="min" value={min} onChange={e=>setMin(e.target.value)} style={{flex:"0 0 52px"}}/>}{hasCnt&&<input type="number" placeholder="count" value={cnt} onChange={e=>setCnt(e.target.value)} style={{flex:"0 0 68px"}}/>}</div><div style={{display:"flex",gap:6,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
+  return(<div className="card"><div className="slabel">🏃 Exercise</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={et} onChange={e=>onTypeChange(e.target.value)} style={{flex:"1 1 100px",minWidth:0}}><option value="">Type…</option>{exTypes.map(e=><option key={e.name}>{pickIcon(e.name,"exercise",e.icon||"")} {e.name}</option>)}</select>{hasSub&&<select value={sub} onChange={e=>setSub(e.target.value)} style={{flex:"1 1 110px",minWidth:0}}><option value="">Sub-type…</option>{etObj.subTypes.map(s=><option key={s}>{s}</option>)}</select>}{hasDist&&<input type="number" placeholder="km" value={dist} onChange={e=>setDist(e.target.value)} style={{flex:"0 0 52px"}}/>}{(hasDist||hasTime)&&<input type="number" placeholder="min" value={min} onChange={e=>setMin(e.target.value)} style={{flex:"0 0 52px"}}/>}{hasCnt&&<input type="number" placeholder="count" value={cnt} onChange={e=>setCnt(e.target.value)} style={{flex:"0 0 68px"}}/>}</div><div style={{display:"flex",gap:6,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
 }
+
 
 function MedicalEntry({settings,onAdd,entryTime,setEntryTime,T}){
   const[rt,setRt]=useState("");const[val,setVal]=useState("");const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
@@ -553,7 +571,7 @@ function MedicalEntry({settings,onAdd,entryTime,setEntryTime,T}){
   const save=()=>{if(!rt||!val)return;onAdd({type:"medical",readingType:rt,value:val,unit,notes});setVal("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
   return(<div className="card"><div className="slabel">🩺 Medical Reading</div>
     <div style={{display:"flex",gap:5,marginBottom:6}}>
-      <select value={rt} onChange={e=>{setRt(e.target.value);setVal("");}} style={{flex:"0 0 90px"}}><option value="">Type...</option>{presets.map(p=>{const n=p.name||p;return<option key={n}>{n}</option>;})}</select>
+      <select value={rt} onChange={e=>{setRt(e.target.value);setVal("");}} style={{flex:"0 0 90px"}}><option value="">Type...</option>{presets.map(p=>{const n=p.name||p;const ic=typeof p==="object"?p.icon||"":"";return<option key={n}>{pickIcon(n,"medical",ic)} {n}</option>;})}</select>
       <div style={{flex:1,position:"relative"}}>
         <input value={val} onChange={e=>setVal(e.target.value)} placeholder={unit||"Value"} style={{width:"100%",paddingRight:unit&&!val?(unit.length*8+12)+"px":"9px"}}/>
         {unit&&!val&&<span style={{position:"absolute",right:9,top:"50%",transform:"translateY(-50%)",fontSize:"0.74rem",color:T.textMuted,pointerEvents:"none",fontFamily:"'DM Mono',monospace"}}>{unit}</span>}
@@ -562,12 +580,27 @@ function MedicalEntry({settings,onAdd,entryTime,setEntryTime,T}){
     <div style={{display:"flex",gap:6}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><button onClick={save} style={{flexShrink:0,padding:"7px 14px",fontSize:"0.85rem",borderRadius:8,fontFamily:"inherit",fontWeight:500,cursor:"pointer",border:"none",background:fl?T.ok:T.accentBtn,color:"#fff",minWidth:52}}>{fl?"✔":"Save"}</button></div>
   </div>);
 }
+
+// ── Auto-derive medication timing from current time ─────────────────────────
+function autoMedTiming(timeStr){
+  const[h,m]=timeStr.split(":").map(Number);
+  const mins=h*60+(m||0);
+  if(mins<10*60)return"Before breakfast";
+  if(mins<11*60)return"After breakfast";
+  if(mins<13*60)return"Before lunch";
+  if(mins<14*60)return"After lunch";
+  if(mins<20*60)return"Before dinner";
+  if(mins<22*60)return"After dinner";
+  return"Bedtime";
+}
 function MedEntry({settings,onAdd,entryTime,setEntryTime,T}){
-  const[med,setMed]=useState("");const[timing,setTiming]=useState("After dinner");const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
+  const[med,setMed]=useState("");const[timing,setTiming]=useState(()=>autoMedTiming(entryTime));const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
+  const medIcons=settings.medicationIcons||{};
+  useEffect(()=>setTiming(autoMedTiming(entryTime)),[entryTime]);
   const save=()=>{if(!med)return;onAdd({type:"medication",med,timing,notes});setMed("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
   return(<div className="card"><div className="slabel">💊 Medication</div>
     <div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6}}>
-      <select value={med} onChange={e=>setMed(e.target.value)} style={{flex:"1 1 140px",minWidth:0}}><option value="">Medication…</option>{(settings.medications||[]).map(m=><option key={m}>{m}</option>)}</select>
+      <select value={med} onChange={e=>setMed(e.target.value)} style={{flex:"1 1 140px",minWidth:0}}><option value="">Medication…</option>{(settings.medications||[]).map(m=><option key={m}>{pickIcon(m,"medication",medIcons[m]||"")} {m}</option>)}</select>
       <select value={timing} onChange={e=>setTiming(e.target.value)} style={{flex:"1 1 120px",minWidth:0}}>{MED_TIMES.map(t=><option key={t}>{t}</option>)}</select>
     </div>
     <div style={{display:"flex",gap:6}}>
@@ -581,9 +614,9 @@ function TLE({e,settings,T}){
   // Enrich medical unit from presets if not saved on entry (handles old Firebase entries)
   const resolvedUnit=e.unit||(e.type==="medical"&&settings?((settings.medicalPresets||FD.medicalPresets||[]).find(p=>(p.name||p)===e.readingType)||{}).unit||"":"");
   let m="";
-  if(e.type==="meal")       m=`${e.mealType} · ${e.food}${e.foodSubType?" · "+e.foodSubType:""} · ${e.unit==="count"?e.qty:e.qty+e.unit}`;
+  if(e.type==="meal")       {const foodObj2=(settings?.foodCategories||FD.foodCategories||[]).find(f=>(f.name||f)===e.food)||{};m=`${e.mealType} · ${pickIcon(e.food,"food",foodObj2.icon||"")} ${e.food}${e.foodSubType?" · "+e.foodSubType:""} · ${e.unit==="count"?e.qty:e.qty+e.unit}`;}
   if(e.type==="liquid")     m=`${e.liquidType}${e.liquidSubType?" · "+e.liquidSubType:""}${e.ml?" · "+e.ml+"ml":""}`;
-  if(e.type==="exercise")   {m=e.exType;if(e.subType)m+=` · ${e.subType}`;if(e.dist)m+=` · ${e.dist}km`;if(e.time)m+=` · ${e.time}min`;if(e.count)m+=` · x${e.count}`;}
+  if(e.type==="exercise")   {const exObj2=(settings?.exerciseTypes||FD.exerciseTypes||[]).find(x=>x.name===e.exType)||{};m=`${pickIcon(e.exType,"exercise",exObj2.icon||"")} ${e.exType}`;if(e.subType)m+=` · ${e.subType}`;if(e.dist)m+=` · ${e.dist}km`;if(e.time)m+=` · ${e.time}min`;if(e.count)m+=` · x${e.count}`;}
   // water is handled by the liquid branch above (shows "Warm Water · 600ml")
   if(e.type==="medical")    m=`${e.readingType} · ${e.value}${resolvedUnit?" "+resolvedUnit:""}`;
   if(e.type==="medication") m=`${e.med} · ${e.timing}`;
@@ -597,14 +630,14 @@ function ManagePage({entries,settings,onUpdate,onDelete,T}){
   const[sel,setSel]=useState(today());const[eid,setEid]=useState(null);
   const dates=Array.from({length:10},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);});
   const dayE=entries.filter(e=>e.date===sel).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
-  return(<div><div style={{fontWeight:600,fontSize:"0.92rem",marginBottom:10}}>📋 Manage Records</div><select value={sel} onChange={e=>{setSel(e.target.value);setEid(null);}} style={{marginBottom:10}}>{dates.map(d=><option key={d} value={d}>{fmtDate(d)}{d===today()?" (Today)":""}</option>)}</select>{dayE.length===0?<div style={{color:T.textMuted,fontSize:"0.82rem",textAlign:"center",padding:22}}>No entries for this date</div>:dayE.map(e=>eid===e.id?<EditEntry key={e.id} entry={e} settings={settings} T={T} onSave={d=>{onUpdate(e.id,d);setEid(null);}} onCancel={()=>setEid(null)}/>:<ManageRow key={e.id} e={e} T={T} onEdit={()=>setEid(e.id)} onDelete={()=>{if(confirm("Delete this entry?"))onDelete(e.id);}}/>)}</div>);
+  return(<div><div style={{fontWeight:600,fontSize:"0.92rem",marginBottom:10}}>📋 Manage Records</div><select value={sel} onChange={e=>{setSel(e.target.value);setEid(null);}} style={{marginBottom:10}}>{dates.map(d=><option key={d} value={d}>{fmtDate(d)}{d===today()?" (Today)":""}</option>)}</select>{dayE.length===0?<div style={{color:T.textMuted,fontSize:"0.82rem",textAlign:"center",padding:22}}>No entries for this date</div>:dayE.map(e=>eid===e.id?<EditEntry key={e.id} entry={e} settings={settings} T={T} onSave={d=>{onUpdate(e.id,d);setEid(null);}} onCancel={()=>setEid(null)}/>:<ManageRow key={e.id} e={e} settings={settings} T={T} onEdit={()=>setEid(e.id)} onDelete={()=>{if(confirm("Delete this entry?"))onDelete(e.id);}}/>)}</div>);
 }
-function ManageRow({e,onEdit,onDelete,T}){
+function ManageRow({e,settings,onEdit,onDelete,T}){
   const ic={meal:"🍽️",liquid:"💧",drinks:"☕",exercise:"🏃",water:"💧",medical:"🩺",medication:"💊"};
   let m="";
-  if(e.type==="meal")       m=`${e.mealType} · ${e.food}${e.foodSubType?" · "+e.foodSubType:""} · ${e.unit==="count"?e.qty:e.qty+e.unit}`;
+  if(e.type==="meal")       {const foodObj2=(settings?.foodCategories||FD.foodCategories||[]).find(f=>(f.name||f)===e.food)||{};m=`${e.mealType} · ${pickIcon(e.food,"food",foodObj2.icon||"")} ${e.food}${e.foodSubType?" · "+e.foodSubType:""} · ${e.unit==="count"?e.qty:e.qty+e.unit}`;}
   if(e.type==="liquid")     m=`${e.liquidType}${e.liquidSubType?" · "+e.liquidSubType:""}${e.ml?" · "+e.ml+"ml":""}`;
-  if(e.type==="exercise")   {m=e.exType;if(e.subType)m+=` · ${e.subType}`;if(e.dist)m+=` · ${e.dist}km`;if(e.time)m+=` · ${e.time}min`;if(e.count)m+=` · x${e.count}`;}
+  if(e.type==="exercise")   {const exObj2=(settings?.exerciseTypes||FD.exerciseTypes||[]).find(x=>x.name===e.exType)||{};m=`${pickIcon(e.exType,"exercise",exObj2.icon||"")} ${e.exType}`;if(e.subType)m+=` · ${e.subType}`;if(e.dist)m+=` · ${e.dist}km`;if(e.time)m+=` · ${e.time}min`;if(e.count)m+=` · x${e.count}`;}
   if(e.type==="liquid" && ["Warm Water","Plain Water","Cold Water"].includes(e.liquidType))      m=`${e.waterTemp||""} ${e.ml}ml`.trim();
   if(e.type==="medical")    m=`${e.readingType} · ${e.value}${e.unit?" "+e.unit:""}`;
   if(e.type==="medication") m=`${e.med} · ${e.timing}`;
@@ -617,6 +650,8 @@ function EditEntry({entry,settings,onSave,onCancel,T}){
   const[editTime,setEditTime]=useState(fmt24(entry.timestamp));
   const mp=settings.medicalPresets||FD.medicalPresets;
   const liqTypes=(settings.liquidTypes||FD.liquidTypes).filter(t=>t!=="--------");
+  const liqIcons=settings.liquidIcons||{};
+  const medIcons=settings.medicationIcons||{};
   const eo=(settings.exerciseTypes||FD.exerciseTypes).find(e=>e.name===d.exType);
   const hasDist=eo?.metrics?.includes("distance");
   const hasTime=eo?.metrics?.includes("time");
@@ -641,14 +676,14 @@ function EditEntry({entry,settings,onSave,onCancel,T}){
       </div>}
       {d.type==="liquid"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}>
         {(()=>{const liqSubs=(settings.liquidSubTypes||FD.liquidSubTypes||{})[d.liquidType]||[];return(<>
-        <select value={d.liquidType||""} onChange={e=>{set("liquidType",e.target.value);set("liquidSubType","");}} style={{flex:"2 1 130px"}}>{liqTypes.map(t=><option key={t}>{t}</option>)}</select>
+        <select value={d.liquidType||""} onChange={e=>{set("liquidType",e.target.value);set("liquidSubType","");}} style={{flex:"2 1 130px"}}>{liqTypes.map(t=><option key={t}>{pickIcon(t,"drink",liqIcons[t]||"")} {t}</option>)}</select>
         {liqSubs.length>0&&<select value={d.liquidSubType||""} onChange={e=>set("liquidSubType",e.target.value)} style={{flex:"1 1 90px"}}><option value="">Sub-type…</option>{liqSubs.map(s=><option key={s}>{s}</option>)}</select>}
         <input type="number" placeholder="ml" value={d.ml||""} onChange={e=>set("ml",e.target.value)} style={{width:72}}/>
         <input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100%"}}/>
         </>);})()}
       </div>}
       {d.type==="exercise"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}>
-        <select value={d.exType} onChange={e=>set("exType",e.target.value)} style={{flex:"1 1 130px"}}>{(settings.exerciseTypes||FD.exerciseTypes).map(e=><option key={e.name}>{e.name}</option>)}</select>
+        <select value={d.exType} onChange={e=>set("exType",e.target.value)} style={{flex:"1 1 130px"}}>{(settings.exerciseTypes||FD.exerciseTypes).map(e=><option key={e.name}>{pickIcon(e.name,"exercise",e.icon||"")} {e.name}</option>)}</select>
         {hasDist&&<input type="number" placeholder="km" value={d.dist||""} onChange={e=>set("dist",e.target.value)} style={{width:52}}/>}
         {(hasDist||hasTime)&&<input type="number" placeholder="min" value={d.time||""} onChange={e=>set("time",e.target.value)} style={{width:52}}/>}
         {hasCnt&&<input type="number" placeholder="count" value={d.count||""} onChange={e=>set("count",e.target.value)} style={{width:68}}/>}
@@ -660,7 +695,7 @@ function EditEntry({entry,settings,onSave,onCancel,T}){
         <input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100%"}}/>
       </div>}
       {d.type==="medication"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}>
-        <select value={d.med} onChange={e=>set("med",e.target.value)} style={{flex:"1 1 130px"}}>{(settings.medications||FD.medications).map(m=><option key={m}>{m}</option>)}</select>
+        <select value={d.med} onChange={e=>set("med",e.target.value)} style={{flex:"1 1 130px"}}>{(settings.medications||FD.medications).map(m=><option key={m}>{pickIcon(m,"medication",medIcons[m]||"")} {m}</option>)}</select>
         <select value={d.timing} onChange={e=>set("timing",e.target.value)} style={{flex:"1 1 110px"}}>{MED_TIMES.map(t=><option key={t}>{t}</option>)}</select>
       </div>}
       <div style={{display:"flex",gap:6}}>
@@ -674,6 +709,271 @@ function EditEntry({entry,settings,onSave,onCancel,T}){
 // ═══════════════════════════════════════════════════════════════════════════════
 // REPORTS
 // ═══════════════════════════════════════════════════════════════════════════════
+
+
+// ── Trends data helpers ───────────────────────────────────────────────────────
+function parseMedVal(v){
+  if(!v)return null;
+  // BP: "120/80" → take systolic only for primary line; expose both
+  if(typeof v==="string"&&v.includes("/")){
+    const [s,d]=v.split("/").map(Number);
+    return isNaN(s)?null:{sys:s,dia:isNaN(d)?null:d};
+  }
+  const n=parseFloat(v);
+  return isNaN(n)?null:n;
+}
+
+function isoWeek(dateStr){
+  const d=new Date(dateStr+"T00:00:00");
+  const day=d.getDay()||7;
+  d.setDate(d.getDate()+4-day);
+  const y=d.getFullYear();
+  const start=new Date(y,0,1);
+  const w=Math.ceil((((d-start)/86400000)+1)/7);
+  return `${y}-W${String(w).padStart(2,"0")}`;
+}
+function isoMonth(dateStr){return dateStr.slice(0,7);}
+function isoYear(dateStr){return dateStr.slice(0,4);}
+
+// Build {label, values:[]} series for a given metric, range and aggregation
+function buildTrendSeries(entries, metricName, rangeKey, aggMode){
+  // Filter medical entries for this metric
+  const med=entries.filter(e=>e.type==="medical"&&(e.readingType||e.detail1)===metricName);
+  if(!med.length)return null;
+
+  const now=new Date();
+  // Date boundaries
+  const cutoffs={
+    "7d":  7,  "30d": 30, "90d": 90,
+    "12w": 84, "25w":175, "12m":365
+  };
+  const days=cutoffs[rangeKey]||30;
+  const cutoff=new Date(now); cutoff.setDate(cutoff.getDate()-days);
+  const inRange=med.filter(e=>new Date(e.date+"T00:00:00")>=cutoff);
+
+  // Group key function
+  const isWeekly=rangeKey==="12w"||rangeKey==="25w";
+  const isMonthly=rangeKey==="12m";
+  const groupFn=isMonthly?isoMonth:isWeekly?isoWeek:d=>d;
+
+  // Bucket entries
+  const buckets={};
+  inRange.forEach(e=>{
+    const key=groupFn(e.date);
+    if(!buckets[key])buckets[key]=[];
+    const raw=e.value??e.detail2??e.detail1;
+    const v=parseMedVal(raw);
+    if(v!==null)buckets[key].push({v,ts:e.timestamp||e.date,date:e.date});
+  });
+
+  const sortedKeys=Object.keys(buckets).sort();
+
+  // Aggregate per bucket
+  function aggBucket(items){
+    if(!items.length)return null;
+    // Sort helpers — sort items[] by date+time ascending/descending
+    const asc=(a,b)=>a.ts.localeCompare(b.ts);
+    const desc=(a,b)=>b.ts.localeCompare(a.ts);
+    const isBP=typeof items[0].v==="object";
+    if(isBP){
+      // Sort items chronologically, then pick first or last by position
+      const sortedAsc=[...items].filter(i=>i.v&&i.v.sys!==null).sort(asc);
+      const sortedDesc=[...items].filter(i=>i.v&&i.v.sys!==null).sort(desc);
+      if(!sortedAsc.length)return null;
+      if(aggMode==="first")return{sys:sortedAsc[0].v.sys,dia:sortedAsc[0].v.dia,isBP:true};
+      if(aggMode==="last") return{sys:sortedDesc[0].v.sys,dia:sortedDesc[0].v.dia,isBP:true};
+      // avg
+      const sysMean=Math.round(sortedAsc.reduce((s,i)=>s+i.v.sys,0)/sortedAsc.length);
+      const validDia=sortedAsc.filter(i=>i.v.dia!==null);
+      const diaMean=validDia.length?Math.round(validDia.reduce((s,i)=>s+i.v.dia,0)/validDia.length):null;
+      return{sys:sysMean,dia:diaMean,isBP:true};
+    }
+    const valid=items.filter(i=>typeof i.v==="number");
+    if(!valid.length)return null;
+    if(aggMode==="first")return valid.slice().sort(asc)[0].v;
+    if(aggMode==="last") return valid.slice().sort(desc)[0].v;
+    return Math.round((valid.reduce((s,i)=>s+i.v,0)/valid.length)*10)/10;
+  }
+
+  const labels=[];const primary=[];const secondary=[];
+  sortedKeys.forEach(k=>{
+    const agg=aggBucket(buckets[k]);
+    if(agg===null)return;
+    // Format label
+    if(isMonthly)labels.push(k.slice(0,7)); // YYYY-MM
+    else if(isWeekly)labels.push(k);         // YYYY-Www
+    else labels.push(k.slice(5));             // MM-DD
+    if(agg&&agg.isBP){
+      primary.push(agg.sys);secondary.push(agg.dia);
+    } else {
+      primary.push(agg);
+    }
+  });
+  return{labels,primary,secondary,isBP:primary.length&&buckets[sortedKeys[0]]&&typeof aggBucket(buckets[sortedKeys[0]])==="object"&&aggBucket(buckets[sortedKeys[0]])&&aggBucket(buckets[sortedKeys[0]]).isBP};
+}
+
+// ── TrendsPanel ───────────────────────────────────────────────────────────────
+const TREND_RANGES=[
+  {key:"7d",  label:"7 Days"},
+  {key:"30d", label:"30 Days"},
+  {key:"90d", label:"90 Days"},
+  {key:"12w", label:"12 Weeks"},
+  {key:"25w", label:"25 Weeks"},
+  {key:"12m", label:"12 Months"},
+];
+const AGG_MODES=[
+  {key:"avg",   label:"Avg"},
+  {key:"first", label:"First"},
+  {key:"last",  label:"Last"},
+];
+const TREND_METRICS=["Sugar","BP","Weight"];
+
+function TrendsPanel({entries,settings,T}){
+  const[metric,setMetric]=React.useState("Sugar");
+  const[range,setRange]=React.useState("30d");
+  const[agg,setAgg]=React.useState("avg");
+  const canvasRef=React.useRef(null);
+  const chartRef=React.useRef(null);
+
+  // Resolve available metrics from settings
+  const medPresets=settings.medicalPresets||FD.medicalPresets;
+  const availMetrics=medPresets.map(p=>typeof p==="string"?p:p.name).filter(n=>
+    entries.some(e=>e.type==="medical"&&(e.readingType||e.detail1)===n)
+  );
+
+  React.useEffect(()=>{
+    const series=buildTrendSeries(entries,metric,range,agg);
+    const canvas=canvasRef.current;
+    if(!canvas)return;
+
+    // Destroy previous chart
+    if(chartRef.current){chartRef.current.destroy();chartRef.current=null;}
+
+    if(!series||!series.labels.length){
+      const ctx=canvas.getContext("2d");
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle=T.textMuted;ctx.font="14px Arial";ctx.textAlign="center";
+      ctx.fillText("No data for this metric and range.",canvas.width/2,canvas.height/2);
+      return;
+    }
+
+    const isDark=document.documentElement.getAttribute("data-theme")==="dark"||
+      (document.documentElement.getAttribute("data-theme")==="system"&&window.matchMedia("(prefers-color-scheme:dark)").matches);
+
+    const gridColor=isDark?"rgba(255,255,255,0.1)":"rgba(0,0,0,0.08)";
+    const textColor=isDark?"#aaa":"#555";
+
+    const datasets=[];
+    const rangeLabel=TREND_RANGES.find(r=>r.key===range)?.label||range;
+    const aggLabel=AGG_MODES.find(a=>a.key===agg)?.label||agg;
+
+    if(series.isBP){
+      datasets.push({
+        label:`${metric} Systolic (${aggLabel})`,
+        data:series.primary,
+        borderColor:"#e53935",backgroundColor:"rgba(229,57,53,0.12)",
+        tension:0.35,pointRadius:3,pointHoverRadius:6,fill:false,
+      });
+      if(series.secondary&&series.secondary.length){
+        datasets.push({
+          label:`${metric} Diastolic (${aggLabel})`,
+          data:series.secondary,
+          borderColor:"#fb8c00",backgroundColor:"rgba(251,140,0,0.12)",
+          tension:0.35,pointRadius:3,pointHoverRadius:6,fill:false,
+        });
+      }
+    } else {
+      const colors={Sugar:["#1a73e8","rgba(26,115,232,0.1)"],Weight:["#0b8457","rgba(11,132,87,0.1)"],BP:["#e53935","rgba(229,57,53,0.1)"]};
+      const [bc,bgc]=colors[metric]||["#1a73e8","rgba(26,115,232,0.1)"];
+      datasets.push({
+        label:`${metric} (${aggLabel}, ${rangeLabel})`,
+        data:series.primary,
+        borderColor:bc,backgroundColor:bgc,
+        tension:0.35,pointRadius:3,pointHoverRadius:6,fill:true,
+      });
+    }
+
+    // Unit for Y axis
+    const unit=(()=>{
+      const p=medPresets.find(p=>(typeof p==="string"?p:p.name)===metric);
+      return p&&typeof p==="object"?p.unit||"":"";
+    })();
+
+    const ctx=canvas.getContext("2d");
+    chartRef.current=new Chart(ctx,{
+      type:"line",
+      data:{labels:series.labels,datasets},
+      options:{
+        responsive:true,
+        maintainAspectRatio:false,
+        interaction:{mode:"index",intersect:false},
+        plugins:{
+          legend:{display:true,labels:{color:textColor,font:{size:11}}},
+          tooltip:{
+            callbacks:{
+              label:ctx=>{
+                const v=ctx.parsed.y;
+                if(v===null||v===undefined)return null;
+                return` ${ctx.dataset.label.split("(")[0].trim()}: ${v}${unit?" "+unit:""}`;
+              }
+            }
+          }
+        },
+        scales:{
+          x:{ticks:{color:textColor,maxRotation:45,font:{size:10}},grid:{color:gridColor}},
+          y:{ticks:{color:textColor,font:{size:10},callback:(v)=>unit?`${v} ${unit}`:v},grid:{color:gridColor}},
+        }
+      }
+    });
+
+    return()=>{if(chartRef.current){chartRef.current.destroy();chartRef.current=null;}};
+  },[metric,range,agg,entries,T]);
+
+  // Count data points for selected metric
+  const dataCount=entries.filter(e=>e.type==="medical"&&(e.readingType||e.detail1)===metric).length;
+
+  return(<div>
+    <div className="card" style={{marginBottom:8}}>
+      <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8}}>
+        {(availMetrics.length?availMetrics:TREND_METRICS).map(m=>(
+          <button key={m} onClick={()=>setMetric(m)}
+            className={`tbtn${metric===m?" on":""}`}
+            style={{fontSize:"0.78rem"}}>{m}</button>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8}}>
+        {TREND_RANGES.map(r=>(
+          <button key={r.key} onClick={()=>setRange(r.key)}
+            className={`tbtn${range===r.key?" on":""}`}
+            style={{fontSize:"0.75rem",padding:"4px 8px"}}>{r.label}</button>
+        ))}
+      </div>
+      <div style={{display:"flex",gap:5,marginBottom:4,alignItems:"center"}}>
+        <span style={{fontSize:"0.72rem",color:T.textMuted}}>Reading:</span>
+        {AGG_MODES.map(a=>(
+          <button key={a.key} onClick={()=>setAgg(a.key)}
+            className={`tbtn${agg===a.key?" on":""}`}
+            style={{fontSize:"0.75rem",padding:"4px 10px"}}>{a.label}</button>
+        ))}
+        <span style={{fontSize:"0.7rem",color:T.textMuted,marginLeft:"auto"}}>{dataCount} readings</span>
+      </div>
+    </div>
+    <div className="card" style={{padding:"8px 4px"}}>
+      <div style={{position:"relative",height:280}}>
+        <canvas ref={canvasRef} style={{width:"100%",height:"100%"}}/>
+      </div>
+      <div style={{fontSize:"0.68rem",color:T.textMuted,textAlign:"center",marginTop:6}}>
+        {agg==="avg"?"Average of all readings in period"
+          :agg==="first"?"First (earliest) reading in period"
+          :"Last (most recent) reading in period"}
+        {(range==="12w"||range==="25w")?" · Weekly buckets"
+          :range==="12m"?" · Monthly buckets"
+          :" · Daily values"}
+      </div>
+    </div>
+  </div>);
+}
+
 function ReportsPage({entries,settings,T}){
   const[tab,setTab]=useState("view");const[vd,setVd]=useState(today());
   const[cd,setCd]=useState([today()]);const[ad,setAd]=useState(today());const[qr,setQr]=useState("");
@@ -684,7 +984,9 @@ function ReportsPage({entries,settings,T}){
   const allRows=[{key:"water",label:"Water"},{key:"drinks",label:"Drinks"},{key:"medication",label:"Medications"},{key:"exercise",label:"Exercise"},{key:"Breakfast",label:"Breakfast"},{key:"Lunch",label:"Lunch"},{key:"Snack",label:"Snack"},{key:"Dinner",label:"Dinner"},...medNames.map(n=>({key:n,label:n}))];
   const doExport=(csv,fn)=>downloadCSV(csv,fn);
   const applyQr=v=>{setQr(v);if(!v)return;const n=parseInt(v);setCd(Array.from({length:n},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);}));};
-  return(<div><div style={{display:"flex",alignItems:"center",gap:4,marginBottom:10,flexWrap:"wrap"}}><span style={{fontWeight:700,fontSize:"0.92rem",marginRight:4}}>📊 Reports</span><button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} onClick={()=>doExport(buildViewCSV(entries,tab==="view"?[vd]:cd,medPresets),`jivanlog-view-${today()}.csv`)}>⬇️ Export view</button></div><div style={{display:"flex",gap:5,marginBottom:9,alignItems:"center"}}><button className={`tbtn${tab==="view"?" on":""}`} onClick={()=>setTab("view")}>View</button><button className={`tbtn${tab==="compare"?" on":""}`} onClick={()=>setTab("compare")}>Compare</button>{tab==="view"&&<select value={vd} onChange={e=>setVd(e.target.value)} style={{flex:1,fontSize:"0.79rem",padding:"5px 7px"}}>{d30.map(d=><option key={d} value={d}>{fmtDate(d)}{d===today()?" ★":""}</option>)}</select>}{tab==="compare"&&<><select value={qr} onChange={e=>applyQr(e.target.value)} style={{flex:"0 0 auto",fontSize:"0.79rem",padding:"5px 6px",width:110}}><option value="">Quick…</option>{[2,3,4,5,6,7,8,9,10].map(n=><option key={n} value={n}>Last {n} days</option>)}</select><select value={ad} onChange={e=>setAd(e.target.value)} style={{flex:1,fontSize:"0.79rem",padding:"5px 6px"}}>{d30.map(d=><option key={d} value={d}>{fmtShort(d)}{d===today()?" ★":""}</option>)}</select><button onClick={()=>{setQr("");if(!cd.includes(ad)&&cd.length<10)setCd(p=>[...p,ad].sort().reverse());}} style={{flexShrink:0,padding:"5px 11px",fontSize:"1.1rem",fontWeight:700,lineHeight:1,border:"none",borderRadius:8,background:T.accentBtn,color:"#fff",cursor:"pointer"}}>＋</button></>}</div>{tab==="compare"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8,alignItems:"center"}}>{cd.map(d=>(<div key={d} style={{display:"flex",alignItems:"center",gap:3,background:T.border,borderRadius:20,padding:"2px 9px",fontSize:"0.73rem"}}><span>{fmtShort(d)}</span>{cd.length>1&&<button onClick={()=>{setQr("");setCd(p=>p.filter(x=>x!==d));}} style={{background:"none",border:"none",color:T.textMuted,cursor:"pointer",fontSize:"0.85rem",padding:"0 0 0 3px"}}>×</button>}</div>))}<button className="tbtn" style={{padding:"2px 9px",fontSize:"0.72rem"}} onClick={()=>{setQr("");setCd([today()]);}} >Clear</button></div>}{tab==="view"&&<div className="card"><div style={{fontWeight:600,fontSize:"0.82rem",marginBottom:8,color:T.accent}}>{fmtDate(vd)}</div>{allRows.map(({label,key})=>{const v=rpt(vd)[key]||"-";return(<div key={key} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}><span style={{color:T.textMuted,fontSize:"0.76rem",minWidth:100,flexShrink:0}}>{label}</span><span style={{textAlign:"right",flex:1,paddingLeft:6,color:v==="-"?T.border:T.text}}>{v}</span></div>);})}</div>}{tab==="compare"&&<div style={{overflowX:"auto"}}><table className="ctbl"><thead><tr><th style={{minWidth:90}}>Category</th>{cd.map(d=><th key={d}>{fmtShort(d)}</th>)}</tr></thead><tbody>{allRows.map(({label,key})=>{const vals=cd.map(d=>rpt(d)[key]||"-");return(<tr key={key}><td style={{color:T.textMuted,fontWeight:600}}>{label}</td>{vals.map((v,i)=><td key={i} style={{color:v==="-"?T.border:T.text}}>{v}</td>)}</tr>);})}</tbody></table></div>}</div>);
+  return(<div><div style={{display:"flex",alignItems:"center",gap:4,marginBottom:10,flexWrap:"wrap"}}><span style={{fontWeight:700,fontSize:"0.92rem",marginRight:4}}>📊 Reports</span><button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} onClick={()=>doExport(buildViewCSV(entries,tab==="view"?[vd]:cd,medPresets),`jivanlog-view-${today()}.csv`)}>⬇️ Export view</button></div><div style={{display:"flex",gap:5,marginBottom:9,alignItems:"center"}}><button className={`tbtn${tab==="view"?" on":""}`} onClick={()=>setTab("view")}>View</button><button className={`tbtn${tab==="compare"?" on":""}`} onClick={()=>setTab("compare")}>Compare</button><button className={`tbtn${tab==="trends"?" on":""}`} onClick={()=>setTab("trends")}>📈 Trends</button>{tab==="view"&&<select value={vd} onChange={e=>setVd(e.target.value)} style={{flex:1,fontSize:"0.79rem",padding:"5px 7px"}}>{d30.map(d=><option key={d} value={d}>{fmtDate(d)}{d===today()?" ★":""}</option>)}</select>}{tab==="compare"&&<><select value={qr} onChange={e=>applyQr(e.target.value)} style={{flex:"0 0 auto",fontSize:"0.79rem",padding:"5px 6px",width:110}}><option value="">Quick…</option>{[2,3,4,5,6,7,8,9,10].map(n=><option key={n} value={n}>Last {n} days</option>)}</select><select value={ad} onChange={e=>setAd(e.target.value)} style={{flex:1,fontSize:"0.79rem",padding:"5px 6px"}}>{d30.map(d=><option key={d} value={d}>{fmtShort(d)}{d===today()?" ★":""}</option>)}</select><button onClick={()=>{setQr("");if(!cd.includes(ad)&&cd.length<10)setCd(p=>[...p,ad].sort().reverse());}} style={{flexShrink:0,padding:"5px 11px",fontSize:"1.1rem",fontWeight:700,lineHeight:1,border:"none",borderRadius:8,background:T.accentBtn,color:"#fff",cursor:"pointer"}}>＋</button></>}</div>{tab==="compare"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8,alignItems:"center"}}>{cd.map(d=>(<div key={d} style={{display:"flex",alignItems:"center",gap:3,background:T.border,borderRadius:20,padding:"2px 9px",fontSize:"0.73rem"}}><span>{fmtShort(d)}</span>{cd.length>1&&<button onClick={()=>{setQr("");setCd(p=>p.filter(x=>x!==d));}} style={{background:"none",border:"none",color:T.textMuted,cursor:"pointer",fontSize:"0.85rem",padding:"0 0 0 3px"}}>×</button>}</div>))}<button className="tbtn" style={{padding:"2px 9px",fontSize:"0.72rem"}} onClick={()=>{setQr("");setCd([today()]);}} >Clear</button></div>}{tab==="view"&&<div className="card"><div style={{fontWeight:600,fontSize:"0.82rem",marginBottom:8,color:T.accent}}>{fmtDate(vd)}</div>{allRows.map(({label,key})=>{const v=rpt(vd)[key]||"-";return(<div key={key} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}><span style={{color:T.textMuted,fontSize:"0.76rem",minWidth:100,flexShrink:0}}>{label}</span><span style={{textAlign:"right",flex:1,paddingLeft:6,color:v==="-"?T.border:T.text}}>{v}</span></div>);})}</div>}{tab==="compare"&&<div style={{overflowX:"auto"}}><table className="ctbl"><thead><tr><th style={{minWidth:90}}>Category</th>{cd.map(d=><th key={d}>{fmtShort(d)}</th>)}</tr></thead><tbody>{allRows.map(({label,key})=>{const vals=cd.map(d=>rpt(d)[key]||"-");return(<tr key={key}><td style={{color:T.textMuted,fontWeight:600}}>{label}</td>{vals.map((v,i)=><td key={i} style={{color:v==="-"?T.border:T.text}}>{v}</td>)}</tr>);})}</tbody></table></div>}
+    {tab==="trends"&&<TrendsPanel entries={entries} settings={settings} T={T}/>}
+  </div>);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -814,7 +1116,7 @@ function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,
   const addItem=key=>{if(!newItem.trim())return;const val=key==="foodCategories"?{name:newItem.trim(),note:"",subTypes:[]}:newItem.trim();updateActive(p=>({...p,[key]:[...(p[key]||[]),val]}));setNewItem("");};
   const removeItem=(key,item)=>updateActive(p=>({...p,[key]:(p[key]||[]).filter(x=>key==="foodCategories"?foodName(x)!==foodName(item):x!==item)}));
   const updateFood=newArr=>updateActive(p=>({...p,foodCategories:newArr}));
-  const updateDrink=(field,val)=>{const fmap={notes:"liquidNotes",subTypes:"liquidSubTypes",types:"liquidTypes"};updateActive(p=>({...p,[fmap[field]||field]:val}));};
+  const updateDrink=(field,val)=>{const fmap={notes:"liquidNotes",subTypes:"liquidSubTypes",types:"liquidTypes",icons:"liquidIcons"};updateActive(p=>({...p,[fmap[field]||field]:val}));};
   const addMedPreset=(name,unit)=>{if(!name.trim())return;const ex=active?.medicalPresets||[];if(ex.some(p=>(typeof p==="string"?p:p.name)===name.trim()))return;updateActive(p=>({...p,medicalPresets:[...(p.medicalPresets||[]),{name:name.trim(),unit:unit.trim()}]}));};
   const removeMedPreset=name=>updateActive(p=>({...p,medicalPresets:(p.medicalPresets||[]).filter(x=>(typeof x==="string"?x:x.name)!==name)}));
   return(<div>
@@ -844,10 +1146,10 @@ function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,
         {CTABS.map(([k,l])=><button key={k} onClick={()=>{setCtab(k);setNewItem("");}} className={`tbtn${ctab===k?" on":""}`} style={{flexShrink:0,fontSize:"0.75rem"}}>{l}</button>)}
       </div>
       {ctab==="food"&&<FoodSetting items={active.foodCategories||FD.foodCategories} onRemove={name=>removeItem("foodCategories",name)} onUpdate={updateFood} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("foodCategories")} T={T}/>}
-      {ctab==="drinks"&&<DrinkSetting types={active.liquidTypes||FD.liquidTypes} notes={active.liquidNotes||FD.liquidNotes||{}} subTypes={active.liquidSubTypes||FD.liquidSubTypes||{}} onRemove={item=>removeItem("liquidTypes",item)} onUpdate={updateDrink} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("liquidTypes")} T={T}/>}
+      {ctab==="drinks"&&<DrinkSetting types={active.liquidTypes||FD.liquidTypes} notes={active.liquidNotes||FD.liquidNotes||{}} subTypes={active.liquidSubTypes||FD.liquidSubTypes||{}} icons={active.liquidIcons||{}} onRemove={item=>removeItem("liquidTypes",item)} onUpdate={updateDrink} onIconUpdate={(name,ic)=>updateDrink("icons",{...(active.liquidIcons||{}),[name]:ic})} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("liquidTypes")} T={T}/>}
       {ctab==="exercise"&&<ExerciseSetting types={active.exerciseTypes||FD.exerciseTypes} onChange={v=>updateActive(p=>({...p,exerciseTypes:v}))} T={T}/>}
-      {ctab==="medical"&&<MedicalPresetSetting presets={active.medicalPresets||FD.medicalPresets} onAdd={addMedPreset} onRemove={removeMedPreset} onReorder={arr=>updateActive(p=>({...p,medicalPresets:arr}))} T={T}/>}
-      {ctab==="meds"&&<EList items={active.medications||FD.medications} onRemove={item=>removeItem("medications",item)} onReorder={arr=>updateActive(p=>({...p,medications:arr}))} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("medications")} T={T}/>}
+      {ctab==="medical"&&<MedicalPresetSetting presets={active.medicalPresets||FD.medicalPresets} onAdd={addMedPreset} onRemove={removeMedPreset} onReorder={arr=>updateActive(p=>({...p,medicalPresets:arr}))} onUpdate={arr=>updateActive(p=>({...p,medicalPresets:arr}))} T={T}/>}
+      {ctab==="meds"&&<EList items={active.medications||FD.medications} onRemove={item=>removeItem("medications",item)} onReorder={arr=>updateActive(p=>({...p,medications:arr}))} icons={active.medicationIcons||{}} onIconUpdate={(name,ic)=>updateActive(p=>({...p,medicationIcons:{...(p.medicationIcons||{}),[name]:ic}}))} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("medications")} T={T}/>}
     </>}
 
     {stab==="backup"&&<BackupPanel entries={entries} settings={settings} defaults={defaults} onImport={onImport} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} T={T}/>}
@@ -980,7 +1282,7 @@ function BackupPanel({entries,settings,defaults,onImport,onImportConfig,onClearE
 
 
 // ── Settings sub-components ───────────────────────────────────────────────────
-function MedicalPresetSetting({presets,onAdd,onRemove,onReorder,T}){
+function MedicalPresetSetting({presets,onAdd,onRemove,onReorder,onUpdate,T}){
   const[nm,setNm]=useState("");const[ut,setUt]=useState("");
   const add=()=>{if(!nm.trim())return;onAdd(nm.trim(),ut.trim());setNm("");setUt("");};
   return(<div><div className="card" style={{marginBottom:7}}>
@@ -988,7 +1290,8 @@ function MedicalPresetSetting({presets,onAdd,onRemove,onReorder,T}){
   </div>
   {(presets||[]).map((p,i)=>{const nm2=typeof p==="string"?p:p.name;const ut2=typeof p==="string"?"":p.unit;return(<div key={nm2} style={{display:"flex",alignItems:"center",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}>
     <ReorderBtns i={i} total={(presets||[]).length} onMove={(idx,dir)=>{const moved=moveItem(presets,idx,dir);onReorder(moved);}} T={T}/>
-    <span style={{flex:1}}>{nm2}{ut2&&<span style={{color:T.textMuted,fontSize:"0.75rem",marginLeft:6}}>({ut2})</span>}</span>
+    <IconBtn name={nm2} category="medical" stored={typeof p==="object"?p.icon||"":""} onSet={ic=>onUpdate&&onUpdate(presets.map((x,j)=>j===i?{...(typeof x==="object"?x:{name:x}),icon:ic}:x))} T={T}/>
+    <span style={{flex:1,marginLeft:5}}>{nm2}{ut2&&<span style={{color:T.textMuted,fontSize:"0.75rem",marginLeft:6}}>({ut2})</span>}</span>
     <button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(nm2)}>🗑️</button>
   </div>);})}</div>);
 }
@@ -997,6 +1300,231 @@ function MedicalPresetSetting({presets,onAdd,onRemove,onReorder,T}){
 const moveItem=(arr,i,dir)=>{const a=[...arr];const j=i+dir;if(j<0||j>=a.length)return a;[a[i],a[j]]=[a[j],a[i]];return a;};
 const ReorderBtns=({i,total,onMove,T})=>(<div style={{display:"flex",flexDirection:"column",gap:1,marginRight:4,flexShrink:0}}><button className="ibtn" onClick={()=>onMove(i,-1)} disabled={i===0} style={{padding:"0 3px",fontSize:"0.65rem",opacity:i===0?0.2:1,lineHeight:1.3}}>▲</button><button className="ibtn" onClick={()=>onMove(i,1)} disabled={i===total-1} style={{padding:"0 3px",fontSize:"0.65rem",opacity:i===total-1?0.2:1,lineHeight:1.3}}>▼</button></div>);
 
+
+// ── Item icon system ──────────────────────────────────────────────────────────
+// Keyword → emoji. Checked in order; first match wins.
+const ICON_MAP=[
+  // ── Food ──────────────────────────────────────────────────────────────────
+  ["airline","✈️"],["flight","✈️"],
+  ["chicken","🍗"],
+  ["egg","🥚"],["omlette","🥚"],["omelet","🥚"],["burji","🥚"],
+  ["paneer","🧀"],["tofu","🧀"],
+  ["soya","🫘"],["soy","🫘"],
+  ["lentil","🫘"],["dal","🫘"],["channa","🫘"],["rajma","🫘"],["gram","🫘"],["pulse","🫘"],["ambar","🫘"],["moong","🫘"],
+  ["salad","🥗"],["lettuce","🥗"],["cucumber","🥗"],["brocolli","🥗"],["curd salad","🥗"],
+  ["curd","🥛"],["yogurt","🥛"],["dahi","🥛"],
+  ["thoran","🥬"],["beans","🫘"],["cabbage","🥬"],["cheera","🥬"],["spinach","🥬"],
+  ["beetroot","🫚"],["karela","🥒"],["kundri","🥒"],["ladies finger","🥒"],["okra","🥒"],
+  ["veg","🥦"],["saute","🥦"],["stir fry","🥦"],
+  ["nut","🥜"],["almond","🥜"],["walnut","🥜"],["peanut","🥜"],["cashew","🥜"],
+  ["seed","🌱"],["aliva","🌱"],["sesame","🌱"],["pumpkin seed","🌱"],["flax","🌱"],["chia","🌱"],
+  ["fruit","🍎"],["apple","🍎"],["orange","🍊"],["pear","🍐"],["banana","🍌"],["mango","🥭"],["grape","🍇"],["berry","🍓"],
+  ["rice","🍚"],["biryani","🍚"],["pulao","🍚"],
+  ["bread","🍞"],["roti","🫓"],["chapati","🫓"],["paratha","🫓"],["naan","🫓"],
+  ["pasta","🍝"],["noodle","🍜"],
+  ["soup","🍲"],["stew","🍲"],["curry","🍛"],
+  ["fish","🐟"],["salmon","🐟"],["tuna","🐟"],["prawn","🦐"],["shrimp","🦐"],
+  ["mutton","🍖"],["lamb","🍖"],["beef","🍖"],["pork","🍖"],["meat","🍖"],
+  ["pizza","🍕"],["burger","🍔"],["sandwich","🥪"],
+  ["snack","🍘"],
+  // ── Drinks ────────────────────────────────────────────────────────────────
+  ["warm water","♨️"],["hot water","♨️"],
+  ["plain water","💧"],["water","💧"],
+  ["morning drink","🌅"],
+  ["coffee","☕"],["espresso","☕"],["cappuccino","☕"],["latte","☕"],
+  ["milk tea","🍵"],["tea","🍵"],["herbal","🌿"],["tulsi","🌿"],["chamomile","🌿"],["ginger","🌿"],
+  ["milk","🥛"],
+  ["juice","🧃"],["smoothie","🥤"],["shake","🥤"],
+  ["soda","🥤"],["cola","🥤"],["lemonade","🍋"],
+  ["alcohol","🍺"],["beer","🍺"],["wine","🍷"],
+  ["coconut","🥥"],
+  // ── Exercise ──────────────────────────────────────────────────────────────
+  ["morning walk","🌄"],["walk","🚶"],["run","🏃"],["jog","🏃"],
+  ["legs up","🦵"],["pillow","🛌"],["wall","🧘"],["yoga","🧘"],["stretch","🧘"],["meditation","🧘"],
+  ["swim","🏊"],["cycle","🚴"],["bike","🚴"],["gym","🏋️"],["weight","🏋️"],["lift","🏋️"],
+  ["plank","💪"],["pushup","💪"],["squat","💪"],["exercise","💪"],["workout","💪"],
+  ["sport","⚽"],["tennis","🎾"],["badminton","🏸"],["cricket","🏏"],
+  // ── Medical ───────────────────────────────────────────────────────────────
+  ["sugar","🩸"],["glucose","🩸"],["blood","🩸"],["hba1c","🩸"],
+  ["bp","❤️"],["blood pressure","❤️"],["pressure","❤️"],["heart","❤️"],
+  ["weight","⚖️"],
+  ["height","📏"],
+  ["temperature","🌡️"],["fever","🌡️"],["temp","🌡️"],
+  ["oxygen","💨"],["spo2","💨"],
+  ["cholesterol","🫀"],["triglyceride","🫀"],["lipid","🫀"],
+  // ── Medications ───────────────────────────────────────────────────────────
+  ["nexovas","💊"],["glycomet","💊"],["metformin","💊"],["statin","💊"],
+  ["vitamin","💊"],["calcium","💊"],["vit-d","💊"],["vit d","💊"],["multi","💊"],
+  ["antibiotic","💊"],["tablet","💊"],["capsule","💊"],["pill","💊"],
+];
+
+// Category fallbacks when no keyword matches
+const ICON_DEFAULTS={food:"🍽️",drink:"💧",exercise:"🏃",medical:"🩺",medication:"💊"};
+
+function pickIcon(name, category="food", stored=""){
+  if(stored)return stored;
+  if(!name)return ICON_DEFAULTS[category]||"•";
+  const lc=name.toLowerCase();
+  for(const[kw,icon] of ICON_MAP){
+    if(lc.includes(kw))return icon;
+  }
+  return ICON_DEFAULTS[category]||"•";
+}
+
+// ── Emoji picker ──────────────────────────────────────────────────────────────
+const EMOJI_GRID=[
+  // Food
+  "🍗","🥚","🧀","🫘","🥗","🥛","🥬","🥦","🥒","🌽","🫚","🥜","🌰","🌱",
+  "🍎","🍊","🍋","🍇","🍓","🥭","🍌","🍐","🍑","🫐","🍒","🥝","🍅",
+  "🍚","🍜","🍝","🍛","🍲","🫕","🍱","🥘","🍖","🍔","🥪","🫓","🥙","🌯",
+  "🍕","🧆","🫔","🧁","🍰","🍩","🍪","🎂","🍫","🍬","🍭",
+  "🧺","🥩","🐟","🦐","🦑","🦪","🥟","🍣","🍤","🧇","🥞","🧈","🍳",
+  // Drinks
+  "💧","♨️","🌅","☕","🍵","🌿","🧃","🥤","🍺","🍷","🍹","🧋","🫖",
+  "🥂","🍸","🍾","🫗",
+  // Exercise
+  "🌄","🚶","🏃","🧘","🦵","🛌","🏊","🚴","🏋️","💪","⚽","🎾","🏸","🧗",
+  "🤸","🏄","⛷️","🎿","🥊","🤼","🏇","🧜","🤺","🛹","🤾","🪂",
+  // Medical
+  "🩸","❤️","⚖️","📏","🌡️","💨","🫀","🫁","🧠","🦷","👁️","💉","🩺","🩹",
+  // Meds / general
+  "💊","🌟","✅","🔵","🟢","🟡","🟠","🔴","🟣","⭐","🎯","📌",
+];
+
+function EmojiPicker({current, onSelect, onClose, T}){
+  const LABELS={
+    "🍗":"chicken poultry meat","🥚":"egg boiled omlette burji","🧀":"paneer cheese dairy",
+    "🫘":"beans lentils dal pulses channa rajma gram soya ambar moong","🥗":"salad greens lettuce curd",
+    "🥛":"milk curd dairy yogurt","🥬":"greens thoran cheera spinach cabbage",
+    "🥦":"broccoli veg vegetable saute","🥒":"cucumber karela kundri ladies finger okra",
+    "🌽":"corn maize veg","🫚":"oil beet beetroot","🥜":"nuts almonds walnut peanut cashew",
+    "🌰":"chestnut nut","🌱":"seeds flax chia aliva sesame pumpkin",
+    "🍎":"apple fruit","🍊":"orange fruit citrus","🍋":"lemon citrus",
+    "🍇":"grapes fruit","🍓":"strawberry berry fruit","🥭":"mango fruit",
+    "🍌":"banana fruit","🍐":"pear fruit","🍑":"peach fruit",
+    "🫐":"blueberry berry","🍒":"cherry fruit","🥝":"kiwi fruit","🍅":"tomato",
+    "🍚":"rice biryani pulao","🍜":"noodles soup","🍝":"pasta","🍛":"curry",
+    "🍲":"stew soup curry","🫕":"stew pot curry","🍱":"bento meal box",
+    "🥘":"paella stew rice","🍖":"mutton lamb beef meat","🍔":"burger",
+    "🥪":"sandwich","🫓":"roti bread chapati paratha naan","🥙":"wrap pita",
+    "🌯":"wrap burrito","🍕":"pizza","🧆":"falafel","🫔":"taco wrap",
+    "🧁":"cupcake sweet","🍰":"cake sweet dessert","🍩":"donut sweet",
+    "🍪":"cookie biscuit","🎂":"cake birthday","🍫":"chocolate sweet",
+    "🍬":"candy sweet","🍭":"lollipop candy","🧺":"basket fruits bowl",
+    "🥩":"steak meat beef","🐟":"fish seafood salmon tuna","🦐":"prawn shrimp seafood",
+    "🦑":"squid seafood","🦪":"oyster seafood","🥟":"dumpling","🍣":"sushi",
+    "🍤":"shrimp prawn fried","🧇":"waffle breakfast","🥞":"pancake breakfast",
+    "🧈":"butter dairy","🍳":"egg fried breakfast omlette",
+    "💧":"water plain hydration","♨️":"warm hot water","🌅":"morning sunrise drink",
+    "☕":"coffee espresso cappuccino latte","🍵":"tea milk chai",
+    "🌿":"herbal tulsi ginger chamomile green",
+    "🧃":"juice fruit drink","🥤":"soda shake smoothie cola","🍺":"beer alcohol",
+    "🍷":"wine alcohol","🍹":"cocktail juice tropical","🧋":"bubble tea boba",
+    "🫖":"teapot herbal brew","🥂":"champagne celebrate","🍸":"cocktail drink",
+    "🍾":"champagne bottle","🫗":"pour drink",
+    "🌄":"morning walk sunrise","🚶":"walk stroll additional","🏃":"run jog exercise",
+    "🧘":"yoga stretch meditation wall pillow legs","🦵":"legs stretching",
+    "🛌":"rest sleep pillow lying","🏊":"swim pool","🚴":"cycle bike ride",
+    "🏋️":"gym weights lift strength","💪":"pushup plank squat workout strength",
+    "⚽":"football sport","🎾":"tennis sport","🏸":"badminton sport",
+    "🧗":"climb wall rock","🤸":"gymnastics flexibility","🏄":"surf water sport",
+    "⛷️":"ski winter sport","🎿":"ski snow sport","🥊":"boxing martial arts",
+    "🤼":"wrestling sport","🏇":"horse riding","🧜":"swim water",
+    "🤺":"fencing sport","🛹":"skateboard","🤾":"handball sport","🪂":"parachute skydive",
+    "🩸":"sugar blood glucose hba1c","❤️":"bp blood pressure heart cardiac",
+    "⚖️":"weight scale body mass","📏":"height measure length",
+    "🌡️":"temperature fever body","💨":"oxygen breathing spo2",
+    "🫀":"heart cholesterol cardio lipid","🫁":"lung breathing respiratory",
+    "🧠":"brain mental cognitive","🦷":"teeth dental","👁️":"eye vision",
+    "💉":"injection vaccine","🩺":"medical stethoscope doctor","🩹":"wound bandage",
+    "💊":"pill tablet capsule medication vitamin calcium nexovas glycomet",
+    "🌟":"star special","✅":"check done tick","🔵":"blue circle",
+    "🟢":"green circle","🟡":"yellow circle","🟠":"orange circle",
+    "🔴":"red circle","🟣":"purple circle","⭐":"star favourite",
+    "🎯":"target goal","📌":"pin mark",
+  };
+  const[q,setQ]=useState("");
+  const[custom,setCustom]=useState("");
+  const lq=q.trim().toLowerCase();
+  const filtered=lq
+    ?EMOJI_GRID.filter(em=>(LABELS[em]||"").toLowerCase().includes(lq)||em===lq)
+    :EMOJI_GRID;
+  const customEmoji=[...custom.trim()][0]||"";
+  return(
+    <div style={{position:"absolute",zIndex:999,top:"110%",left:0,
+      background:T.cardBg,border:`1px solid ${T.border}`,borderRadius:10,
+      boxShadow:"0 4px 20px rgba(0,0,0,0.25)",padding:10,width:272}}>
+      <input autoFocus value={q} onChange={e=>setQ(e.target.value)}
+        placeholder="🔍 Search… chicken, walk, sugar"
+        style={{width:"100%",boxSizing:"border-box",marginBottom:7,padding:"6px 8px",
+          borderRadius:7,border:`1px solid ${T.border}`,background:T.cardBg,
+          color:T.text,fontSize:"0.78rem",fontFamily:"inherit"}}/>
+      <div style={{display:"flex",flexWrap:"wrap",gap:3,maxHeight:186,overflowY:"auto",marginBottom:7}}>
+        {filtered.length
+          ?filtered.map(em=>(
+            <button key={em} onClick={()=>{onSelect(em);onClose();}}
+              title={LABELS[em]||em}
+              style={{fontSize:"1.3rem",padding:"3px 4px",
+                border:`2px solid ${em===current?T.accentBtn:"transparent"}`,
+                borderRadius:6,cursor:"pointer",background:"transparent",lineHeight:1}}>
+              {em}
+            </button>
+          ))
+          :<span style={{fontSize:"0.75rem",color:T.textMuted,padding:"8px 4px",display:"block"}}>
+            No match — paste any emoji below ↓
+          </span>
+        }
+      </div>
+      <div style={{display:"flex",gap:5,marginBottom:7,alignItems:"center"}}>
+        <input value={custom} onChange={e=>setCustom(e.target.value)}
+          placeholder="Paste any emoji  e.g. 🫙 🧬 🪴"
+          style={{flex:1,padding:"5px 8px",borderRadius:7,
+            border:`1px solid ${T.border}`,background:T.cardBg,
+            color:T.text,fontSize:"1.1rem",fontFamily:"inherit"}}/>
+        {customEmoji&&
+          <button onClick={()=>{onSelect(customEmoji);onClose();}}
+            style={{padding:"5px 11px",borderRadius:7,border:"none",
+              background:T.accentBtn,color:"#fff",cursor:"pointer",
+              fontSize:"0.8rem",fontFamily:"inherit",fontWeight:600,flexShrink:0}}>
+            Use {customEmoji}
+          </button>}
+      </div>
+      <div style={{display:"flex",gap:6}}>
+        {current&&<button onClick={()=>{onSelect("");onClose();}}
+          style={{flex:1,padding:"5px 8px",borderRadius:7,border:`1px solid ${T.border}`,
+            background:"transparent",color:T.textMuted,cursor:"pointer",
+            fontSize:"0.75rem",fontFamily:"inherit"}}>
+          ✕ Clear (use auto)
+        </button>}
+        <button onClick={onClose}
+          style={{flex:1,padding:"5px 8px",borderRadius:7,border:`1px solid ${T.border}`,
+            background:"transparent",color:T.textMuted,cursor:"pointer",
+            fontSize:"0.75rem",fontFamily:"inherit"}}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Icon button that opens the picker
+function IconBtn({name, category, stored, onSet, T}){
+  const[open,setOpen]=React.useState(false);
+  const icon=pickIcon(name,category,stored);
+  return(
+    <div style={{position:"relative",flexShrink:0}}>
+      <button onClick={()=>setOpen(o=>!o)}
+        title="Tap to change icon"
+        style={{fontSize:"1.1rem",padding:"2px 5px",borderRadius:6,
+          border:`1px solid ${stored?T.accentBtn:T.border}`,
+          background:stored?T.accentBg:"transparent",
+          cursor:"pointer",lineHeight:1,minWidth:32}}>
+        {icon}
+      </button>
+      {open&&<EmojiPicker current={stored||""} onSelect={onSet} onClose={()=>setOpen(false)} T={T}/>}
+    </div>
+  );
+}
 function FoodSetting({items,onRemove,onUpdate,newItem,setNew,onAdd,T}){
   const[ei,setEi]=useState(null);
   const fi=foodItems(items);
@@ -1016,7 +1544,8 @@ function FoodSetting({items,onRemove,onUpdate,newItem,setNew,onAdd,T}){
       <div key={item.name} className="card" style={{marginBottom:7}}>
         <div style={{display:"flex",alignItems:"center",marginBottom:4}}>
           <ReorderBtns i={i} total={fi.length} onMove={move} T={T}/>
-          <span style={{fontWeight:600,fontSize:"0.85rem",flex:1}}>{item.name}</span>
+          <IconBtn name={item.name} category="food" stored={item.icon||""} onSet={ic=>upd(item.name,{icon:ic})} T={T}/>
+          <span style={{fontWeight:600,fontSize:"0.85rem",flex:1,marginLeft:5}}>{item.name}</span>
           <button className="ibtn" onClick={()=>setEi(ei===item.name?null:item.name)}>{ei===item.name?"✖️":"✏️"}</button>
           <button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(item.name)}>🗑️</button>
         </div>
@@ -1035,7 +1564,7 @@ function FoodSetting({items,onRemove,onUpdate,newItem,setNew,onAdd,T}){
   </div>);
 }
 
-function DrinkSetting({types,notes,subTypes,onRemove,onUpdate,newItem,setNew,onAdd,T}){
+function DrinkSetting({types,notes,subTypes,icons,onRemove,onUpdate,onIconUpdate,newItem,setNew,onAdd,T}){
   const[ei,setEi]=useState(null);
   const drinks=(types||[]).filter(t=>t!=="--------");
   const updNote=(name,note)=>onUpdate("notes",{...notes,[name]:note});
@@ -1055,7 +1584,8 @@ function DrinkSetting({types,notes,subTypes,onRemove,onUpdate,newItem,setNew,onA
       <div key={name} className="card" style={{marginBottom:7}}>
         <div style={{display:"flex",alignItems:"center",marginBottom:4}}>
           <ReorderBtns i={i} total={drinks.length} onMove={move} T={T}/>
-          <span style={{fontWeight:600,fontSize:"0.85rem",flex:1}}>{name}</span>
+          <IconBtn name={name} category="drink" stored={(icons||{})[name]||""} onSet={ic=>onIconUpdate&&onIconUpdate(name,ic)} T={T}/>
+          <span style={{fontWeight:600,fontSize:"0.85rem",flex:1,marginLeft:5}}>{name}</span>
           <button className="ibtn" onClick={()=>setEi(ei===name?null:name)}>{ei===name?"✖️":"✏️"}</button>
           <button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(name)}>🗑️</button>
         </div>
@@ -1074,18 +1604,19 @@ function DrinkSetting({types,notes,subTypes,onRemove,onUpdate,newItem,setNew,onA
   </div>);
 }
 
-function EList({items,onRemove,onReorder,newItem,setNew,onAdd,T}){
+function EList({items,onRemove,onReorder,icons,onIconUpdate,newItem,setNew,onAdd,T}){
   return(<div className="card"><div style={{display:"flex",gap:7,marginBottom:9}}><input placeholder="Add new item…" value={newItem} onChange={e=>setNew(e.target.value)} onKeyDown={e=>e.key==="Enter"&&onAdd()}/><button onClick={onAdd} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div>
   {(items||[]).map((item,i)=>(<div key={item} style={{display:"flex",alignItems:"center",padding:"4px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}>
     {onReorder&&<ReorderBtns i={i} total={(items||[]).length} onMove={(idx,dir)=>onReorder(moveItem(items,idx,dir))} T={T}/>}
-    <span style={{flex:1}}>{item}</span>
+    <IconBtn name={item} category="medication" stored={(icons||{})[item]||""} onSet={ic=>onIconUpdate&&onIconUpdate(item,ic)} T={T}/>
+    <span style={{flex:1,marginLeft:5}}>{item}</span>
     <button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(item)}>🗑️</button>
   </div>))}
   </div>);
 }
 function ExerciseSetting({types,onChange,T}){
   const[ei,setEi]=useState(null);const[nn,setNn]=useState("");
-  const add=()=>{if(!nn.trim())return;onChange([...types,{name:nn.trim(),subTypes:[],metrics:["time"],note:""}]);setNn("");};
+  const add=()=>{if(!nn.trim())return;onChange([...types,{name:nn.trim(),subTypes:[],metrics:["time"],note:"",icon:""}]);setNn("");};
   const rem=i=>onChange(types.filter((_,x)=>x!==i));
   const move=(i,dir)=>onChange(moveItem(types,i,dir));
   const addSub=(i,s)=>{if(!s.trim())return;onChange(types.map((t,x)=>x===i?{...t,subTypes:[...(t.subTypes||[]),s.trim()]}:t));};
@@ -1096,7 +1627,8 @@ function ExerciseSetting({types,onChange,T}){
   {types.map((t,i)=>(<div key={t.name} className="card" style={{marginBottom:7}}>
     <div style={{display:"flex",alignItems:"center",marginBottom:5}}>
       <ReorderBtns i={i} total={types.length} onMove={move} T={T}/>
-      <span style={{fontWeight:600,fontSize:"0.85rem",flex:1}}>{t.name}</span>
+      <IconBtn name={t.name} category="exercise" stored={t.icon||""} onSet={ic=>onChange(types.map((x,j)=>j===i?{...x,icon:ic}:x))} T={T}/>
+      <span style={{fontWeight:600,fontSize:"0.85rem",flex:1,marginLeft:5}}>{t.name}</span>
       <div style={{display:"flex",gap:5}}><button className="ibtn" onClick={()=>setEi(ei===i?null:i)}>{ei===i?"✖️":"✏️"}</button><button className="ibtn" style={{color:T.danger}} onClick={()=>rem(i)}>🗑️</button></div>
     </div>
     <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:3}}>{["distance","time","count"].map(m=>(<button key={m} onClick={()=>togM(i,m)} style={{padding:"2px 9px",borderRadius:20,fontSize:"0.72rem",border:"1px solid",cursor:"pointer",borderColor:t.metrics.includes(m)?T.accentBtn:T.border,background:t.metrics.includes(m)?T.accentBg:"transparent",color:t.metrics.includes(m)?T.accent:T.textMuted}}>{m}</button>))}</div>
