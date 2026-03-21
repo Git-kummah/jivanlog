@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.35";console.log("JivanLog",APP_VERSION,"loaded");
+const APP_VERSION="v4.36";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -562,7 +562,7 @@ function LiquidEntry({settings,onAdd,entryTime,setEntryTime,T}){
     {/* Row 1: dropdown | quick-add buttons | qty */}
     <div style={{display:"flex",gap:5,marginBottom:7,alignItems:"center",flexWrap:"wrap"}}>
       <select value={liqType} onChange={e=>onTypeChange(e.target.value)} style={{flex:"2 1 110px",minWidth:0}}>
-        {allTypes.map((t,i)=>t==="--------"?<option key={i} disabled>── Drinks ──</option>:<option key={t}>{pickIcon(t,"drink",liqIcons[t]||"")} {t}</option>)}
+        {allTypes.map((t,i)=>t==="--------"?<option key={i} disabled>── Drinks ──</option>:<option key={t} value={t}>{pickIcon(t,"drink",liqIcons[t]||"")} {t}</option>)}
       </select>
       {hasLiqSub&&<select value={liqSub} onChange={e=>setLiqSub(e.target.value)} style={{flex:"1 1 90px",minWidth:0}}><option value="">Sub-type…</option>{curSubTypes.map(s=><option key={s}>{s}</option>)}</select>}
       {[500,250,100,50].map(amt=><button key={amt} className="wbtn" onClick={()=>add(amt)} style={{padding:"5px 7px",fontSize:"0.78rem",flex:"0 0 auto"}}>{"+"+amt}</button>)}
@@ -581,7 +581,6 @@ function ExerciseEntry({settings,onAdd,entryTime,setEntryTime,T}){
   const storedMetrics=etObj?.metrics;
   const validMetrics=Array.isArray(storedMetrics)&&storedMetrics.length&&typeof storedMetrics[0]==="string";
   const etMetrics=validMetrics?storedMetrics:fdEx?.metrics||["time"];
-  if(et)console.log("[JL v4.34] ExerciseEntry:",et,"stored:",JSON.stringify(storedMetrics),"valid:",validMetrics,"etMetrics:",JSON.stringify(etMetrics),"hasDist:",etMetrics.includes("distance"),"hasTime:",etMetrics.includes("time"));
   const hasSub=etObj?.subTypes?.length>0;const hasDist=etMetrics.includes("distance");const hasTime=etMetrics.includes("time");const hasCnt=etMetrics.includes("count");
   const onTypeChange=t=>{setEt(t);setSub("");const obj=exTypes?.find(e=>e.name===t);setNotes(obj?.note||"");};
   // Re-sync when Firebase settings arrive — ensures metrics/notes are current
@@ -589,7 +588,7 @@ function ExerciseEntry({settings,onAdd,entryTime,setEntryTime,T}){
     if(et){const obj=exTypes?.find(e=>e.name===et);if(obj)setNotes(obj.note||"");}
   },[settings]);
   const save=()=>{if(!et||(hasSub&&!sub))return;onAdd({type:"exercise",exType:et,subType:sub,dist,time:min,count:cnt,notes});setSub("");setDist("");setMin("");setCnt("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
-  return(<div className="card"><div className="slabel">🏃 Exercise</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={et} onChange={e=>onTypeChange(e.target.value)} style={{flex:"1 1 100px",minWidth:0}}><option value="">Type…</option>{exTypes.map(e=><option key={e.name}>{pickIcon(e.name,"exercise",e.icon||"")} {e.name}</option>)}</select>{hasSub&&<select value={sub} onChange={e=>setSub(e.target.value)} style={{flex:"1 1 110px",minWidth:0}}><option value="">Sub-type…</option>{etObj.subTypes.map(s=><option key={s}>{s}</option>)}</select>}{hasDist&&<input type="number" placeholder="km" value={dist} onChange={e=>setDist(e.target.value)} style={{flex:"0 0 52px"}}/>}{(hasDist||hasTime)&&<input type="number" placeholder="min" value={min} onChange={e=>setMin(e.target.value)} style={{flex:"0 0 52px"}}/>}{hasCnt&&<input type="number" placeholder="count" value={cnt} onChange={e=>setCnt(e.target.value)} style={{flex:"0 0 68px"}}/>}</div><div style={{display:"flex",gap:6,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
+  return(<div className="card"><div className="slabel">🏃 Exercise</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={et} onChange={e=>onTypeChange(e.target.value)} style={{flex:"1 1 100px",minWidth:0}}><option value="">Type…</option>{exTypes.map(e=><option key={e.name} value={e.name}>{pickIcon(e.name,"exercise",e.icon||"")} {e.name}</option>)}</select>{hasSub&&<select value={sub} onChange={e=>setSub(e.target.value)} style={{flex:"1 1 110px",minWidth:0}}><option value="">Sub-type…</option>{etObj.subTypes.map(s=><option key={s}>{s}</option>)}</select>}{hasDist&&<input type="number" placeholder="km" value={dist} onChange={e=>setDist(e.target.value)} style={{flex:"0 0 52px"}}/>}{(hasDist||hasTime)&&<input type="number" placeholder="min" value={min} onChange={e=>setMin(e.target.value)} style={{flex:"0 0 52px"}}/>}{hasCnt&&<input type="number" placeholder="count" value={cnt} onChange={e=>setCnt(e.target.value)} style={{flex:"0 0 68px"}}/>}</div><div style={{display:"flex",gap:6,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
 }
 
 function MedicalEntry({settings,onAdd,entryTime,setEntryTime,T}){
@@ -599,7 +598,7 @@ function MedicalEntry({settings,onAdd,entryTime,setEntryTime,T}){
   const save=()=>{if(!rt||!val)return;onAdd({type:"medical",readingType:rt,value:val,unit,notes});setVal("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
   return(<div className="card"><div className="slabel">🩺 Medical Reading</div>
     <div style={{display:"flex",gap:5,marginBottom:6}}>
-      <select value={rt} onChange={e=>{setRt(e.target.value);setVal("");}} style={{flex:"0 0 90px"}}><option value="">Type...</option>{presets.map(p=>{const n=p.name||p;const ic=typeof p==="object"?p.icon||"":"";return<option key={n}>{pickIcon(n,"medical",ic)} {n}</option>;})}</select>
+      <select value={rt} onChange={e=>{setRt(e.target.value);setVal("");}} style={{flex:"0 0 90px"}}><option value="">Type...</option>{presets.map(p=>{const n=p.name||p;const ic=typeof p==="object"?p.icon||"":"";return<option key={n} value={n}>{pickIcon(n,"medical",ic)} {n}</option>;})}</select>
       <div style={{flex:1,position:"relative"}}>
         <input value={val} onChange={e=>setVal(e.target.value)} placeholder={unit||"Value"} style={{width:"100%",paddingRight:unit&&!val?(unit.length*8+12)+"px":"9px"}}/>
         {unit&&!val&&<span style={{position:"absolute",right:9,top:"50%",transform:"translateY(-50%)",fontSize:"0.74rem",color:T.textMuted,pointerEvents:"none",fontFamily:"'DM Mono',monospace"}}>{unit}</span>}
@@ -628,7 +627,7 @@ function MedEntry({settings,onAdd,entryTime,setEntryTime,T}){
   const save=()=>{if(!med)return;onAdd({type:"medication",med,timing,notes});setMed("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
   return(<div className="card"><div className="slabel">💊 Medication</div>
     <div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6}}>
-      <select value={med} onChange={e=>setMed(e.target.value)} style={{flex:"1 1 140px",minWidth:0}}><option value="">Medication…</option>{(settings.medications||[]).map(m=><option key={m}>{pickIcon(m,"medication",medIcons[m]||"")} {m}</option>)}</select>
+      <select value={med} onChange={e=>setMed(e.target.value)} style={{flex:"1 1 140px",minWidth:0}}><option value="">Medication…</option>{(settings.medications||[]).map(m=><option key={m} value={m}>{pickIcon(m,"medication",medIcons[m]||"")} {m}</option>)}</select>
       <select value={timing} onChange={e=>setTiming(e.target.value)} style={{flex:"1 1 120px",minWidth:0}}>{MED_TIMES.map(t=><option key={t}>{t}</option>)}</select>
     </div>
     <div style={{display:"flex",gap:6}}>
@@ -681,9 +680,11 @@ function EditEntry({entry,settings,onSave,onCancel,T}){
   const liqIcons=settings.liquidIcons||{};
   const medIcons=settings.medicationIcons||{};
   const eo=(settings.exerciseTypes||FD.exerciseTypes).find(e=>e.name===d.exType);
-  const hasDist=eo?.metrics?.includes("distance");
-  const hasTime=eo?.metrics?.includes("time");
-  const hasCnt=eo?.metrics?.includes("count");
+  const _fdEo=FD.exerciseTypes?.find(e=>e.name===d.exType);
+  const _eoM=Array.isArray(eo?.metrics)&&eo.metrics.length&&typeof eo.metrics[0]==="string"?eo.metrics:_fdEo?.metrics||["time"];
+  const hasDist=_eoM.includes("distance");
+  const hasTime=_eoM.includes("time");
+  const hasCnt=_eoM.includes("count");
   const doSave=()=>onSave({...d,date:editDate,timestamp:makeTS(editDate,editTime)});
   return(
     <div className="card" style={{border:`1px solid ${T.accentBtn}55`,marginBottom:8}}>
@@ -704,14 +705,14 @@ function EditEntry({entry,settings,onSave,onCancel,T}){
       </div>}
       {d.type==="liquid"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}>
         {(()=>{const liqSubs=(settings.liquidSubTypes||FD.liquidSubTypes||{})[d.liquidType]||[];return(<>
-        <select value={d.liquidType||""} onChange={e=>{set("liquidType",e.target.value);set("liquidSubType","");}} style={{flex:"2 1 130px"}}>{liqTypes.map(t=><option key={t}>{pickIcon(t,"drink",liqIcons[t]||"")} {t}</option>)}</select>
+        <select value={d.liquidType||""} onChange={e=>{set("liquidType",e.target.value);set("liquidSubType","");}} style={{flex:"2 1 130px"}}>{liqTypes.map(t=><option key={t} value={t}>{pickIcon(t,"drink",liqIcons[t]||"")} {t}</option>)}</select>
         {liqSubs.length>0&&<select value={d.liquidSubType||""} onChange={e=>set("liquidSubType",e.target.value)} style={{flex:"1 1 90px"}}><option value="">Sub-type…</option>{liqSubs.map(s=><option key={s}>{s}</option>)}</select>}
         <input type="number" placeholder="ml" value={d.ml||""} onChange={e=>set("ml",e.target.value)} style={{width:72}}/>
         <input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100%"}}/>
         </>);})()}
       </div>}
       {d.type==="exercise"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}>
-        <select value={d.exType} onChange={e=>set("exType",e.target.value)} style={{flex:"1 1 130px"}}>{(settings.exerciseTypes||FD.exerciseTypes).map(e=><option key={e.name}>{e.name}</option>)}</select>
+        <select value={d.exType} onChange={e=>set("exType",e.target.value)} style={{flex:"1 1 130px"}}>{(settings.exerciseTypes||FD.exerciseTypes).map(e=><option key={e.name} value={e.name}>{e.name}</option>)}</select>
         {hasDist&&<input type="number" placeholder="km" value={d.dist||""} onChange={e=>set("dist",e.target.value)} style={{width:52}}/>}
         {(hasDist||hasTime)&&<input type="number" placeholder="min" value={d.time||""} onChange={e=>set("time",e.target.value)} style={{width:52}}/>}
         {hasCnt&&<input type="number" placeholder="count" value={d.count||""} onChange={e=>set("count",e.target.value)} style={{width:68}}/>}
@@ -723,7 +724,7 @@ function EditEntry({entry,settings,onSave,onCancel,T}){
         <input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100%"}}/>
       </div>}
       {d.type==="medication"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}>
-        <select value={d.med} onChange={e=>set("med",e.target.value)} style={{flex:"1 1 130px"}}>{(settings.medications||FD.medications).map(m=><option key={m}>{pickIcon(m,"medication",medIcons[m]||"")} {m}</option>)}</select>
+        <select value={d.med} onChange={e=>set("med",e.target.value)} style={{flex:"1 1 130px"}}>{(settings.medications||FD.medications).map(m=><option key={m} value={m}>{pickIcon(m,"medication",medIcons[m]||"")} {m}</option>)}</select>
         <select value={d.timing} onChange={e=>set("timing",e.target.value)} style={{flex:"1 1 110px"}}>{MED_TIMES.map(t=><option key={t}>{t}</option>)}</select>
       </div>}
       <div style={{display:"flex",gap:6}}>
