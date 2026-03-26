@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.36";
+const APP_VERSION="v4.37";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -642,11 +642,11 @@ function TLE({e,settings,T}){
   const resolvedUnit=e.unit||(e.type==="medical"&&settings?((settings.medicalPresets||FD.medicalPresets||[]).find(p=>(p.name||p)===e.readingType)||{}).unit||"":"");
   let m="";
   if(e.type==="meal")       {const _f=(settings?.foodCategories||FD.foodCategories||[]).find(f=>(f.name||f)===e.food)||{};m=`${e.mealType} · ${pickIcon(e.food,"food",_f.icon||"")} ${e.food}${e.foodSubType?" · "+e.foodSubType:""} · ${e.unit==="count"?e.qty:e.qty+e.unit}`;}
-  if(e.type==="liquid")     m=`${e.liquidType}${e.liquidSubType?" · "+e.liquidSubType:""}${e.ml?" · "+e.ml+"ml":""}`;
+  if(e.type==="liquid")     {const _li=(settings?.liquidIcons||{})[e.liquidType]||"";m=`${pickIcon(e.liquidType,"drink",_li)} ${e.liquidType}${e.liquidSubType?" · "+e.liquidSubType:""}${e.ml?" · "+e.ml+"ml":""}`;};
   if(e.type==="exercise")   {const _e=(settings?.exerciseTypes||FD.exerciseTypes||[]).find(x=>x.name===e.exType)||{};m=`${pickIcon(e.exType,"exercise",_e.icon||"")} ${e.exType}`;if(e.subType)m+=` · ${e.subType}`;if(e.dist)m+=` · ${e.dist}km`;if(e.time)m+=` · ${e.time}min`;if(e.count)m+=` · x${e.count}`;}
   // water is handled by the liquid branch above (shows "Warm Water · 600ml")
-  if(e.type==="medical")    m=`${e.readingType} · ${e.value}${resolvedUnit?" "+resolvedUnit:""}`;
-  if(e.type==="medication") m=`${e.med} · ${e.timing}`;
+  if(e.type==="medical")    {const _mp=(settings?.medicalPresets||FD.medicalPresets||[]).find(p=>(p.name||p)===e.readingType)||{};m=`${pickIcon(e.readingType,"medical",_mp.icon||"")} ${e.readingType} · ${e.value}${resolvedUnit?" "+resolvedUnit:""}`;};
+  if(e.type==="medication") {const _mi=(settings?.medicationIcons||{})[e.med]||"";m=`${pickIcon(e.med,"medication",_mi)} ${e.med} · ${e.timing}`;};
   return(<div className="tle"><span style={{fontSize:"0.68rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:40,flexShrink:0}}>{fmt24(e.timestamp)}</span><span style={{flexShrink:0}}>{ic[e.type]||"•"}</span><div style={{flex:1,fontSize:"0.83rem",lineHeight:1.45}}>{m}{e.notes&&<span style={{fontSize:"0.74rem",color:T.textSub,fontStyle:"italic"}}> ({e.notes})</span>}</div></div>);
 }
 
@@ -663,11 +663,11 @@ function ManageRow({e,settings,onEdit,onDelete,T}){
   const ic={meal:"🍽️",liquid:"💧",drinks:"☕",exercise:"🏃",water:"💧",medical:"🩺",medication:"💊"};
   let m="";
   if(e.type==="meal")       {const _f=(settings?.foodCategories||FD.foodCategories||[]).find(f=>(f.name||f)===e.food)||{};m=`${e.mealType} · ${pickIcon(e.food,"food",_f.icon||"")} ${e.food}${e.foodSubType?" · "+e.foodSubType:""} · ${e.unit==="count"?e.qty:e.qty+e.unit}`;}
-  if(e.type==="liquid")     m=`${e.liquidType}${e.liquidSubType?" · "+e.liquidSubType:""}${e.ml?" · "+e.ml+"ml":""}`;
+  if(e.type==="liquid")     {const _li=(settings?.liquidIcons||{})[e.liquidType]||"";m=`${pickIcon(e.liquidType,"drink",_li)} ${e.liquidType}${e.liquidSubType?" · "+e.liquidSubType:""}${e.ml?" · "+e.ml+"ml":""}`;};
   if(e.type==="exercise")   {const _e=(settings?.exerciseTypes||FD.exerciseTypes||[]).find(x=>x.name===e.exType)||{};m=`${pickIcon(e.exType,"exercise",_e.icon||"")} ${e.exType}`;if(e.subType)m+=` · ${e.subType}`;if(e.dist)m+=` · ${e.dist}km`;if(e.time)m+=` · ${e.time}min`;if(e.count)m+=` · x${e.count}`;}
   if(e.type==="liquid" && ["Warm Water","Plain Water","Cold Water"].includes(e.liquidType))      m=`${e.waterTemp||""} ${e.ml}ml`.trim();
   if(e.type==="medical")    m=`${e.readingType} · ${e.value}${e.unit?" "+e.unit:""}`;
-  if(e.type==="medication") m=`${e.med} · ${e.timing}`;
+  if(e.type==="medication") {const _mi=(settings?.medicationIcons||{})[e.med]||"";m=`${pickIcon(e.med,"medication",_mi)} ${e.med} · ${e.timing}`;};
   return(<div className="card" style={{display:"flex",alignItems:"flex-start",gap:8,padding:"9px 11px",marginBottom:6}}><span style={{fontSize:"0.66rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:40,paddingTop:2,flexShrink:0}}>{fmt24(e.timestamp)}</span><span style={{flexShrink:0}}>{ic[e.type]||"•"}</span><div style={{flex:1,fontSize:"0.82rem",lineHeight:1.4}}>{m}{e.notes&&<span style={{fontSize:"0.74rem",color:T.textSub,fontStyle:"italic"}}> ({e.notes})</span>}</div><div style={{display:"flex",gap:3,flexShrink:0}}><button className="ibtn" onClick={onEdit}>✏️</button><button className="ibtn" style={{color:T.danger}} onClick={onDelete}>🗑️</button></div></div>);
 }
 function EditEntry({entry,settings,onSave,onCancel,T}){
@@ -1314,6 +1314,11 @@ function MedicalPresetSetting({presets,onAdd,onRemove,onReorder,onUpdate,T}){
   return(<div><div className="card" style={{marginBottom:7}}>
     <div style={{display:"flex",gap:7,marginBottom:7}}><input placeholder="Reading name…" value={nm} onChange={e=>setNm(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><input placeholder="Unit…" value={ut} onChange={e=>setUt(e.target.value)} style={{width:80}} onKeyDown={e=>e.key==="Enter"&&add()}/><button onClick={add} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div>
   </div>
+  <div style={{display:"flex",gap:5,marginBottom:6,alignItems:"center"}}>
+    <span style={{fontSize:"0.72rem",color:T.textMuted}}>Sort:</span>
+    <button onClick={()=>onReorder([...(presets||[])].sort((a,b)=>(a.name||a).localeCompare(b.name||b)))} style={{padding:"2px 9px",borderRadius:6,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontSize:"0.72rem",fontFamily:"inherit"}}>A→Z</button>
+    <button onClick={()=>onReorder([...(presets||[])].sort((a,b)=>(b.name||b).localeCompare(a.name||a)))} style={{padding:"2px 9px",borderRadius:6,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontSize:"0.72rem",fontFamily:"inherit"}}>Z→A</button>
+  </div>
   {(presets||[]).map((p,i)=>{const nm2=typeof p==="string"?p:p.name;const ut2=typeof p==="string"?"":p.unit;return(<div key={nm2} style={{display:"flex",alignItems:"center",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}>
     <ReorderBtns i={i} total={(presets||[]).length} onMove={(idx,dir)=>{const moved=moveItem(presets,idx,dir);onReorder(moved);}} T={T}/>
     <IconBtn name={nm2} category="medical" stored={typeof p==="object"?p.icon||"":""} onSet={ic=>onUpdate&&onUpdate(presets.map((x,j)=>j===i?{...(typeof x==="object"?x:{name:x}),icon:ic}:x))} T={T}/>
@@ -1566,6 +1571,11 @@ function FoodSetting({items,onRemove,onUpdate,newItem,setNew,onAdd,T}){
         <button onClick={onAdd} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button>
       </div>
     </div>
+    <div style={{display:"flex",gap:5,marginBottom:6,alignItems:"center"}}>
+      <span style={{fontSize:"0.72rem",color:T.textMuted}}>Sort:</span>
+      <button onClick={()=>onUpdate([...fi].sort((a,b)=>a.name.localeCompare(b.name)))} style={{padding:"2px 9px",borderRadius:6,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontSize:"0.72rem",fontFamily:"inherit"}}>A→Z</button>
+      <button onClick={()=>onUpdate([...fi].sort((a,b)=>b.name.localeCompare(a.name)))} style={{padding:"2px 9px",borderRadius:6,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontSize:"0.72rem",fontFamily:"inherit"}}>Z→A</button>
+    </div>
     {fi.map((item,i)=>(
       <div key={item.name} className="card" style={{marginBottom:7}}>
         <div style={{display:"flex",alignItems:"center",marginBottom:4}}>
@@ -1606,6 +1616,11 @@ function DrinkSetting({types,notes,subTypes,icons,onRemove,onUpdate,onIconUpdate
         <button onClick={onAdd} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button>
       </div>
     </div>
+    <div style={{display:"flex",gap:5,marginBottom:6,alignItems:"center"}}>
+      <span style={{fontSize:"0.72rem",color:T.textMuted}}>Sort:</span>
+      <button onClick={()=>onUpdate("types",[...drinks].sort((a,b)=>a.localeCompare(b)))} style={{padding:"2px 9px",borderRadius:6,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontSize:"0.72rem",fontFamily:"inherit"}}>A→Z</button>
+      <button onClick={()=>onUpdate("types",[...drinks].sort((a,b)=>b.localeCompare(a)))} style={{padding:"2px 9px",borderRadius:6,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontSize:"0.72rem",fontFamily:"inherit"}}>Z→A</button>
+    </div>
     {drinks.map((name,i)=>(
       <div key={name} className="card" style={{marginBottom:7}}>
         <div style={{display:"flex",alignItems:"center",marginBottom:4}}>
@@ -1632,6 +1647,11 @@ function DrinkSetting({types,notes,subTypes,icons,onRemove,onUpdate,onIconUpdate
 
 function EList({items,onRemove,onReorder,icons,onIconUpdate,newItem,setNew,onAdd,T}){
   return(<div className="card"><div style={{display:"flex",gap:7,marginBottom:9}}><input placeholder="Add new item…" value={newItem} onChange={e=>setNew(e.target.value)} onKeyDown={e=>e.key==="Enter"&&onAdd()}/><button onClick={onAdd} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div>
+  <div style={{display:"flex",gap:5,marginBottom:6,alignItems:"center"}}>
+    <span style={{fontSize:"0.72rem",color:T.textMuted}}>Sort:</span>
+    <button onClick={()=>onReorder&&onReorder([...(items||[])].sort((a,b)=>a.localeCompare(b)))} style={{padding:"2px 9px",borderRadius:6,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontSize:"0.72rem",fontFamily:"inherit"}}>A→Z</button>
+    <button onClick={()=>onReorder&&onReorder([...(items||[])].sort((a,b)=>b.localeCompare(a)))} style={{padding:"2px 9px",borderRadius:6,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontSize:"0.72rem",fontFamily:"inherit"}}>Z→A</button>
+  </div>
   {(items||[]).map((item,i)=>(<div key={item} style={{display:"flex",alignItems:"center",padding:"4px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}>
     {onReorder&&<ReorderBtns i={i} total={(items||[]).length} onMove={(idx,dir)=>onReorder(moveItem(items,idx,dir))} T={T}/>}
     <IconBtn name={item} category="medication" stored={(icons||{})[item]||""} onSet={ic=>onIconUpdate&&onIconUpdate(item,ic)} T={T}/>
@@ -1650,6 +1670,11 @@ function ExerciseSetting({types,onChange,T}){
   const moveSub=(i,si,dir)=>onChange(types.map((t,x)=>x===i?{...t,subTypes:moveItem(t.subTypes||[],si,dir)}:t));
   const togM=(i,m)=>onChange(types.map((t,x)=>{if(x!==i)return t;const h=t.metrics.includes(m);return{...t,metrics:h?t.metrics.filter(v=>v!==m):[...t.metrics,m]};}));
   return(<div><div className="card" style={{marginBottom:7}}><div style={{display:"flex",gap:7}}><input placeholder="New exercise type…" value={nn} onChange={e=>setNn(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button onClick={add} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div><div style={{fontSize:"0.7rem",color:T.textMuted,marginTop:5}}>New types default to time metric. Toggle below to change.</div></div>
+  <div style={{display:"flex",gap:5,marginBottom:6,alignItems:"center"}}>
+    <span style={{fontSize:"0.72rem",color:T.textMuted}}>Sort:</span>
+    <button onClick={()=>onChange([...types].sort((a,b)=>a.name.localeCompare(b.name)))} style={{padding:"2px 9px",borderRadius:6,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontSize:"0.72rem",fontFamily:"inherit"}}>A→Z</button>
+    <button onClick={()=>onChange([...types].sort((a,b)=>b.name.localeCompare(a.name)))} style={{padding:"2px 9px",borderRadius:6,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontSize:"0.72rem",fontFamily:"inherit"}}>Z→A</button>
+  </div>
   {types.map((t,i)=>(<div key={t.name} className="card" style={{marginBottom:7}}>
     <div style={{display:"flex",alignItems:"center",marginBottom:5}}>
       <ReorderBtns i={i} total={types.length} onMove={move} T={T}/>
