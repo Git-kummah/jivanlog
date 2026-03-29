@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.37";
+const APP_VERSION="v4.38";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -145,7 +145,7 @@ function parseAndMergeCSV(csvText,existingEntries){
   const lines=csvText.split("\n").map(l=>l.trim()).filter(Boolean);
   if(lines.length<2)throw new Error("Empty file");
   const hdrs=lines[0].split(",").map(h=>h.replace(/^"|"$/g,"").trim());
-  ["ID","Date","Time","Type"].forEach(r=>{if(!hdrs.includes(r))throw new Error(`Missing column: ${r}`);});
+  ["Date","Time","Type"].forEach(r=>{if(!hdrs.includes(r))throw new Error(`Missing column: ${r}`);});
   const col=k=>hdrs.indexOf(k);
   const cell=(row,k)=>{const v=row[col(k)]||"";return v.replace(/^"|"$/g,"").replace(/""/g,'"').trim();};
   const existingIds=new Set(existingEntries.map(e=>e.id));
@@ -153,7 +153,7 @@ function parseAndMergeCSV(csvText,existingEntries){
   for(let i=1;i<lines.length;i++){
     const row=[];let cur="",inQ=false;
     for(const ch of lines[i]+","){if(ch==='"'){inQ=!inQ;}else if(ch===","&&!inQ){row.push(cur);cur="";}else cur+=ch;}
-    const id=cell(row,"ID");if(!id||existingIds.has(id))continue;
+    const rawId=cell(row,"ID");const id=rawId||[cell(row,"Date"),cell(row,"Time"),cell(row,"Type"),cell(row,"SubType"),cell(row,"Detail1"),String(i)].join("|").replace(/\s/g,"_");if(existingIds.has(id))continue;if(!cell(row,"Date")||!cell(row,"Type"))continue;
     const dateStr=cell(row,"Date");const timeStr=cell(row,"Time")||"00:00";
     const type=cell(row,"Type").toLowerCase();
     const subType=cell(row,"SubType");const d1=cell(row,"Detail1");const d2=cell(row,"Detail2");const d3=cell(row,"Detail3");const unit=cell(row,"Unit");const notes=cell(row,"Notes");
@@ -161,9 +161,9 @@ function parseAndMergeCSV(csvText,existingEntries){
     const ts=makeTS(parsedDate,timeStr);
     let entry={id,date:parsedDate,timestamp:ts,notes};
     if(type==="meal")       entry={...entry,type:"meal",mealType:subType,food:d1,qty:d2,unit};
-    else if(type==="drinks")entry={...entry,type:"drinks",drinkType:subType,ml:d1};
+    else if(type==="drinks")entry={...entry,type:"liquid",liquidType:subType,liquidSubType:"",ml:+d1||0,notes};
     else if(type==="exercise")entry={...entry,type:"exercise",exType:subType,subType:d1,dist:d2,time:d3,count:d3,unit};
-    else if(type==="water"||type==="liquid") entry={...entry,type:"water",waterTemp:subType,ml:d1};
+    else if(type==="water"||type==="liquid") entry={...entry,type:"liquid",liquidType:subType||"Warm Water",ml:+d1||0,notes};
     else if(type==="medical")entry={...entry,type:"medical",readingType:subType,value:d1,unit};
     else if(type==="medication")entry={...entry,type:"medication",med:subType,timing:d1};
     else continue;
@@ -644,6 +644,7 @@ function TLE({e,settings,T}){
   if(e.type==="meal")       {const _f=(settings?.foodCategories||FD.foodCategories||[]).find(f=>(f.name||f)===e.food)||{};m=`${e.mealType} · ${pickIcon(e.food,"food",_f.icon||"")} ${e.food}${e.foodSubType?" · "+e.foodSubType:""} · ${e.unit==="count"?e.qty:e.qty+e.unit}`;}
   if(e.type==="liquid")     {const _li=(settings?.liquidIcons||{})[e.liquidType]||"";m=`${pickIcon(e.liquidType,"drink",_li)} ${e.liquidType}${e.liquidSubType?" · "+e.liquidSubType:""}${e.ml?" · "+e.ml+"ml":""}`;};
   if(e.type==="exercise")   {const _e=(settings?.exerciseTypes||FD.exerciseTypes||[]).find(x=>x.name===e.exType)||{};m=`${pickIcon(e.exType,"exercise",_e.icon||"")} ${e.exType}`;if(e.subType)m+=` · ${e.subType}`;if(e.dist)m+=` · ${e.dist}km`;if(e.time)m+=` · ${e.time}min`;if(e.count)m+=` · x${e.count}`;}
+  if(e.type==="water")     {const _wt=e.waterTemp||e.liquidType||"Water";const _wi=(settings?.liquidIcons||{})[_wt]||"";m=`${pickIcon(_wt,"drink",_wi)} ${_wt}${e.ml?" · "+e.ml+"ml":""}`;};
   // water is handled by the liquid branch above (shows "Warm Water · 600ml")
   if(e.type==="medical")    {const _mp=(settings?.medicalPresets||FD.medicalPresets||[]).find(p=>(p.name||p)===e.readingType)||{};m=`${pickIcon(e.readingType,"medical",_mp.icon||"")} ${e.readingType} · ${e.value}${resolvedUnit?" "+resolvedUnit:""}`;};
   if(e.type==="medication") {const _mi=(settings?.medicationIcons||{})[e.med]||"";m=`${pickIcon(e.med,"medication",_mi)} ${e.med} · ${e.timing}`;};
@@ -655,7 +656,12 @@ function TLE({e,settings,T}){
 // ═══════════════════════════════════════════════════════════════════════════════
 function ManagePage({entries,settings,onUpdate,onDelete,T}){
   const[sel,setSel]=useState(today());const[eid,setEid]=useState(null);
-  const dates=Array.from({length:10},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);});
+  // Show all dates that have entries + today
+  const dates=(()=>{
+    const s=new Set(entries.map(e=>e.date).filter(Boolean));
+    s.add(today());
+    return Array.from(s).sort().reverse();
+  })();
   const dayE=entries.filter(e=>e.date===sel).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
   return(<div><div style={{fontWeight:600,fontSize:"0.92rem",marginBottom:10}}>📋 Manage Records</div><select value={sel} onChange={e=>{setSel(e.target.value);setEid(null);}} style={{marginBottom:10}}>{dates.map(d=><option key={d} value={d}>{fmtDate(d)}{d===today()?" (Today)":""}</option>)}</select>{dayE.length===0?<div style={{color:T.textMuted,fontSize:"0.82rem",textAlign:"center",padding:22}}>No entries for this date</div>:dayE.map(e=>eid===e.id?<EditEntry key={e.id} entry={e} settings={settings} T={T} onSave={d=>{onUpdate(e.id,d);setEid(null);}} onCancel={()=>setEid(null)}/>:<ManageRow key={e.id} e={e} settings={settings} T={T} onEdit={()=>setEid(e.id)} onDelete={()=>{if(confirm("Delete this entry?"))onDelete(e.id);}}/>)}</div>);
 }
@@ -666,6 +672,7 @@ function ManageRow({e,settings,onEdit,onDelete,T}){
   if(e.type==="liquid")     {const _li=(settings?.liquidIcons||{})[e.liquidType]||"";m=`${pickIcon(e.liquidType,"drink",_li)} ${e.liquidType}${e.liquidSubType?" · "+e.liquidSubType:""}${e.ml?" · "+e.ml+"ml":""}`;};
   if(e.type==="exercise")   {const _e=(settings?.exerciseTypes||FD.exerciseTypes||[]).find(x=>x.name===e.exType)||{};m=`${pickIcon(e.exType,"exercise",_e.icon||"")} ${e.exType}`;if(e.subType)m+=` · ${e.subType}`;if(e.dist)m+=` · ${e.dist}km`;if(e.time)m+=` · ${e.time}min`;if(e.count)m+=` · x${e.count}`;}
   if(e.type==="liquid" && ["Warm Water","Plain Water","Cold Water"].includes(e.liquidType))      m=`${e.waterTemp||""} ${e.ml}ml`.trim();
+  if(e.type==="water")     {const _wt=e.waterTemp||e.liquidType||"Water";const _wi=(settings?.liquidIcons||{})[_wt]||"";m=`${pickIcon(_wt,"drink",_wi)} ${_wt}${e.ml?" · "+e.ml+"ml":""}`;};
   if(e.type==="medical")    m=`${e.readingType} · ${e.value}${e.unit?" "+e.unit:""}`;
   if(e.type==="medication") {const _mi=(settings?.medicationIcons||{})[e.med]||"";m=`${pickIcon(e.med,"medication",_mi)} ${e.med} · ${e.timing}`;};
   return(<div className="card" style={{display:"flex",alignItems:"flex-start",gap:8,padding:"9px 11px",marginBottom:6}}><span style={{fontSize:"0.66rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:40,paddingTop:2,flexShrink:0}}>{fmt24(e.timestamp)}</span><span style={{flexShrink:0}}>{ic[e.type]||"•"}</span><div style={{flex:1,fontSize:"0.82rem",lineHeight:1.4}}>{m}{e.notes&&<span style={{fontSize:"0.74rem",color:T.textSub,fontStyle:"italic"}}> ({e.notes})</span>}</div><div style={{display:"flex",gap:3,flexShrink:0}}><button className="ibtn" onClick={onEdit}>✏️</button><button className="ibtn" style={{color:T.danger}} onClick={onDelete}>🗑️</button></div></div>);
@@ -764,18 +771,19 @@ function isoYear(dateStr){return dateStr.slice(0,4);}
 // Build {label, values:[]} series for a given metric, range and aggregation
 function buildTrendSeries(entries, metricName, rangeKey, aggMode){
   // Filter medical entries for this metric
-  const med=entries.filter(e=>e.type==="medical"&&(e.readingType||e.detail1)===metricName);
+  const stripEmoji=s=>(s||"").replace(/^[^\w\d]+/,"").trim();
+  const med=entries.filter(e=>e.type==="medical"&&(stripEmoji(e.readingType)||stripEmoji(e.detail1))===metricName);
   if(!med.length)return null;
 
   const now=new Date();
   // Date boundaries
   const cutoffs={
     "7d":  7,  "30d": 30, "90d": 90,
-    "12w": 84, "25w":175, "12m":365
+    "12w": 84, "25w":175, "12m":365, "all":9999
   };
-  const days=cutoffs[rangeKey]||30;
+  const days=cutoffs[rangeKey]||90;
   const cutoff=new Date(now); cutoff.setDate(cutoff.getDate()-days);
-  const inRange=med.filter(e=>new Date(e.date+"T00:00:00")>=cutoff);
+  const inRange=rangeKey==="all"?med:med.filter(e=>new Date(e.date+"T00:00:00")>=cutoff);
 
   // Group key function
   const isWeekly=rangeKey==="12w"||rangeKey==="25w";
@@ -846,6 +854,7 @@ const TREND_RANGES=[
   {key:"12w", label:"12 Weeks"},
   {key:"25w", label:"25 Weeks"},
   {key:"12m", label:"12 Months"},
+  {key:"all", label:"All Time"},
 ];
 const AGG_MODES=[
   {key:"avg",   label:"Avg"},
@@ -856,15 +865,16 @@ const TREND_METRICS=["Sugar","BP","Weight"];
 
 function TrendsPanel({entries,settings,T}){
   const[metric,setMetric]=React.useState("Sugar");
-  const[range,setRange]=React.useState("30d");
+  const[range,setRange]=React.useState("90d");
   const[agg,setAgg]=React.useState("avg");
   const canvasRef=React.useRef(null);
   const chartRef=React.useRef(null);
 
   // Resolve available metrics from settings
   const medPresets=settings.medicalPresets||FD.medicalPresets;
+  const _stripE=s=>(s||"").replace(/^[^\w\d]+/,"").trim();
   const availMetrics=medPresets.map(p=>typeof p==="string"?p:p.name).filter(n=>
-    entries.some(e=>e.type==="medical"&&(e.readingType||e.detail1)===n)
+    entries.some(e=>e.type==="medical"&&(_stripE(e.readingType)||_stripE(e.detail1))===n)
   );
 
   React.useEffect(()=>{
@@ -1003,7 +1013,13 @@ function TrendsPanel({entries,settings,T}){
 function ReportsPage({entries,settings,T}){
   const[tab,setTab]=useState("view");const[vd,setVd]=useState(today());
   const[cd,setCd]=useState([today()]);const[ad,setAd]=useState(today());const[qr,setQr]=useState("");
-  const d30=Array.from({length:30},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);});
+  // Build date list from all entries + today, so imported historical data appears
+  const allDates=(()=>{
+    const s=new Set(entries.map(e=>e.date).filter(Boolean));
+    s.add(today());
+    return Array.from(s).sort().reverse();
+  })();
+  const d30=allDates;
   const medPresets=settings.medicalPresets||FD.medicalPresets;
   const medNames=medPresets.map(p=>typeof p==="string"?p:p.name);
   const rpt=date=>dayReport(entries.filter(e=>e.date===date),medPresets);
