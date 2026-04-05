@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.41";
+const APP_VERSION="v4.42";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -674,7 +674,8 @@ function ManagePage({entries,settings,onUpdate,onDelete,T}){
     return Array.from(s).sort().reverse();
   })();
   const dayE=entries.filter(e=>e.date===sel).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
-  return(<div><div style={{fontWeight:600,fontSize:"0.92rem",marginBottom:10}}>📋 Manage Records</div><input type="date" value={sel} onChange={e=>{setSel(e.target.value);setEid(null);}} style={{marginBottom:10,display:"block",width:"100%",padding:"6px 8px",borderRadius:8,border:`1px solid ${T.border}`,fontSize:"0.9rem",fontFamily:"inherit",background:T.inputBg,color:T.text}}/>{dayE.length===0?<div style={{color:T.textMuted,fontSize:"0.82rem",textAlign:"center",padding:22}}>No entries for this date</div>:dayE.map(e=>eid===e.id?<EditEntry key={e.id} entry={e} settings={settings} T={T} onSave={d=>{onUpdate(e.id,d);setEid(null);}} onCancel={()=>setEid(null)}/>:<ManageRow key={e.id} e={e} settings={settings} T={T} onEdit={()=>setEid(e.id)} onDelete={()=>{if(confirm("Delete this entry?"))onDelete(e.id);}}/>)}</div>);
+  console.log("[v4.42] ManagePage entries:",entries.length,"dates:",entries.slice(0,3).map(e=>e.date));
+  return(<div><div style={{fontWeight:600,fontSize:"0.92rem",marginBottom:10}}>📋 Manage Records <span style={{fontSize:"0.7rem",color:T.textMuted,fontWeight:400}}>{APP_VERSION}</span></div><input type="date" value={sel} onChange={e=>{setSel(e.target.value);setEid(null);}} style={{marginBottom:10,display:"block",width:"100%",padding:"6px 8px",borderRadius:8,border:`1px solid ${T.border}`,fontSize:"0.9rem",fontFamily:"inherit",background:T.inputBg,color:T.text}}/>{dayE.length===0?<div style={{color:T.textMuted,fontSize:"0.82rem",textAlign:"center",padding:22}}>No entries for this date</div>:dayE.map(e=>eid===e.id?<EditEntry key={e.id} entry={e} settings={settings} T={T} onSave={d=>{onUpdate(e.id,d);setEid(null);}} onCancel={()=>setEid(null)}/>:<ManageRow key={e.id} e={e} settings={settings} T={T} onEdit={()=>setEid(e.id)} onDelete={()=>{if(confirm("Delete this entry?"))onDelete(e.id);}}/>)}</div>);
 }
 function ManageRow({e,settings,onEdit,onDelete,T}){
   const ic={meal:"🍽️",liquid:"💧",drinks:"☕",exercise:"🏃",water:"💧",medical:"🩺",medication:"💊"};
