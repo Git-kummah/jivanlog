@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.45";
+const APP_VERSION="v4.46";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -325,7 +325,7 @@ function App(){
     try{await dbSet(user.uid,key,val);}catch(e){console.error("Persist:",key,e);}
   },[user]);
 
-  const saveEntries  =useCallback(n=>{persistEntries(n);},[persistEntries]);
+  const saveEntries  =useCallback(n=>persistEntries(n),[persistEntries]);
   const saveSettings =useCallback(n=>{setSettings(n);persistKey("settings",n);},[persistKey]);
   const saveDefaults =useCallback(n=>{setDefaults(n);persistKey("defaults",n);},[persistKey]);
   const saveTheme    =useCallback(m=>{setTheme(m);   persistKey("theme",m);},[persistKey]);
@@ -385,20 +385,15 @@ function App(){
       const imported=parseAndMergeCSV(csvText,entries);
       if(!imported.length){alert("No new entries found — all IDs already exist.");return;}
       if(!confirm(`Import ${imported.length} new entries?\nDuplicates are skipped.\nPress OK to merge.`))return;
-      // Merge: new entries replace old ones with same ID OR same natural key (date+time+type+subtype)
-      const nkOf=e=>[e.date,e.timestamp?new Date(e.timestamp).toTimeString().slice(0,5):"",e.type,e.readingType||e.liquidType||e.exType||e.food||e.med||""].join("|");
-      const nkMap=Object.fromEntries(entries.map(e=>[nkOf(e),e.id]));
+      // Merge imported into existing, new wins over old with same ID
       const existMap=Object.fromEntries(entries.map(e=>[e.id,e]));
-      imported.forEach(e=>{
-        // Remove old entry with same natural key if it exists
-        const oldId=nkMap[nkOf(e)];if(oldId&&oldId!==e.id)delete existMap[oldId];
-        existMap[e.id]=e;
-      });
-      await new Promise(resolve=>{
-        saveEntries(Object.values(existMap));
-        setTimeout(resolve,2000); // give Firebase time to write
-      });
-      alert(`✓ Imported ${imported.length} entries.\n\nTotal entries now: ${Object.values(existMap).length}\nOpen Manage tab to browse by date.`);
+      imported.forEach(e=>{existMap[e.id]=e;});
+      const merged=Object.values(existMap);
+      // Update React state immediately so UI reflects new data
+      setEntries(merged);
+      // Then persist to Firebase (async)
+      await saveEntries(merged);
+      alert(`✓ Imported ${imported.length} entries.\nTotal in database: ${merged.length}\nOpen 📋 Manage tab — tap the date to browse past dates.`);
     }catch(e){alert("Import failed: "+e.message);}
   },[entries,saveEntries]);
 
@@ -439,7 +434,7 @@ function App(){
         .ctbl tr:nth-child(even) td{background:${T.even}}
         input[type=number]::-webkit-inner-spin-button{opacity:0.4}
         input[type=time]{color-scheme:${theme==="light"?"light":"dark"}}
-        input[type=date]{color-scheme:${theme==="light"?"light":"dark"}}
+        input[type=date]{color-scheme:${theme==="light"?"light":"dark"};background:${T.inputBg}!important;color:${T.text}!important;}
         .tpl-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid ${T.border}22;font-size:0.82rem}
         .tpl-row:last-child{border-bottom:none}
         .tpl-chk{width:18px;height:18px;accent-color:${T.accentBtn};flex-shrink:0;cursor:pointer}
@@ -673,7 +668,7 @@ function ManagePage({entries,settings,onUpdate,onDelete,T}){
   const[sel,setSel]=useState(()=>allEntryDates[0]||today());const[eid,setEid]=useState(null);
   const dates=allEntryDates;
   const dayE=entries.filter(e=>e.date===sel).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
-  return(<div><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}><div style={{fontWeight:600,fontSize:"0.92rem"}}>📋 Manage Records</div><div style={{fontSize:"0.72rem",color:T.textMuted}}>{entries.length} entries · {dates.length} dates</div></div><div style={{marginBottom:10}}><div style={{fontSize:"0.68rem",color:T.textMuted,marginBottom:3}}>Tap the date field below to browse all dates:</div><input type="date" value={sel} onChange={e=>{setSel(e.target.value);setEid(null);}} style={{display:"block",width:"100%",padding:"8px 10px",borderRadius:8,border:`2px solid ${T.accent}`,fontSize:"0.92rem",fontFamily:"inherit",background:T.cardBg,color:T.text,fontWeight:500}}/></div>{dayE.length===0?<div style={{color:T.textMuted,fontSize:"0.82rem",textAlign:"center",padding:22}}>No entries for this date</div>:dayE.map(e=>eid===e.id?<EditEntry key={e.id} entry={e} settings={settings} T={T} onSave={d=>{onUpdate(e.id,d);setEid(null);}} onCancel={()=>setEid(null)}/>:<ManageRow key={e.id} e={e} settings={settings} T={T} onEdit={()=>setEid(e.id)} onDelete={()=>{if(confirm("Delete this entry?"))onDelete(e.id);}}/>)}</div>);
+  return(<div><div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}><div style={{fontWeight:600,fontSize:"0.92rem"}}>📋 Manage Records</div><div style={{fontSize:"0.72rem",color:T.textMuted}}>{entries.length} entries · {dates.length} dates</div></div><div style={{marginBottom:10}}><div style={{fontSize:"0.68rem",color:T.textMuted,marginBottom:3}}>Tap the date field below to browse all dates:</div><input type="date" value={sel} onChange={e=>{setSel(e.target.value);setEid(null);}} style={{display:"block",width:"100%",padding:"8px 10px",borderRadius:8,border:`2px solid ${T.accent}`,fontSize:"0.92rem",fontFamily:"inherit",fontWeight:600}}/></div>{dayE.length===0?<div style={{color:T.textMuted,fontSize:"0.82rem",textAlign:"center",padding:22}}>No entries for this date</div>:dayE.map(e=>eid===e.id?<EditEntry key={e.id} entry={e} settings={settings} T={T} onSave={d=>{onUpdate(e.id,d);setEid(null);}} onCancel={()=>setEid(null)}/>:<ManageRow key={e.id} e={e} settings={settings} T={T} onEdit={()=>setEid(e.id)} onDelete={()=>{if(confirm("Delete this entry?"))onDelete(e.id);}}/>)}</div>);
 }
 function ManageRow({e,settings,onEdit,onDelete,T}){
   const ic={meal:"🍽️",liquid:"💧",drinks:"☕",exercise:"🏃",water:"💧",medical:"🩺",medication:"💊"};
@@ -1037,7 +1032,7 @@ function ReportsPage({entries,settings,T}){
   const allRows=[{key:"water",label:"Water"},{key:"drinks",label:"Drinks"},{key:"medication",label:"Medications"},{key:"exercise",label:"Exercise"},{key:"Breakfast",label:"Breakfast"},{key:"Lunch",label:"Lunch"},{key:"Snack",label:"Snack"},{key:"Dinner",label:"Dinner"},...medNames.map(n=>({key:n,label:n}))];
   const doExport=(csv,fn)=>downloadCSV(csv,fn);
   const applyQr=v=>{setQr(v);if(!v)return;const n=parseInt(v);setCd(Array.from({length:n},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);}));};
-  return(<div><div style={{display:"flex",alignItems:"center",gap:4,marginBottom:10,flexWrap:"wrap"}}><span style={{fontWeight:700,fontSize:"0.92rem",marginRight:4}}>📊 Reports</span><button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} onClick={()=>doExport(buildViewCSV(entries,tab==="view"?[vd]:cd,medPresets),`jivanlog-view-${today()}.csv`)}>⬇️ Export view</button></div><div style={{display:"flex",gap:5,marginBottom:9,alignItems:"center"}}><button className={`tbtn${tab==="view"?" on":""}`} onClick={()=>setTab("view")}>View</button><button className={`tbtn${tab==="compare"?" on":""}`} onClick={()=>setTab("compare")}>Compare</button><button className={`tbtn${tab==="trends"?" on":""}`} onClick={()=>setTab("trends")}>📈 Trends</button>{tab==="view"&&<input type="date" value={vd} onChange={e=>setVd(e.target.value)} style={{flex:1,padding:"6px 8px",borderRadius:8,border:`2px solid ${T.accent}`,fontSize:"0.82rem",fontFamily:"inherit",background:T.cardBg,color:T.text,fontWeight:500}}/>}{tab==="compare"&&<><select value={qr} onChange={e=>applyQr(e.target.value)} style={{flex:"0 0 auto",fontSize:"0.79rem",padding:"5px 6px",width:110}}><option value="">Quick…</option>{[2,3,4,5,6,7,8,9,10].map(n=><option key={n} value={n}>Last {n} days</option>)}</select><input type="date" value={ad} onChange={e=>setAd(e.target.value)} style={{flex:1,padding:"6px 8px",borderRadius:8,border:`2px solid ${T.accent}`,fontSize:"0.82rem",fontFamily:"inherit",background:T.cardBg,color:T.text,fontWeight:500}}/><button onClick={()=>{setQr("");if(!cd.includes(ad)&&cd.length<10)setCd(p=>[...p,ad].sort().reverse());}} style={{flexShrink:0,padding:"5px 11px",fontSize:"1.1rem",fontWeight:700,lineHeight:1,border:"none",borderRadius:8,background:T.accentBtn,color:"#fff",cursor:"pointer"}}>＋</button></>}</div>{tab==="compare"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8,alignItems:"center"}}>{cd.map(d=>(<div key={d} style={{display:"flex",alignItems:"center",gap:3,background:T.border,borderRadius:20,padding:"2px 9px",fontSize:"0.73rem"}}><span>{fmtShort(d)}</span>{cd.length>1&&<button onClick={()=>{setQr("");setCd(p=>p.filter(x=>x!==d));}} style={{background:"none",border:"none",color:T.textMuted,cursor:"pointer",fontSize:"0.85rem",padding:"0 0 0 3px"}}>×</button>}</div>))}<button className="tbtn" style={{padding:"2px 9px",fontSize:"0.72rem"}} onClick={()=>{setQr("");setCd([today()]);}} >Clear</button></div>}{tab==="view"&&<div className="card"><div style={{fontWeight:600,fontSize:"0.82rem",marginBottom:8,color:T.accent}}>{fmtDate(vd)}</div>{allRows.map(({label,key})=>{const v=rpt(vd)[key]||"-";return(<div key={key} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}><span style={{color:T.textMuted,fontSize:"0.76rem",minWidth:100,flexShrink:0}}>{label}</span><span style={{textAlign:"right",flex:1,paddingLeft:6,color:v==="-"?T.border:T.text}}>{v}</span></div>);})}</div>}{tab==="compare"&&<div style={{overflowX:"auto"}}><table className="ctbl"><thead><tr><th style={{minWidth:90}}>Category</th>{cd.map(d=><th key={d}>{fmtShort(d)}</th>)}</tr></thead><tbody>{allRows.map(({label,key})=>{const vals=cd.map(d=>rpt(d)[key]||"-");return(<tr key={key}><td style={{color:T.textMuted,fontWeight:600}}>{label}</td>{vals.map((v,i)=><td key={i} style={{color:v==="-"?T.border:T.text}}>{v}</td>)}</tr>);})}</tbody></table></div>}
+  return(<div><div style={{display:"flex",alignItems:"center",gap:4,marginBottom:10,flexWrap:"wrap"}}><span style={{fontWeight:700,fontSize:"0.92rem",marginRight:4}}>📊 Reports</span><button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} onClick={()=>doExport(buildViewCSV(entries,tab==="view"?[vd]:cd,medPresets),`jivanlog-view-${today()}.csv`)}>⬇️ Export view</button></div><div style={{display:"flex",gap:5,marginBottom:9,alignItems:"center"}}><button className={`tbtn${tab==="view"?" on":""}`} onClick={()=>setTab("view")}>View</button><button className={`tbtn${tab==="compare"?" on":""}`} onClick={()=>setTab("compare")}>Compare</button><button className={`tbtn${tab==="trends"?" on":""}`} onClick={()=>setTab("trends")}>📈 Trends</button>{tab==="view"&&<input type="date" value={vd} onChange={e=>setVd(e.target.value)} style={{flex:1,padding:"6px 8px",borderRadius:8,border:`2px solid ${T.accent}`,fontSize:"0.82rem",fontFamily:"inherit",fontWeight:600}}/>}{tab==="compare"&&<><select value={qr} onChange={e=>applyQr(e.target.value)} style={{flex:"0 0 auto",fontSize:"0.79rem",padding:"5px 6px",width:110}}><option value="">Quick…</option>{[2,3,4,5,6,7,8,9,10].map(n=><option key={n} value={n}>Last {n} days</option>)}</select><input type="date" value={ad} onChange={e=>setAd(e.target.value)} style={{flex:1,padding:"6px 8px",borderRadius:8,border:`2px solid ${T.accent}`,fontSize:"0.82rem",fontFamily:"inherit",fontWeight:600}}/><button onClick={()=>{setQr("");if(!cd.includes(ad)&&cd.length<10)setCd(p=>[...p,ad].sort().reverse());}} style={{flexShrink:0,padding:"5px 11px",fontSize:"1.1rem",fontWeight:700,lineHeight:1,border:"none",borderRadius:8,background:T.accentBtn,color:"#fff",cursor:"pointer"}}>＋</button></>}</div>{tab==="compare"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8,alignItems:"center"}}>{cd.map(d=>(<div key={d} style={{display:"flex",alignItems:"center",gap:3,background:T.border,borderRadius:20,padding:"2px 9px",fontSize:"0.73rem"}}><span>{fmtShort(d)}</span>{cd.length>1&&<button onClick={()=>{setQr("");setCd(p=>p.filter(x=>x!==d));}} style={{background:"none",border:"none",color:T.textMuted,cursor:"pointer",fontSize:"0.85rem",padding:"0 0 0 3px"}}>×</button>}</div>))}<button className="tbtn" style={{padding:"2px 9px",fontSize:"0.72rem"}} onClick={()=>{setQr("");setCd([today()]);}} >Clear</button></div>}{tab==="view"&&<div className="card"><div style={{fontWeight:600,fontSize:"0.82rem",marginBottom:8,color:T.accent}}>{fmtDate(vd)}</div>{allRows.map(({label,key})=>{const v=rpt(vd)[key]||"-";return(<div key={key} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}><span style={{color:T.textMuted,fontSize:"0.76rem",minWidth:100,flexShrink:0}}>{label}</span><span style={{textAlign:"right",flex:1,paddingLeft:6,color:v==="-"?T.border:T.text}}>{v}</span></div>);})}</div>}{tab==="compare"&&<div style={{overflowX:"auto"}}><table className="ctbl"><thead><tr><th style={{minWidth:90}}>Category</th>{cd.map(d=><th key={d}>{fmtShort(d)}</th>)}</tr></thead><tbody>{allRows.map(({label,key})=>{const vals=cd.map(d=>rpt(d)[key]||"-");return(<tr key={key}><td style={{color:T.textMuted,fontWeight:600}}>{label}</td>{vals.map((v,i)=><td key={i} style={{color:v==="-"?T.border:T.text}}>{v}</td>)}</tr>);})}</tbody></table></div>}
     {tab==="trends"&&<TrendsPanel entries={entries} settings={settings} T={T}/>}
   </div>);
 }
