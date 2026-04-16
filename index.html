@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.50";
+const APP_VERSION="v4.51";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -152,7 +152,7 @@ function parseAndMergeCSV(csvText,existingEntries){
   for(let i=1;i<lines.length;i++){
     const row=[];let cur="",inQ=false;
     for(const ch of lines[i]+","){if(ch==='"'){inQ=!inQ;}else if(ch===","&&!inQ){row.push(cur);cur="";}else cur+=ch;}
-    const rawId=cell(row,"ID");const id=rawId||[cell(row,"Date"),cell(row,"Time"),cell(row,"Type"),cell(row,"SubType"),cell(row,"Detail1"),String(i)].join("|").replace(/\s/g,"_");if(!cell(row,"Date")||!cell(row,"Type"))continue;
+    const rawId=cell(row,"ID");const id=rawId||[cell(row,"Date"),cell(row,"Time"),cell(row,"Type"),cell(row,"SubType"),cell(row,"Detail1"),String(i)].join("|").replace(/[\s.#$\[\]/]/g,"_");if(!cell(row,"Date")||!cell(row,"Type"))continue;
     if(rawId&&existingIds.has(id))continue;
     // Natural key = date+time+type+subtype — used to deduplicate re-imports
     const nk=[cell(row,"Date"),cell(row,"Time"),cell(row,"Type"),cell(row,"SubType")].join("|");
@@ -314,7 +314,7 @@ function App(){
     if(!user)return;
     setSyncStatus("saving");
     try{
-      const obj=arr.reduce((acc,e)=>{acc[e.id]=e;return acc;},{});
+      const obj=arr.reduce((acc,e)=>{const k=e.id.replace(/[.#$\[\]/]/g,"_");acc[k]={...e,id:k};return acc;},{});
       await fbDb.ref(`users/${user.uid}/entries`).set(arr.length?obj:null);
       setSyncStatus("saved");setTimeout(()=>setSyncStatus("idle"),1500);
     }catch(e){console.error("persistEntries error:",e);setSyncStatus("error");setTimeout(()=>setSyncStatus("idle"),3000);}
@@ -331,7 +331,11 @@ function App(){
     if(!user||!newEntries.length)return;
     try{
       const updates={};
-      newEntries.forEach(e=>{updates[e.id]=e;});
+      // Sanitize IDs — Firebase keys cannot contain . # $ [ ] /
+      newEntries.forEach(e=>{
+        const safeId=e.id.replace(/[.#$\[\]/]/g,"_");
+        updates[safeId]={...e,id:safeId};
+      });
       await fbDb.ref(`users/${user.uid}/entries`).update(updates);
       console.log("Import persisted:",newEntries.length,"entries via .update()");
     }catch(e){console.error("persistImport error:",e);throw e;}
