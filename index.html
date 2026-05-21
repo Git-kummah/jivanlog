@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.51";
+const APP_VERSION="v4.52";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -159,7 +159,19 @@ function parseAndMergeCSV(csvText,existingEntries){
     const dateStr=cell(row,"Date");const timeStr=cell(row,"Time")||"00:00";
     const type=cell(row,"Type").toLowerCase();
     const subType=cell(row,"SubType");const d1=cell(row,"Detail1")||cell(row,"T");const d2=cell(row,"Detail2");const d3=cell(row,"Detail3");const unit=cell(row,"Unit");const notes=cell(row,"Notes");
-    const parsedDate=dateStr.replace(/(\d+) (\w+) (\d+)/,(m,d,mo,y)=>{const mi=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].indexOf(mo);return`${y}-${String(mi+1).padStart(2,"0")}-${d.padStart(2,"0")}`;});
+    const parsedDate=(()=>{
+      // Handle "DD Mon YYYY" e.g. "1 Mar 2026"
+      const monMatch=dateStr.match(/^(\d{1,2})\s+(\w+)\s+(\d{4})$/);
+      if(monMatch){const mi=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].indexOf(monMatch[2].slice(0,3));if(mi>=0)return`${monMatch[3]}-${String(mi+1).padStart(2,"0")}-${monMatch[1].padStart(2,"0")}`;}
+      // Handle "DD-MM-YY" e.g. "08-02-26"
+      const dmyShort=dateStr.match(/^(\d{2})-(\d{2})-(\d{2})$/);
+      if(dmyShort)return`20${dmyShort[3]}-${dmyShort[2]}-${dmyShort[1]}`;
+      // Handle "DD-MM-YYYY" e.g. "08-02-2026"
+      const dmyLong=dateStr.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+      if(dmyLong)return`${dmyLong[3]}-${dmyLong[2]}-${dmyLong[1]}`;
+      // Default: assume YYYY-MM-DD (passthrough)
+      return dateStr;
+    })();
     const ts=makeTS(parsedDate,timeStr);
     let entry={id,date:parsedDate,timestamp:ts,notes};
     if(type==="meal")       entry={...entry,type:"meal",mealType:subType,food:d1,qty:d2,unit};
