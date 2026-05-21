@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.52";
+const APP_VERSION="v4.54";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -73,6 +73,7 @@ const WATER_TYPES=["Warm Water","Plain Water","Cold Water"];
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 const genId   =()=>Date.now().toString(36)+Math.random().toString(36).slice(2);
 const today   =()=>new Date().toISOString().slice(0,10);
+const normDate=s=>{if(!s)return s;const a=s.match(/^(\d{2})-(\d{2})-(\d{2})$/);if(a)return`20${a[3]}-${a[2]}-${a[1]}`;const b=s.match(/^(\d{2})-(\d{2})-(\d{4})$/);if(b)return`${b[3]}-${b[2]}-${b[1]}`;return s;};
 const fmt24   =dt=>new Date(dt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",hour12:false});
 const nowTime =()=>new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
 const nowHHMM =()=>new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",hour12:false});
@@ -123,7 +124,7 @@ function buildAllCSV(entries){
     if(e.type==="exercise")  {t="Exercise";st=e.exType;d1=e.subType||"";d2=e.dist||"";d3=e.time||e.count||"";u=e.dist?"km":e.count?"count":"min";}
     if(e.type==="medical")   {t="Medical";st=e.readingType;d1=e.value;u=e.unit||"";}
     if(e.type==="medication"){t="Medication";st=e.med;d1=e.timing;}
-    return[e.id,e.date,fmt24(e.timestamp),t,st,d1,d2,d3,u,n].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",");
+    return[e.id,normDate(e.date),fmt24(e.timestamp),t,st,d1,d2,d3,u,n].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",");
   });
   return[hdr.join(","),...rows].join("\n");
 }
@@ -160,17 +161,10 @@ function parseAndMergeCSV(csvText,existingEntries){
     const type=cell(row,"Type").toLowerCase();
     const subType=cell(row,"SubType");const d1=cell(row,"Detail1")||cell(row,"T");const d2=cell(row,"Detail2");const d3=cell(row,"Detail3");const unit=cell(row,"Unit");const notes=cell(row,"Notes");
     const parsedDate=(()=>{
-      // Handle "DD Mon YYYY" e.g. "1 Mar 2026"
+      // Handle "DD Mon YYYY" e.g. "1 Mar 2026" (diary format)
       const monMatch=dateStr.match(/^(\d{1,2})\s+(\w+)\s+(\d{4})$/);
       if(monMatch){const mi=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].indexOf(monMatch[2].slice(0,3));if(mi>=0)return`${monMatch[3]}-${String(mi+1).padStart(2,"0")}-${monMatch[1].padStart(2,"0")}`;}
-      // Handle "DD-MM-YY" e.g. "08-02-26"
-      const dmyShort=dateStr.match(/^(\d{2})-(\d{2})-(\d{2})$/);
-      if(dmyShort)return`20${dmyShort[3]}-${dmyShort[2]}-${dmyShort[1]}`;
-      // Handle "DD-MM-YYYY" e.g. "08-02-2026"
-      const dmyLong=dateStr.match(/^(\d{2})-(\d{2})-(\d{4})$/);
-      if(dmyLong)return`${dmyLong[3]}-${dmyLong[2]}-${dmyLong[1]}`;
-      // Default: assume YYYY-MM-DD (passthrough)
-      return dateStr;
+      return normDate(dateStr); // handles DD-MM-YY, DD-MM-YYYY, YYYY-MM-DD
     })();
     const ts=makeTS(parsedDate,timeStr);
     let entry={id,date:parsedDate,timestamp:ts,notes};
@@ -257,7 +251,11 @@ function App(){
   useEffect(()=>{
     if(!user){if(entriesRef.current){entriesRef.current();entriesRef.current=null;}return;}
     const ref=fbDb.ref(`users/${user.uid}/entries`);
-    const handler=snap=>{setEntries(snap.val()?Object.values(snap.val()):[]);setDataLoaded(true);};
+          const handler=snap=>{
+        const raw=snap.val()?Object.values(snap.val()):[];
+        setEntries(raw.map(e=>({...e,date:normDate(e.date)})));
+        setDataLoaded(true);
+      };
     ref.on("value",handler);
     entriesRef.current=()=>ref.off("value",handler);
     return()=>{ref.off("value",handler);entriesRef.current=null;};
