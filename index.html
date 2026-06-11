@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.54";
+const APP_VERSION="v4.55";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -219,8 +219,10 @@ function App(){
   const[clock,setClock]=useState(nowTime());
   const[entryTime,setEntryTime]=useState(nowHHMM());
   const[syncStatus,setSyncStatus]=useState("idle");
+  const[isOnline,setIsOnline]=useState(navigator.onLine);
   const[showUserMenu,setShowUserMenu]=useState(false);
   const entriesRef=useRef(null);
+  const offlineQueue=useRef(null);  // pending entries array waiting to sync
 
   const T=theme==="system"?THEMES[sysDark()?"dark":"light"]:(THEMES[theme]||THEMES.dark);
 
@@ -319,15 +321,69 @@ function App(){
     })();
   },[user]);
 
+  // ── Online/offline detection + queue flush on reconnect ──────────────────
+  useEffect(()=>{
+    const QUEUE_KEY=user?`jl-offlineQueue-${user.uid}`:null;
+    // Restore any queue saved to localStorage (app was closed while offline)
+    if(QUEUE_KEY){
+      try{
+        const saved=localStorage.getItem(QUEUE_KEY);
+        if(saved){offlineQueue.current=JSON.parse(saved);setSyncStatus("queued");}
+      }catch(e){}
+    }
+    const goOnline=async()=>{
+      setIsOnline(true);
+      // Flush pending queue if any
+      if(offlineQueue.current&&user){
+        const pending=offlineQueue.current;
+        offlineQueue.current=null;
+        if(QUEUE_KEY)localStorage.removeItem(QUEUE_KEY);
+        setSyncStatus("syncing");
+        try{
+          const obj=pending.reduce((acc,e)=>{const k=e.id.replace(/[.#$\[\]/]/g,"_");acc[k]={...e,id:k};return acc;},{});
+          await fbDb.ref(`users/${user.uid}/entries`).set(pending.length?obj:null);
+          setSyncStatus("synced");setTimeout(()=>setSyncStatus("idle"),2500);
+        }catch(e){
+          console.error("Offline flush error:",e);
+          offlineQueue.current=pending; // put it back
+          if(QUEUE_KEY)localStorage.setItem(QUEUE_KEY,JSON.stringify(pending));
+          setSyncStatus("error");setTimeout(()=>setSyncStatus("idle"),3000);
+        }
+      }
+    };
+    const goOffline=()=>setIsOnline(false);
+    window.addEventListener("online",goOnline);
+    window.addEventListener("offline",goOffline);
+    return()=>{window.removeEventListener("online",goOnline);window.removeEventListener("offline",goOffline);};
+  },[user]);
+
   // Persist helpers
   const persistEntries=useCallback(async arr=>{
     if(!user)return;
+    if(!navigator.onLine){
+      // Store in memory + localStorage so data survives a page refresh
+      offlineQueue.current=arr;
+      const QUEUE_KEY=`jl-offlineQueue-${user.uid}`;
+      try{localStorage.setItem(QUEUE_KEY,JSON.stringify(arr));}catch(e){}
+      setSyncStatus("queued");
+      return;
+    }
     setSyncStatus("saving");
     try{
       const obj=arr.reduce((acc,e)=>{const k=e.id.replace(/[.#$\[\]/]/g,"_");acc[k]={...e,id:k};return acc;},{});
       await fbDb.ref(`users/${user.uid}/entries`).set(arr.length?obj:null);
+      // Clear any stale queue on successful save
+      offlineQueue.current=null;
+      try{localStorage.removeItem(`jl-offlineQueue-${user.uid}`);}catch(e){}
       setSyncStatus("saved");setTimeout(()=>setSyncStatus("idle"),1500);
-    }catch(e){console.error("persistEntries error:",e);setSyncStatus("error");setTimeout(()=>setSyncStatus("idle"),3000);}
+    }catch(e){
+      console.error("persistEntries error:",e);
+      // Network failed mid-save — queue it
+      offlineQueue.current=arr;
+      const QUEUE_KEY=`jl-offlineQueue-${user.uid}`;
+      try{localStorage.setItem(QUEUE_KEY,JSON.stringify(arr));}catch(e2){}
+      setSyncStatus("queued");
+    }
   },[user]);
 
   const persistKey=useCallback(async(key,val)=>{
@@ -473,8 +529,35 @@ function App(){
           <div style={{fontSize:"0.68rem",color:T.textMuted,fontFamily:"'DM Mono',monospace"}}>{dayStr}<span style={{opacity:0.45,marginLeft:5}}>{APP_VERSION}</span></div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <div title={syncStatus==="saving"?"Saving…":syncStatus==="saved"?"Saved ✓":syncStatus==="error"?"Sync error":"Synced"} style={{fontSize:"0.8rem",color:syncStatus==="saving"?T.textMuted:syncStatus==="saved"?T.accent:syncStatus==="error"?T.danger:T.border,transition:"color 0.3s"}}>
-            {syncStatus==="saving"?"⟳":syncStatus==="saved"?"✓":syncStatus==="error"?"!":"☁"}
+          <div
+            title={
+              !isOnline&&syncStatus==="queued"?"Offline — entry saved locally, will sync when online":
+              syncStatus==="saving"?"Saving to cloud…":
+              syncStatus==="saved"?"Saved ✓":
+              syncStatus==="syncing"?"Syncing offline entries…":
+              syncStatus==="synced"?"Synced ✓ (offline entries uploaded)":
+              syncStatus==="queued"?"Pending sync — will upload when online":
+              syncStatus==="error"?"Sync error — tap to retry":
+              "Synced to cloud"
+            }
+            style={{fontSize:"0.85rem",color:
+              (!isOnline||syncStatus==="queued")?"#f59e0b":
+              syncStatus==="saving"?T.textMuted:
+              syncStatus==="syncing"?"#60a5fa":
+              (syncStatus==="saved"||syncStatus==="synced")?T.accent:
+              syncStatus==="error"?T.danger:
+              T.border,
+              transition:"color 0.3s",cursor:syncStatus==="error"?"pointer":"default"
+            }}
+            onClick={()=>{if(syncStatus==="error"&&offlineQueue.current)persistEntries(offlineQueue.current);}}
+          >
+            {(!isOnline&&syncStatus==="queued")?"📵":
+             syncStatus==="saving"?"⟳":
+             syncStatus==="syncing"?"⟳":
+             (syncStatus==="saved"||syncStatus==="synced")?"✓":
+             syncStatus==="queued"?"⏳":
+             syncStatus==="error"?"!":
+             "☁"}
           </div>
           <div style={{fontFamily:"'DM Mono',monospace",fontSize:"0.88rem",color:T.waterBtnText}}>{clock}</div>
         </div>
