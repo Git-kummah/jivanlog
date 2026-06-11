@@ -542,22 +542,20 @@ function App(){
             }
             style={{fontSize:"0.85rem",color:
               (!isOnline||syncStatus==="queued")?"#f59e0b":
-              syncStatus==="saving"?T.textMuted:
-              syncStatus==="syncing"?"#60a5fa":
-              (syncStatus==="saved"||syncStatus==="synced")?T.accent:
+              (syncStatus==="saving"||syncStatus==="syncing")?"#4ade80":
+              (syncStatus==="saved"||syncStatus==="synced")?"#4ade80":
               syncStatus==="error"?T.danger:
-              T.border,
+              "#4ade80",
               transition:"color 0.3s",cursor:syncStatus==="error"?"pointer":"default"
             }}
             onClick={()=>{if(syncStatus==="error"&&offlineQueue.current)persistEntries(offlineQueue.current);}}
           >
             {(!isOnline&&syncStatus==="queued")?"📵":
-             syncStatus==="saving"?"⟳":
-             syncStatus==="syncing"?"⟳":
+             (syncStatus==="saving"||syncStatus==="syncing")?"💾":
              (syncStatus==="saved"||syncStatus==="synced")?"✓":
              syncStatus==="queued"?"⏳":
              syncStatus==="error"?"!":
-             "☁"}
+             "✓"}
           </div>
           <div style={{fontFamily:"'DM Mono',monospace",fontSize:"0.88rem",color:T.waterBtnText}}>{clock}</div>
         </div>
