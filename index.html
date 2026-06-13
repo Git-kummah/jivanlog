@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.57";
+const APP_VERSION="v4.58";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -360,6 +360,7 @@ function App(){
     saveEntries([...entries,{...entry,id:genId(),timestamp:d.toISOString(),date:today()}]);
   },[entries,saveEntries,entryTime]);
 
+  const addEntryDirect=useCallback(entry=>saveEntries([...entries,entry]),[entries,saveEntries]);
   const updateEntry=useCallback((id,data)=>saveEntries(entries.map(e=>e.id===id?{...e,...data}:e)),[entries,saveEntries]);
   const deleteEntry=useCallback(id=>saveEntries(entries.filter(e=>e.id!==id)),[entries,saveEntries]);
 
@@ -482,7 +483,7 @@ function App(){
 
       <div style={{flex:1,overflowY:"auto",padding:"12px 13px"}} onClick={()=>showUserMenu&&setShowUserMenu(false)}>
         {page==="home"    &&<HomePage entries={entries} settings={settings} onAdd={addEntry} entryTime={entryTime} setEntryTime={setEntryTime} T={T}/>}
-        {page==="manage"  &&<ManagePage entries={entries} settings={settings} onAdd={addEntry} onUpdate={updateEntry} onDelete={deleteEntry} T={T}/>}
+        {page==="manage"  &&<ManagePage entries={entries} settings={settings} onAddDirect={addEntryDirect} onUpdate={updateEntry} onDelete={deleteEntry} T={T}/>}
         {page==="reports" &&<ReportsPage entries={entries} settings={settings} T={T}/>}
         {page==="settings"&&<SettingsPage settings={settings} defaults={defaults} theme={theme} setSettings={saveSettings} setDefaults={saveDefaults} setTheme={saveTheme} user={user} entries={entries} onImport={handleImport} clearAll={clearAll} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} T={T}/>}
       </div>
@@ -687,12 +688,12 @@ function TLE({e,settings,T}){
 // ═══════════════════════════════════════════════════════════════════════════════
 // MANAGE
 // ═══════════════════════════════════════════════════════════════════════════════
-function ManagePage({entries,settings,onAdd,onUpdate,onDelete,T}){
+function ManagePage({entries,settings,onAddDirect,onUpdate,onDelete,T}){
   const allDates=(()=>{const s=new Set(entries.map(e=>e.date).filter(Boolean));s.add(today());return Array.from(s).sort().reverse();})();
   const[sel,setSel]=useState(today);
   const[eid,setEid]=useState(null);
   const[dupEid,setDupEid]=useState(null);
-  const handleDuplicate=e=>{const newId=genId();const ts=new Date(new Date(e.timestamp).getTime()+1000).toISOString();onAdd({...deepClone(e),id:newId,timestamp:ts,date:e.date});setEid(newId);setDupEid(newId);};
+  const handleDuplicate=e=>{const newId=genId();const ts=new Date(new Date(e.timestamp).getTime()+1000).toISOString();onAddDirect({...deepClone(e),id:newId,timestamp:ts,date:e.date});setEid(newId);setDupEid(newId);};
   const dayE=entries.filter(e=>e.date===sel).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
   const idx=allDates.indexOf(sel);
   const goPrev=()=>{if(idx<allDates.length-1){setSel(allDates[idx+1]);setEid(null);}};
