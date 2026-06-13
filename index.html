@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.58";
+const APP_VERSION="v4.59";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -721,7 +721,7 @@ function ManagePage({entries,settings,onAddDirect,onUpdate,onDelete,T}){
     {dayE.length===0
       ?<div style={{color:T.textMuted,fontSize:"0.82rem",textAlign:"center",padding:22}}>No entries for this date</div>
       :dayE.map(e=>eid===e.id
-        ?<EditEntry key={e.id} entry={e} settings={settings} T={T} label={dupEid===e.id?"📋 Duplicating":"✏️ Editing"} onSave={d=>{onUpdate(e.id,d);setEid(null);setDupEid(null);}} onCancel={()=>{setEid(null);setDupEid(null);}}/>
+        ?<EditEntry key={e.id} entry={e} settings={settings} T={T} label={dupEid===e.id?"📋 Duplicating":"✏️ Editing"} onSave={d=>{onUpdate(e.id,d);setEid(null);setDupEid(null);}} onCancel={()=>{if(dupEid===e.id)onDelete(e.id);setEid(null);setDupEid(null);}}/>
         :<ManageRow key={e.id} e={e} settings={settings} T={T} onEdit={()=>setEid(e.id)} onDuplicate={()=>handleDuplicate(e)} onDelete={()=>{if(confirm("Delete this entry?"))onDelete(e.id);}}/>)}
   </div>);
 }
