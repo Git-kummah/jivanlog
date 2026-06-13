@@ -690,7 +690,7 @@ function TLE({e,settings,T}){
 // ═══════════════════════════════════════════════════════════════════════════════
 function ManagePage({entries,settings,onUpdate,onDelete,onDuplicate,T}){
   const allDates=(()=>{const s=new Set(entries.map(e=>e.date).filter(Boolean));s.add(today());return Array.from(s).sort().reverse();})();
-  const[sel,setSel]=useState(()=>allDates[0]||today());
+  const[sel,setSel]=useState(today);
   const[eid,setEid]=useState(null);
   const dayE=entries.filter(e=>e.date===sel).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
   const idx=allDates.indexOf(sel);
