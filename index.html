@@ -219,10 +219,8 @@ function App(){
   const[clock,setClock]=useState(nowTime());
   const[entryTime,setEntryTime]=useState(nowHHMM());
   const[syncStatus,setSyncStatus]=useState("idle");
-  const[isOnline,setIsOnline]=useState(navigator.onLine);
   const[showUserMenu,setShowUserMenu]=useState(false);
   const entriesRef=useRef(null);
-  const offlineQueue=useRef(null);  // pending entries array waiting to sync
 
   const T=theme==="system"?THEMES[sysDark()?"dark":"light"]:(THEMES[theme]||THEMES.dark);
 
@@ -321,69 +319,15 @@ function App(){
     })();
   },[user]);
 
-  // ── Online/offline detection + queue flush on reconnect ──────────────────
-  useEffect(()=>{
-    const QUEUE_KEY=user?`jl-offlineQueue-${user.uid}`:null;
-    // Restore any queue saved to localStorage (app was closed while offline)
-    if(QUEUE_KEY){
-      try{
-        const saved=localStorage.getItem(QUEUE_KEY);
-        if(saved){offlineQueue.current=JSON.parse(saved);setSyncStatus("queued");}
-      }catch(e){}
-    }
-    const goOnline=async()=>{
-      setIsOnline(true);
-      // Flush pending queue if any
-      if(offlineQueue.current&&user){
-        const pending=offlineQueue.current;
-        offlineQueue.current=null;
-        if(QUEUE_KEY)localStorage.removeItem(QUEUE_KEY);
-        setSyncStatus("syncing");
-        try{
-          const obj=pending.reduce((acc,e)=>{const k=e.id.replace(/[.#$\[\]/]/g,"_");acc[k]={...e,id:k};return acc;},{});
-          await fbDb.ref(`users/${user.uid}/entries`).set(pending.length?obj:null);
-          setSyncStatus("synced");setTimeout(()=>setSyncStatus("idle"),2500);
-        }catch(e){
-          console.error("Offline flush error:",e);
-          offlineQueue.current=pending; // put it back
-          if(QUEUE_KEY)localStorage.setItem(QUEUE_KEY,JSON.stringify(pending));
-          setSyncStatus("error");setTimeout(()=>setSyncStatus("idle"),3000);
-        }
-      }
-    };
-    const goOffline=()=>setIsOnline(false);
-    window.addEventListener("online",goOnline);
-    window.addEventListener("offline",goOffline);
-    return()=>{window.removeEventListener("online",goOnline);window.removeEventListener("offline",goOffline);};
-  },[user]);
-
   // Persist helpers
   const persistEntries=useCallback(async arr=>{
     if(!user)return;
-    if(!navigator.onLine){
-      // Store in memory + localStorage so data survives a page refresh
-      offlineQueue.current=arr;
-      const QUEUE_KEY=`jl-offlineQueue-${user.uid}`;
-      try{localStorage.setItem(QUEUE_KEY,JSON.stringify(arr));}catch(e){}
-      setSyncStatus("queued");
-      return;
-    }
     setSyncStatus("saving");
     try{
       const obj=arr.reduce((acc,e)=>{const k=e.id.replace(/[.#$\[\]/]/g,"_");acc[k]={...e,id:k};return acc;},{});
       await fbDb.ref(`users/${user.uid}/entries`).set(arr.length?obj:null);
-      // Clear any stale queue on successful save
-      offlineQueue.current=null;
-      try{localStorage.removeItem(`jl-offlineQueue-${user.uid}`);}catch(e){}
       setSyncStatus("saved");setTimeout(()=>setSyncStatus("idle"),1500);
-    }catch(e){
-      console.error("persistEntries error:",e);
-      // Network failed mid-save — queue it
-      offlineQueue.current=arr;
-      const QUEUE_KEY=`jl-offlineQueue-${user.uid}`;
-      try{localStorage.setItem(QUEUE_KEY,JSON.stringify(arr));}catch(e2){}
-      setSyncStatus("queued");
-    }
+    }catch(e){console.error("persistEntries error:",e);setSyncStatus("error");setTimeout(()=>setSyncStatus("idle"),3000);}
   },[user]);
 
   const persistKey=useCallback(async(key,val)=>{
@@ -418,6 +362,7 @@ function App(){
 
   const updateEntry=useCallback((id,data)=>saveEntries(entries.map(e=>e.id===id?{...e,...data}:e)),[entries,saveEntries]);
   const deleteEntry=useCallback(id=>saveEntries(entries.filter(e=>e.id!==id)),[entries,saveEntries]);
+  const duplicateEntry=useCallback(id=>{const src=entries.find(e=>e.id===id);if(!src)return;const ts=new Date(new Date(src.timestamp).getTime()+1000).toISOString();saveEntries([...entries,{...deepClone(src),id:genId(),timestamp:ts}]);},[entries,saveEntries]);
 
   const clearAll=useCallback(()=>{
     if(!confirm("CLEAR ALL DATA?\n\nAll entries permanently deleted.\nBackup CSV downloads first.\n\nPress OK to continue."))return;
@@ -529,33 +474,8 @@ function App(){
           <div style={{fontSize:"0.68rem",color:T.textMuted,fontFamily:"'DM Mono',monospace"}}>{dayStr}<span style={{opacity:0.45,marginLeft:5}}>{APP_VERSION}</span></div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <div
-            title={
-              !isOnline&&syncStatus==="queued"?"Offline — entry saved locally, will sync when online":
-              syncStatus==="saving"?"Saving to cloud…":
-              syncStatus==="saved"?"Saved ✓":
-              syncStatus==="syncing"?"Syncing offline entries…":
-              syncStatus==="synced"?"Synced ✓ (offline entries uploaded)":
-              syncStatus==="queued"?"Pending sync — will upload when online":
-              syncStatus==="error"?"Sync error — tap to retry":
-              "Synced to cloud"
-            }
-            style={{fontSize:"0.85rem",color:
-              (!isOnline||syncStatus==="queued")?"#f59e0b":
-              (syncStatus==="saving"||syncStatus==="syncing")?"#4ade80":
-              (syncStatus==="saved"||syncStatus==="synced")?"#4ade80":
-              syncStatus==="error"?T.danger:
-              "#4ade80",
-              transition:"color 0.3s",cursor:syncStatus==="error"?"pointer":"default"
-            }}
-            onClick={()=>{if(syncStatus==="error"&&offlineQueue.current)persistEntries(offlineQueue.current);}}
-          >
-            {(!isOnline&&syncStatus==="queued")?"📵":
-             (syncStatus==="saving"||syncStatus==="syncing")?"💾":
-             (syncStatus==="saved"||syncStatus==="synced")?"✓":
-             syncStatus==="queued"?"⏳":
-             syncStatus==="error"?"!":
-             "✓"}
+          <div title={syncStatus==="saving"?"Saving…":syncStatus==="saved"?"Saved ✓":syncStatus==="error"?"Sync error":"Synced"} style={{fontSize:"0.8rem",color:syncStatus==="saving"?T.textMuted:syncStatus==="saved"?T.accent:syncStatus==="error"?T.danger:T.border,transition:"color 0.3s"}}>
+            {syncStatus==="saving"?"⟳":syncStatus==="saved"?"✓":syncStatus==="error"?"!":"☁"}
           </div>
           <div style={{fontFamily:"'DM Mono',monospace",fontSize:"0.88rem",color:T.waterBtnText}}>{clock}</div>
         </div>
@@ -563,7 +483,7 @@ function App(){
 
       <div style={{flex:1,overflowY:"auto",padding:"12px 13px"}} onClick={()=>showUserMenu&&setShowUserMenu(false)}>
         {page==="home"    &&<HomePage entries={entries} settings={settings} onAdd={addEntry} entryTime={entryTime} setEntryTime={setEntryTime} T={T}/>}
-        {page==="manage"  &&<ManagePage entries={entries} settings={settings} onUpdate={updateEntry} onDelete={deleteEntry} T={T}/>}
+        {page==="manage"  &&<ManagePage entries={entries} settings={settings} onUpdate={updateEntry} onDelete={deleteEntry} onDuplicate={duplicateEntry} T={T}/>}
         {page==="reports" &&<ReportsPage entries={entries} settings={settings} T={T}/>}
         {page==="settings"&&<SettingsPage settings={settings} defaults={defaults} theme={theme} setSettings={saveSettings} setDefaults={saveDefaults} setTheme={saveTheme} user={user} entries={entries} onImport={handleImport} clearAll={clearAll} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} T={T}/>}
       </div>
@@ -768,7 +688,7 @@ function TLE({e,settings,T}){
 // ═══════════════════════════════════════════════════════════════════════════════
 // MANAGE
 // ═══════════════════════════════════════════════════════════════════════════════
-function ManagePage({entries,settings,onUpdate,onDelete,T}){
+function ManagePage({entries,settings,onUpdate,onDelete,onDuplicate,T}){
   const allDates=(()=>{const s=new Set(entries.map(e=>e.date).filter(Boolean));s.add(today());return Array.from(s).sort().reverse();})();
   const[sel,setSel]=useState(()=>allDates[0]||today());
   const[eid,setEid]=useState(null);
@@ -800,11 +720,11 @@ function ManagePage({entries,settings,onUpdate,onDelete,T}){
       ?<div style={{color:T.textMuted,fontSize:"0.82rem",textAlign:"center",padding:22}}>No entries for this date</div>
       :dayE.map(e=>eid===e.id
         ?<EditEntry key={e.id} entry={e} settings={settings} T={T} onSave={d=>{onUpdate(e.id,d);setEid(null);}} onCancel={()=>setEid(null)}/>
-        :<ManageRow key={e.id} e={e} settings={settings} T={T} onEdit={()=>setEid(e.id)} onDelete={()=>{if(confirm("Delete this entry?"))onDelete(e.id);}}/>)}
+        :<ManageRow key={e.id} e={e} settings={settings} T={T} onEdit={()=>setEid(e.id)} onDuplicate={()=>onDuplicate(e.id)} onDelete={()=>{if(confirm("Delete this entry?"))onDelete(e.id);}}/>)}
   </div>);
 }
 
-function ManageRow({e,settings,onEdit,onDelete,T}){
+function ManageRow({e,settings,onEdit,onDuplicate,onDelete,T}){
   const ic={meal:"🍽️",liquid:"💧",drinks:"☕",exercise:"🏃",water:"💧",medical:"🩺",medication:"💊"};
   let m="";
   if(e.type==="meal")       {const _f=(settings?.foodCategories||FD.foodCategories||[]).find(f=>(f.name||f)===e.food)||{};m=`${e.mealType} · ${pickIcon(e.food,"food",_f.icon||"")} ${e.food}${e.foodSubType?" · "+e.foodSubType:""} · ${e.unit==="count"?e.qty:e.qty+e.unit}`;}
@@ -814,7 +734,7 @@ function ManageRow({e,settings,onEdit,onDelete,T}){
   if(e.type==="water")     {const _wt=e.waterTemp||e.liquidType||"Water";const _wi=(settings?.liquidIcons||{})[_wt]||"";m=`${pickIcon(_wt,"drink",_wi)} ${_wt}${e.ml?" · "+e.ml+"ml":""}`;};
   if(e.type==="medical")    m=`${e.readingType} · ${e.value}${e.unit?" "+e.unit:""}`;
   if(e.type==="medication") {const _mi=(settings?.medicationIcons||{})[e.med]||"";m=`${pickIcon(e.med,"medication",_mi)} ${e.med} · ${e.timing}`;};
-  return(<div className="card" style={{display:"flex",alignItems:"flex-start",gap:8,padding:"9px 11px",marginBottom:6}}><span style={{fontSize:"0.66rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:40,paddingTop:2,flexShrink:0}}>{fmt24(e.timestamp)}</span><span style={{flexShrink:0}}>{ic[e.type]||"•"}</span><div style={{flex:1,fontSize:"0.82rem",lineHeight:1.4}}>{m}{e.notes&&<span style={{fontSize:"0.74rem",color:T.textSub,fontStyle:"italic"}}> ({e.notes})</span>}</div><div style={{display:"flex",gap:3,flexShrink:0}}><button className="ibtn" onClick={onEdit}>✏️</button><button className="ibtn" style={{color:T.danger}} onClick={onDelete}>🗑️</button></div></div>);
+  return(<div className="card" style={{display:"flex",alignItems:"flex-start",gap:8,padding:"9px 11px",marginBottom:6}}><span style={{fontSize:"0.66rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:40,paddingTop:2,flexShrink:0}}>{fmt24(e.timestamp)}</span><span style={{flexShrink:0}}>{ic[e.type]||"•"}</span><div style={{flex:1,fontSize:"0.82rem",lineHeight:1.4}}>{m}{e.notes&&<span style={{fontSize:"0.74rem",color:T.textSub,fontStyle:"italic"}}> ({e.notes})</span>}</div><div style={{display:"flex",gap:3,flexShrink:0}}><button className="ibtn" onClick={onEdit} title="Edit">✏️</button><button className="ibtn" onClick={onDuplicate} title="Duplicate">📋</button><button className="ibtn" style={{color:T.danger}} onClick={onDelete} title="Delete">🗑️</button></div></div>);
 }
 function EditEntry({entry,settings,onSave,onCancel,T}){
   const[d,setD]=useState(deepClone(entry));
