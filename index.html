@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.59";
+const APP_VERSION="v4.60";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -91,6 +91,19 @@ const makeTS  =(dateStr,timeStr)=>{const[y,mo,d]=dateStr.split("-").map(Number);
 const THEMES={
   dark:{bg:"#0a1628",cardBg:"#112240",navBg:"#0d1e35",inputBg:"#0d1e35",border:"#1e3a5f",text:"#e6edf3",textMuted:"#4a7fa5",textSub:"#7aa0bf",accent:"#00e676",accentBg:"#00897b22",accentBtn:"#00897b",danger:"#ef5350",waterBtn:"#0d2a3d",waterBtnText:"#40c4ff",even:"#0a1628",ok:"#1b5e20",lock:"#060e1a"},
   light:{bg:"#e8eef5",cardBg:"#ffffff",navBg:"#d0dcea",inputBg:"#f2f6fb",border:"#a8c0d6",text:"#1c2e42",textMuted:"#3d6080",textSub:"#4e7a9a",accent:"#007a6e",accentBg:"#007a6e1a",accentBtn:"#007a6e",danger:"#c62828",waterBtn:"#c5ddf0",waterBtnText:"#1a4f72",even:"#ecf2f8",ok:"#2e7d32",lock:"#c8d8e8"},
+};
+
+// ── OFFLINE QUEUE & CACHE HELPERS ─────────────────────────────────────────────
+const getOfflineQ  =uid=>{try{return JSON.parse(localStorage.getItem(`jivanlog-offlineQ-${uid}`)||"[]");}catch{return[];}};
+const saveOfflineQ =(uid,arr)=>{try{localStorage.setItem(`jivanlog-offlineQ-${uid}`,JSON.stringify(arr));}catch(e){console.warn("OfflineQ:",e);}};
+const clearOfflineQ=uid=>{try{localStorage.removeItem(`jivanlog-offlineQ-${uid}`);}catch{}};
+const saveTodayCache=(uid,allEntries)=>{
+  try{
+    const t=today();
+    localStorage.setItem(`jivanlog-todayCache-${uid}-${t}`,JSON.stringify(allEntries.filter(e=>e.date===t)));
+    const pre=`jivanlog-todayCache-${uid}-`;
+    for(let i=localStorage.length-1;i>=0;i--){const k=localStorage.key(i);if(k&&k.startsWith(pre)&&!k.endsWith(t))localStorage.removeItem(k);}
+  }catch(e){}
 };
 
 // ── FIREBASE ──────────────────────────────────────────────────────────────────
@@ -220,6 +233,8 @@ function App(){
   const[entryTime,setEntryTime]=useState(nowHHMM());
   const[syncStatus,setSyncStatus]=useState("idle");
   const[showUserMenu,setShowUserMenu]=useState(false);
+  const[isOnline,setIsOnline]=useState(navigator.onLine);
+  const[queueSize,setQueueSize]=useState(0);
   const entriesRef=useRef(null);
 
   const T=theme==="system"?THEMES[sysDark()?"dark":"light"]:(THEMES[theme]||THEMES.dark);
@@ -238,6 +253,39 @@ function App(){
     }catch(e){console.warn("Auto-backup failed:",e);}
   },[dataLoaded,user]);  // intentionally omit entries — run once when data first loads
 
+  // On sign-in: hydrate from localStorage before Firebase data arrives
+  useEffect(()=>{
+    if(!user)return;
+    const uid=user.uid;
+    try{
+      const cs=localStorage.getItem(`jivanlog-settingsCache-${uid}`);
+      if(cs){const s=JSON.parse(cs);setSettings(s);}
+      const cd=localStorage.getItem(`jivanlog-defaultsCache-${uid}`);
+      if(cd){const d=JSON.parse(cd);setDefaults(d);}
+    }catch(e){}
+    try{
+      const ct=localStorage.getItem(`jivanlog-todayCache-${uid}-${today()}`);
+      if(ct){
+        const todayE=JSON.parse(ct);
+        const queued=getOfflineQ(uid);
+        const qIds=new Set(queued.map(e=>e.id));
+        const merged=[...todayE.filter(e=>!qIds.has(e.id)),...queued.map(e=>({...e,date:normDate(e.date)}))];
+        setEntries(merged);
+        setDataLoaded(true);
+      }
+    }catch(e){}
+    setQueueSize(getOfflineQ(uid).length);
+  },[user]);
+
+  // .info/connected — authoritative connectivity source of truth
+  useEffect(()=>{
+    if(!user)return;
+    const ref=fbDb.ref('.info/connected');
+    const handler=snap=>setIsOnline(snap.val()===true);
+    ref.on('value',handler);
+    return()=>ref.off('value',handler);
+  },[user]);
+
   // Auth listener
   useEffect(()=>{
     const unsub=fbAuth.onAuthStateChanged(u=>{
@@ -247,15 +295,32 @@ function App(){
     return unsub;
   },[]);
 
-  // Real-time entries listener
+  // Real-time entries listener — merges offline queue + writes today cache
   useEffect(()=>{
     if(!user){if(entriesRef.current){entriesRef.current();entriesRef.current=null;}return;}
-    const ref=fbDb.ref(`users/${user.uid}/entries`);
-          const handler=snap=>{
-        const raw=snap.val()?Object.values(snap.val()):[];
-        setEntries(raw.map(e=>({...e,date:normDate(e.date)})));
-        setDataLoaded(true);
-      };
+    const uid=user.uid;
+    const ref=fbDb.ref(`users/${uid}/entries`);
+    const handler=snap=>{
+      const raw=snap.val()?Object.values(snap.val()):[];
+      const fromFb=raw.map(e=>({...e,date:normDate(e.date)}));
+      const queued=getOfflineQ(uid);
+      let merged=fromFb;
+      if(queued.length){
+        const fbIds=new Set(fromFb.map(e=>e.id));
+        const newOnes=queued.filter(e=>!fbIds.has(e.id));
+        if(newOnes.length){
+          const updates={};
+          newOnes.forEach(e=>{const k=e.id.replace(/[\s.#$\[\]/]/g,"_");updates[k]={...e,id:k};});
+          fbDb.ref(`users/${uid}/entries`).update(updates)
+            .then(()=>{clearOfflineQ(uid);setQueueSize(0);setSyncStatus("synced");setTimeout(()=>setSyncStatus("idle"),2000);})
+            .catch(e=>console.warn("Queue flush failed, retry later:",e));
+          merged=[...fromFb,...newOnes.map(e=>({...e,date:normDate(e.date)}))];
+        }else{clearOfflineQ(uid);setQueueSize(0);}
+      }
+      setEntries(merged);
+      setDataLoaded(true);
+      saveTodayCache(uid,merged);
+    };
     ref.on("value",handler);
     entriesRef.current=()=>ref.off("value",handler);
     return()=>{ref.off("value",handler);entriesRef.current=null;};
@@ -296,9 +361,8 @@ function App(){
           const s=sett.exists()?norm(sett.val()):null;
           const d=defs.exists()?norm(defs.val()):null;
           if(d)setDefaults(d);
+          let settingsToCache=null;
           if(s){
-            // Merge defaults config fields into settings so entry forms always
-            // reflect the user's latest custom config without needing Apply
             const merged=d?{...s,
               foodCategories:d.foodCategories||s.foodCategories,
               liquidTypes:d.liquidTypes||s.liquidTypes,
@@ -311,23 +375,58 @@ function App(){
               medicationIcons:{...(s.medicationIcons||{}),...(d.medicationIcons||{})},
             }:s;
             setSettings(merged);
+            settingsToCache=merged;
           } else if(d){
             setSettings(deepClone(d));
+            settingsToCache=deepClone(d);
           }
-        if(th.exists())setTheme(th.val());
+          // Cache for offline boot
+          const uid=user.uid;
+          if(settingsToCache)try{localStorage.setItem(`jivanlog-settingsCache-${uid}`,JSON.stringify(settingsToCache));}catch(e){}
+          if(d)try{localStorage.setItem(`jivanlog-defaultsCache-${uid}`,JSON.stringify(d));}catch(e){}
+          if(th.exists())setTheme(th.val());
       }catch(e){console.error("Settings load:",e);}
     })();
   },[user]);
+
+  // Flush pending offline queue to Firebase (called on reconnect or "Sync Now")
+  const flushOfflineQueue=useCallback(async()=>{
+    if(!user)return;
+    const uid=user.uid;
+    const queued=getOfflineQ(uid);
+    if(!queued.length)return;
+    setSyncStatus("saving");
+    try{
+      const snap=await fbDb.ref(`users/${uid}/entries`).get();
+      const existKeys=snap.val()?new Set(Object.keys(snap.val())):new Set();
+      const newOnes=queued.filter(e=>!existKeys.has(e.id.replace(/[\s.#$\[\]/]/g,"_")));
+      if(newOnes.length){
+        const updates={};
+        newOnes.forEach(e=>{const k=e.id.replace(/[\s.#$\[\]/]/g,"_");updates[k]={...e,id:k};});
+        await fbDb.ref(`users/${uid}/entries`).update(updates);
+      }
+      clearOfflineQ(uid);setQueueSize(0);
+      setSyncStatus("synced");setTimeout(()=>setSyncStatus("idle"),2000);
+    }catch(e){console.warn("Flush failed:",e);setSyncStatus("idle");}
+  },[user]);
+
+  // Flush when .info/connected becomes true
+  useEffect(()=>{if(isOnline&&user)flushOfflineQueue();},[isOnline,user,flushOfflineQueue]);
+  // Secondary flush trigger (navigator online fires before .info/connected sometimes)
+  useEffect(()=>{const f=()=>{if(user)flushOfflineQueue();};window.addEventListener("online",f);return()=>window.removeEventListener("online",f);},[user,flushOfflineQueue]);
 
   // Persist helpers
   const persistEntries=useCallback(async arr=>{
     if(!user)return;
     setSyncStatus("saving");
+    const uid=user.uid;
+    saveTodayCache(uid,arr);
     try{
-      const obj=arr.reduce((acc,e)=>{const k=e.id.replace(/[.#$\[\]/]/g,"_");acc[k]={...e,id:k};return acc;},{});
-      await fbDb.ref(`users/${user.uid}/entries`).set(arr.length?obj:null);
-      setSyncStatus("saved");setTimeout(()=>setSyncStatus("idle"),1500);
-    }catch(e){console.error("persistEntries error:",e);setSyncStatus("error");setTimeout(()=>setSyncStatus("idle"),3000);}
+      const obj=arr.reduce((acc,e)=>{const k=e.id.replace(/[\s.#$\[\]/]/g,"_");acc[k]={...e,id:k};return acc;},{});
+      await fbDb.ref(`users/${uid}/entries`).set(arr.length?obj:null);
+      clearOfflineQ(uid);setQueueSize(0);
+      setSyncStatus("synced");setTimeout(()=>setSyncStatus("idle"),1500);
+    }catch(e){console.warn("persistEntries offline:",e);setSyncStatus("idle");}
   },[user]);
 
   const persistKey=useCallback(async(key,val)=>{
@@ -357,12 +456,27 @@ function App(){
   const addEntry=useCallback(entry=>{
     const[h,mm]=entryTime.split(":").map(Number);
     const d=new Date();d.setHours(h,mm,0,0);
-    saveEntries([...entries,{...entry,id:genId(),timestamp:d.toISOString(),date:today()}]);
-  },[entries,saveEntries,entryTime]);
+    const newEntry={...entry,id:genId(),timestamp:d.toISOString(),date:today()};
+    if(user){const uid=user.uid;const q=getOfflineQ(uid);q.push(newEntry);saveOfflineQ(uid,q);setQueueSize(q.length);}
+    saveEntries([...entries,newEntry]);
+  },[entries,saveEntries,entryTime,user]);
 
-  const addEntryDirect=useCallback(entry=>saveEntries([...entries,entry]),[entries,saveEntries]);
-  const updateEntry=useCallback((id,data)=>saveEntries(entries.map(e=>e.id===id?{...e,...data}:e)),[entries,saveEntries]);
-  const deleteEntry=useCallback(id=>saveEntries(entries.filter(e=>e.id!==id)),[entries,saveEntries]);
+  const addEntryDirect=useCallback(entry=>{
+    if(user){const uid=user.uid;const q=getOfflineQ(uid);if(!q.find(e=>e.id===entry.id)){q.push(entry);saveOfflineQ(uid,q);setQueueSize(q.length);}}
+    saveEntries([...entries,entry]);
+  },[entries,saveEntries,user]);
+
+  const updateEntry=useCallback((id,data)=>{
+    const next=entries.map(e=>e.id===id?{...e,...data}:e);
+    if(user)saveTodayCache(user.uid,next);
+    saveEntries(next);
+  },[entries,saveEntries,user]);
+
+  const deleteEntry=useCallback(id=>{
+    const next=entries.filter(e=>e.id!==id);
+    if(user)saveTodayCache(user.uid,next);
+    saveEntries(next);
+  },[entries,saveEntries,user]);
 
   const clearAll=useCallback(()=>{
     if(!confirm("CLEAR ALL DATA?\n\nAll entries permanently deleted.\nBackup CSV downloads first.\n\nPress OK to continue."))return;
@@ -429,7 +543,11 @@ function App(){
 
   if(authState==="checking")return<LoadingScreen message="Checking sign-in…"/>;
   if(authState==="out")return<LoginScreen error={authError}/>;
-  if(!dataLoaded)return<LoadingScreen message="Loading your data…"/>;
+
+  // Derive sync display state
+  const displaySync=!isOnline?"offline":queueSize>0?"pending":syncStatus;
+  const syncIcon=displaySync==="offline"?"📵":displaySync==="pending"?"⏳":displaySync==="saving"?"💾":displaySync==="synced"?"✓":"☁";
+  const syncColor=displaySync==="offline"?T.danger:displaySync==="pending"?T.waterBtnText:displaySync==="saving"?T.textMuted:displaySync==="synced"?"#4ade80":T.border;
 
   const dayStr=new Date().toLocaleDateString("en-IN",{weekday:"short",day:"numeric",month:"short"});
 
@@ -473,18 +591,17 @@ function App(){
           <div style={{fontWeight:700,fontSize:"0.95rem",color:T.accent,lineHeight:1.1}}>JivanLog</div>
           <div style={{fontSize:"0.68rem",color:T.textMuted,fontFamily:"'DM Mono',monospace"}}>{dayStr}<span style={{opacity:0.45,marginLeft:5}}>{APP_VERSION}</span></div>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <div title={syncStatus==="saving"?"Saving…":syncStatus==="saved"?"Saved ✓":syncStatus==="error"?"Sync error":"Synced"} style={{fontSize:"0.8rem",color:syncStatus==="saving"?T.textMuted:syncStatus==="saved"?T.accent:syncStatus==="error"?T.danger:T.border,transition:"color 0.3s"}}>
-            {syncStatus==="saving"?"⟳":syncStatus==="saved"?"✓":syncStatus==="error"?"!":"☁"}
-          </div>
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <span title={displaySync==="offline"?"Offline — entries saved locally":displaySync==="pending"?`${queueSize} pending — tap to sync`:displaySync==="saving"?"Syncing…":displaySync==="synced"?"Synced ✓":"Synced"} style={{fontSize:"1rem",color:syncColor,transition:"color 0.3s",cursor:queueSize>0?"pointer":"default"}} onClick={queueSize>0?flushOfflineQueue:undefined}>{syncIcon}</span>
+          {queueSize>0&&<button onClick={flushOfflineQueue} title="Sync pending entries now" style={{fontSize:"0.62rem",padding:"2px 5px",borderRadius:5,border:`1px solid ${T.border}`,background:T.cardBg,color:T.waterBtnText,cursor:"pointer",fontFamily:"inherit",fontWeight:600,flexShrink:0}}>Sync {queueSize}</button>}
           <div style={{fontFamily:"'DM Mono',monospace",fontSize:"0.88rem",color:T.waterBtnText}}>{clock}</div>
         </div>
       </div>
 
       <div style={{flex:1,overflowY:"auto",padding:"12px 13px"}} onClick={()=>showUserMenu&&setShowUserMenu(false)}>
-        {page==="home"    &&<HomePage entries={entries} settings={settings} onAdd={addEntry} entryTime={entryTime} setEntryTime={setEntryTime} T={T}/>}
-        {page==="manage"  &&<ManagePage entries={entries} settings={settings} onAddDirect={addEntryDirect} onUpdate={updateEntry} onDelete={deleteEntry} T={T}/>}
-        {page==="reports" &&<ReportsPage entries={entries} settings={settings} T={T}/>}
+        {page==="home"    &&<HomePage entries={entries} settings={settings} onAdd={addEntry} entryTime={entryTime} setEntryTime={setEntryTime} isOnline={isOnline} T={T}/>}
+        {page==="manage"  &&<ManagePage entries={entries} settings={settings} onAddDirect={addEntryDirect} onUpdate={updateEntry} onDelete={deleteEntry} isOnline={isOnline} T={T}/>}
+        {page==="reports" &&<ReportsPage entries={entries} settings={settings} isOnline={isOnline} T={T}/>}
         {page==="settings"&&<SettingsPage settings={settings} defaults={defaults} theme={theme} setSettings={saveSettings} setDefaults={saveDefaults} setTheme={saveTheme} user={user} entries={entries} onImport={handleImport} clearAll={clearAll} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} T={T}/>}
       </div>
 
@@ -518,7 +635,7 @@ function App(){
 // ═══════════════════════════════════════════════════════════════════════════════
 // HOME
 // ═══════════════════════════════════════════════════════════════════════════════
-function HomePage({entries,settings,onAdd,entryTime,setEntryTime,T}){
+function HomePage({entries,settings,onAdd,entryTime,setEntryTime,isOnline,T}){
   const[active,setActive]=useState("meal");
   const todayE=entries.filter(e=>e.date===today()).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
   const switchModule=m=>{setActive(m);setEntryTime(nowHHMM());};
@@ -688,35 +805,38 @@ function TLE({e,settings,T}){
 // ═══════════════════════════════════════════════════════════════════════════════
 // MANAGE
 // ═══════════════════════════════════════════════════════════════════════════════
-function ManagePage({entries,settings,onAddDirect,onUpdate,onDelete,T}){
+function ManagePage({entries,settings,onAddDirect,onUpdate,onDelete,isOnline,T}){
   const allDates=(()=>{const s=new Set(entries.map(e=>e.date).filter(Boolean));s.add(today());return Array.from(s).sort().reverse();})();
   const[sel,setSel]=useState(today);
   const[eid,setEid]=useState(null);
   const[dupEid,setDupEid]=useState(null);
+  // When offline, restrict navigation to today
+  const effectiveSel=isOnline?sel:today();
   const handleDuplicate=e=>{const newId=genId();const ts=new Date(new Date(e.timestamp).getTime()+1000).toISOString();onAddDirect({...deepClone(e),id:newId,timestamp:ts,date:e.date});setEid(newId);setDupEid(newId);};
-  const dayE=entries.filter(e=>e.date===sel).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
-  const idx=allDates.indexOf(sel);
-  const goPrev=()=>{if(idx<allDates.length-1){setSel(allDates[idx+1]);setEid(null);}};
-  const goNext=()=>{if(idx>0){setSel(allDates[idx-1]);setEid(null);}};
+  const dayE=entries.filter(e=>e.date===effectiveSel).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
+  const idx=allDates.indexOf(effectiveSel);
+  const goPrev=()=>{if(isOnline&&idx<allDates.length-1){setSel(allDates[idx+1]);setEid(null);}};
+  const goNext=()=>{if(isOnline&&idx>0){setSel(allDates[idx-1]);setEid(null);}};
   return(<div>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
       <div style={{fontWeight:600,fontSize:"0.92rem"}}>📋 Manage Records</div>
       <div style={{fontSize:"0.72rem",color:T.textMuted}}>{entries.length} entries · {allDates.length} dates</div>
     </div>
+    {!isOnline&&<div style={{fontSize:"0.73rem",color:T.waterBtnText,background:T.waterBtn,borderRadius:8,padding:"6px 10px",marginBottom:8,textAlign:"center"}}>📵 Offline — showing today. Connect to browse past entries.</div>}
     <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
-      <button onClick={goPrev} disabled={idx>=allDates.length-1}
+      <button onClick={goPrev} disabled={!isOnline||idx>=allDates.length-1}
         style={{flexShrink:0,width:36,height:36,borderRadius:8,border:`1px solid ${T.border}`,
-          background:T.cardBg,color:idx>=allDates.length-1?T.textMuted:T.text,
-          fontSize:"1.1rem",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>◀</button>
-      <input type="date" value={sel}
-        onChange={e=>{if(e.target.value){setSel(e.target.value);setEid(null);}}}
-        style={{flex:1,padding:"8px 10px",borderRadius:8,border:`2px solid ${T.accent}`,
+          background:T.cardBg,color:(!isOnline||idx>=allDates.length-1)?T.textMuted:T.text,
+          fontSize:"1.1rem",cursor:isOnline?"pointer":"not-allowed",display:"flex",alignItems:"center",justifyContent:"center",opacity:!isOnline?0.4:1}}>◀</button>
+      <input type="date" value={effectiveSel} disabled={!isOnline}
+        onChange={e=>{if(isOnline&&e.target.value){setSel(e.target.value);setEid(null);}}}
+        style={{flex:1,padding:"8px 10px",borderRadius:8,border:`2px solid ${isOnline?T.accent:T.border}`,
           background:T.cardBg,color:T.text,fontWeight:600,fontSize:"0.92rem",
-          fontFamily:"inherit",textAlign:"center",colorScheme:T.bg==="#0a1628"?"dark":"light"}}/>
-      <button onClick={goNext} disabled={idx<=0}
+          fontFamily:"inherit",textAlign:"center",colorScheme:T.bg==="#0a1628"?"dark":"light",opacity:!isOnline?0.6:1}}/>
+      <button onClick={goNext} disabled={!isOnline||idx<=0}
         style={{flexShrink:0,width:36,height:36,borderRadius:8,border:`1px solid ${T.border}`,
-          background:T.cardBg,color:idx<=0?T.textMuted:T.text,
-          fontSize:"1.1rem",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>▶</button>
+          background:T.cardBg,color:(!isOnline||idx<=0)?T.textMuted:T.text,
+          fontSize:"1.1rem",cursor:isOnline?"pointer":"not-allowed",display:"flex",alignItems:"center",justifyContent:"center",opacity:!isOnline?0.4:1}}>▶</button>
     </div>
     {dayE.length===0
       ?<div style={{color:T.textMuted,fontSize:"0.82rem",textAlign:"center",padding:22}}>No entries for this date</div>
@@ -1071,7 +1191,8 @@ function TrendsPanel({entries,settings,T}){
   </div>);
 }
 
-function ReportsPage({entries,settings,T}){
+function ReportsPage({entries,settings,isOnline,T}){
+  if(!isOnline)return(<div style={{textAlign:"center",padding:"50px 20px",color:T.textMuted}}><div style={{fontSize:"2.5rem",marginBottom:14}}>📵</div><div style={{fontWeight:600,fontSize:"0.9rem",marginBottom:8,color:T.text}}>Reports require an internet connection.</div><div style={{fontSize:"0.78rem",lineHeight:1.6}}>Your entries are safe and stored locally.<br/>Connect to view trends and reports.</div></div>);
   const[tab,setTab]=useState("view");const mostRecentDate=(()=>{const ds=entries.map(e=>e.date).filter(Boolean).sort();return ds.length?ds[ds.length-1]:today();})();
   const[vd,setVd]=useState(mostRecentDate);
   const[cd,setCd]=useState([today()]);const[ad,setAd]=useState(today());const[qr,setQr]=useState("");
