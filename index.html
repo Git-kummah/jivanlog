@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.60";
+const APP_VERSION="v4.62";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -72,7 +72,14 @@ const WATER_TYPES=["Warm Water","Plain Water","Cold Water"];
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 const genId   =()=>Date.now().toString(36)+Math.random().toString(36).slice(2);
-const today   =()=>new Date().toISOString().slice(0,10);
+// Day-rollover offset, in minutes after local midnight — configurable in Settings.
+// Default 90 = 1:30am, so a late night logging past midnight still counts as the
+// day that's ending rather than rolling over to a new day too early. Cached to
+// localStorage so it's correct immediately on a cold/offline boot, before any
+// Firebase setting has loaded.
+let DAY_ROLLOVER_MIN=(()=>{try{const v=localStorage.getItem("jivanlog-rolloverMin");return v!==null?parseInt(v,10):90;}catch{return 90;}})();
+const setDayRolloverCache=min=>{DAY_ROLLOVER_MIN=min;try{localStorage.setItem("jivanlog-rolloverMin",String(min));}catch(e){}};
+const today   =()=>{const d=new Date();d.setMinutes(d.getMinutes()-DAY_ROLLOVER_MIN);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;}; // local date, NOT toISOString (UTC) — UTC midnight = 05:30 IST, was misdating early-morning entries to the previous day
 const normDate=s=>{if(!s)return s;const a=s.match(/^(\d{2})-(\d{2})-(\d{2})$/);if(a)return`20${a[3]}-${a[2]}-${a[1]}`;const b=s.match(/^(\d{2})-(\d{2})-(\d{4})$/);if(b)return`${b[3]}-${b[2]}-${b[1]}`;return s;};
 const fmt24   =dt=>new Date(dt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",hour12:false});
 const nowTime =()=>new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
@@ -208,8 +215,19 @@ function LockScreen({T,onUnlock}){
 }
 function LoginScreen({error}){
   const[loading,setLoading]=useState(false);
-  const signIn=async()=>{setLoading(true);try{await fbAuth.signInWithPopup(googleProvider);}catch(e){setLoading(false);}};
-  return(<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100vh",background:"#0a1628",gap:24,padding:24}}><img src={LOGO_SVG} style={{width:80,height:80,borderRadius:20}} alt="JivanLog"/><div style={{textAlign:"center"}}><div style={{color:"#00e676",fontWeight:700,fontSize:"1.6rem",letterSpacing:"0.04em",fontFamily:"system-ui"}}>JivanLog</div><div style={{color:"#4a7fa5",fontSize:"0.85rem",marginTop:4}}>Personal health tracker</div></div>{error&&<div style={{color:"#ef5350",fontSize:"0.8rem",textAlign:"center",padding:"8px 14px",background:"#ef535018",borderRadius:8,border:"1px solid #ef535044"}}>{error}</div>}<button onClick={signIn} disabled={loading} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 28px",borderRadius:12,border:"none",background:"#ffffff",color:"#1c2e42",fontFamily:"system-ui",fontSize:"1rem",fontWeight:600,cursor:loading?"wait":"pointer",opacity:loading?0.7:1,minWidth:220,justifyContent:"center",boxShadow:"0 4px 20px #00000044"}}><svg width="22" height="22" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>{loading?"Signing in…":"Sign in with Google"}</button><div style={{color:"#2a4a6a",fontSize:"0.72rem",textAlign:"center",maxWidth:260,lineHeight:1.6}}>Your data is stored privately in Firebase.<br/>Only you can access your entries.</div></div>);
+  const[localError,setLocalError]=useState(null);
+  const signIn=async()=>{
+    if(!navigator.onLine){setLocalError("No internet connection. The first sign-in needs network — please try again once you're back online.");return;}
+    setLoading(true);setLocalError(null);
+    try{
+      await Promise.race([
+        fbAuth.signInWithPopup(googleProvider),
+        new Promise((_,rej)=>setTimeout(()=>rej(new Error("Sign-in timed out — check your connection and try again.")),15000))
+      ]);
+    }catch(e){setLocalError(e.message);}
+    finally{setLoading(false);}
+  };
+  return(<div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100vh",background:"#0a1628",gap:24,padding:24}}><img src={LOGO_SVG} style={{width:80,height:80,borderRadius:20}} alt="JivanLog"/><div style={{textAlign:"center"}}><div style={{color:"#00e676",fontWeight:700,fontSize:"1.6rem",letterSpacing:"0.04em",fontFamily:"system-ui"}}>JivanLog</div><div style={{color:"#4a7fa5",fontSize:"0.85rem",marginTop:4}}>Personal health tracker</div></div>{(error||localError)&&<div style={{color:"#ef5350",fontSize:"0.8rem",textAlign:"center",padding:"8px 14px",background:"#ef535018",borderRadius:8,border:"1px solid #ef535044"}}>{error||localError}</div>}<button onClick={signIn} disabled={loading} style={{display:"flex",alignItems:"center",gap:12,padding:"14px 28px",borderRadius:12,border:"none",background:"#ffffff",color:"#1c2e42",fontFamily:"system-ui",fontSize:"1rem",fontWeight:600,cursor:loading?"wait":"pointer",opacity:loading?0.7:1,minWidth:220,justifyContent:"center",boxShadow:"0 4px 20px #00000044"}}><svg width="22" height="22" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>{loading?"Signing in…":"Sign in with Google"}</button><div style={{color:"#2a4a6a",fontSize:"0.72rem",textAlign:"center",maxWidth:260,lineHeight:1.6}}>Your data is stored privately in Firebase.<br/>Only you can access your entries.</div></div>);
 }
 function LoadingScreen({message="Loading JivanLog…"}){
   return(<div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",background:"#0a1628",flexDirection:"column",gap:16}}><img src={LOGO_SVG} style={{width:64,height:64,borderRadius:14}} alt="JivanLog"/><span style={{color:"#00e676",fontSize:"1.05rem",fontFamily:"monospace",letterSpacing:"0.05em"}}>{message}</span><div style={{width:120,height:3,background:"#1e3a5f",borderRadius:2,overflow:"hidden",marginTop:4}}><div style={{height:"100%",background:"#00e676",borderRadius:2,animation:"jlb 1.8s ease-in-out infinite"}}/></div><style>{"@keyframes jlb{0%{width:0%;margin-left:0}60%{width:80%;margin-left:0}100%{width:0%;margin-left:100%}}"}</style></div>);
@@ -228,12 +246,14 @@ function App(){
   const[settings,setSettings]=useState(deepClone(FD));
   const[defaults,setDefaults]=useState(deepClone(FD));
   const[theme,setTheme]=useState("system");
+  const[dayRolloverMin,setDayRolloverMinR]=useState(DAY_ROLLOVER_MIN);
   const[dataLoaded,setDataLoaded]=useState(false);
   const[clock,setClock]=useState(nowTime());
   const[entryTime,setEntryTime]=useState(nowHHMM());
   const[syncStatus,setSyncStatus]=useState("idle");
   const[showUserMenu,setShowUserMenu]=useState(false);
   const[isOnline,setIsOnline]=useState(navigator.onLine);
+  const isOnlineRef=useRef(navigator.onLine);
   const[queueSize,setQueueSize]=useState(0);
   const entriesRef=useRef(null);
 
@@ -265,14 +285,12 @@ function App(){
     }catch(e){}
     try{
       const ct=localStorage.getItem(`jivanlog-todayCache-${uid}-${today()}`);
-      if(ct){
-        const todayE=JSON.parse(ct);
-        const queued=getOfflineQ(uid);
-        const qIds=new Set(queued.map(e=>e.id));
-        const merged=[...todayE.filter(e=>!qIds.has(e.id)),...queued.map(e=>({...e,date:normDate(e.date)}))];
-        setEntries(merged);
-        setDataLoaded(true);
-      }
+      const todayE=ct?JSON.parse(ct):[];
+      const queued=getOfflineQ(uid);
+      const qIds=new Set(queued.map(e=>e.id));
+      const merged=[...todayE.filter(e=>!qIds.has(e.id)),...queued.map(e=>({...e,date:normDate(e.date)}))];
+      setEntries(merged);
+      setDataLoaded(true);
     }catch(e){}
     setQueueSize(getOfflineQ(uid).length);
   },[user]);
@@ -281,7 +299,7 @@ function App(){
   useEffect(()=>{
     if(!user)return;
     const ref=fbDb.ref('.info/connected');
-    const handler=snap=>setIsOnline(snap.val()===true);
+    const handler=snap=>{const v=snap.val()===true;setIsOnline(v);isOnlineRef.current=v;};
     ref.on('value',handler);
     return()=>ref.off('value',handler);
   },[user]);
@@ -292,7 +310,12 @@ function App(){
       if(u){setUser(u);setAuthState("in");}
       else{setUser(null);setAuthState("out");setDataLoaded(false);setEntries([]);}
     },e=>{setAuthError(e.message);setAuthState("out");});
-    return unsub;
+    // Safety net: persisted-session restore should be near-instant (it's a local
+    // IndexedDB read), but if something downstream (e.g. a stalled token-refresh
+    // call while offline) keeps onAuthStateChanged from firing, don't leave the
+    // user stuck on "Checking sign-in…" forever — fall through to the login screen.
+    const t=setTimeout(()=>{setAuthState(prev=>prev==="checking"?"out":prev);},6000);
+    return()=>{unsub();clearTimeout(t);};
   },[]);
 
   // Real-time entries listener — merges offline queue + writes today cache
@@ -308,14 +331,24 @@ function App(){
       if(queued.length){
         const fbIds=new Set(fromFb.map(e=>e.id));
         const newOnes=queued.filter(e=>!fbIds.has(e.id));
-        if(newOnes.length){
-          const updates={};
-          newOnes.forEach(e=>{const k=e.id.replace(/[\s.#$\[\]/]/g,"_");updates[k]={...e,id:k};});
-          fbDb.ref(`users/${uid}/entries`).update(updates)
-            .then(()=>{clearOfflineQ(uid);setQueueSize(0);setSyncStatus("synced");setTimeout(()=>setSyncStatus("idle"),2000);})
-            .catch(e=>console.warn("Queue flush failed, retry later:",e));
-          merged=[...fromFb,...newOnes.map(e=>({...e,date:normDate(e.date)}))];
-        }else{clearOfflineQ(uid);setQueueSize(0);}
+        // merged is always queue-inclusive for display, regardless of connectivity
+        merged=[...fromFb,...newOnes.map(e=>({...e,date:normDate(e.date)}))];
+        // IMPORTANT: only touch the offline queue when connectivity is CONFIRMED
+        // (.info/connected, via isOnlineRef). The Firebase SDK echoes pending
+        // offline writes through this listener optimistically — fromFb can
+        // already "contain" an entry that the server has never actually
+        // acknowledged. Treating that echo as proof of sync was wiping the
+        // queue (the only durable copy) before the write had really landed,
+        // which caused entries added offline to be lost on refresh.
+        if(isOnlineRef.current){
+          if(newOnes.length){
+            const updates={};
+            newOnes.forEach(e=>{const k=e.id.replace(/[\s.#$\[\]/]/g,"_");updates[k]={...e,id:k};});
+            fbDb.ref(`users/${uid}/entries`).update(updates)
+              .then(()=>{clearOfflineQ(uid);setQueueSize(0);setSyncStatus("synced");setTimeout(()=>setSyncStatus("idle"),2000);})
+              .catch(e=>console.warn("Queue flush failed, retry later:",e));
+          }else{clearOfflineQ(uid);setQueueSize(0);}
+        }
       }
       setEntries(merged);
       setDataLoaded(true);
@@ -331,10 +364,11 @@ function App(){
     if(!user)return;
     (async()=>{
       try{
-        const[sett,defs,th]=await Promise.all([
+        const[sett,defs,th,dr]=await Promise.all([
           fbDb.ref(`users/${user.uid}/settings`).get(),
           fbDb.ref(`users/${user.uid}/defaults`).get(),
           fbDb.ref(`users/${user.uid}/theme`).get(),
+          fbDb.ref(`users/${user.uid}/dayRolloverMin`).get(),
         ]);
         // Helper: normalise a settings/defaults object
           const norm=o=>{
@@ -385,6 +419,7 @@ function App(){
           if(settingsToCache)try{localStorage.setItem(`jivanlog-settingsCache-${uid}`,JSON.stringify(settingsToCache));}catch(e){}
           if(d)try{localStorage.setItem(`jivanlog-defaultsCache-${uid}`,JSON.stringify(d));}catch(e){}
           if(th.exists())setTheme(th.val());
+          if(dr.exists()){setDayRolloverMinR(dr.val());setDayRolloverCache(dr.val());}
       }catch(e){console.error("Settings load:",e);}
     })();
   },[user]);
@@ -452,6 +487,7 @@ function App(){
   const saveSettings =useCallback(n=>{setSettings(n);persistKey("settings",n);},[persistKey]);
   const saveDefaults =useCallback(n=>{setDefaults(n);persistKey("defaults",n);},[persistKey]);
   const saveTheme    =useCallback(m=>{setTheme(m);   persistKey("theme",m);},[persistKey]);
+  const saveDayRollover=useCallback(min=>{setDayRolloverMinR(min);setDayRolloverCache(min);persistKey("dayRolloverMin",min);},[persistKey]);
 
   const addEntry=useCallback(entry=>{
     const[h,mm]=entryTime.split(":").map(Number);
@@ -488,9 +524,9 @@ function App(){
   const onClearAll=useCallback(async()=>{
     downloadCSV(buildAllCSV(entries),`jivanlog-backup-full-${today()}.csv`);
     if(user){try{
-      await Promise.all([dbDel(user.uid,"entries"),dbDel(user.uid,"settings"),dbDel(user.uid,"defaults"),dbDel(user.uid,"theme")]);
+      await Promise.all([dbDel(user.uid,"entries"),dbDel(user.uid,"settings"),dbDel(user.uid,"defaults"),dbDel(user.uid,"theme"),dbDel(user.uid,"dayRolloverMin")]);
       const empty={foodCategories:[],liquidTypes:[],liquidNotes:{},liquidSubTypes:{},exerciseTypes:[],medicalPresets:[],medications:[]};
-      setSettings({...empty});setDefaults({...empty});setTheme("system");
+      setSettings({...empty});setDefaults({...empty});setTheme("system");setDayRolloverMinR(90);setDayRolloverCache(90);
     }catch(e){console.error(e);}}
   },[entries,user]);
 
@@ -602,7 +638,7 @@ function App(){
         {page==="home"    &&<HomePage entries={entries} settings={settings} onAdd={addEntry} entryTime={entryTime} setEntryTime={setEntryTime} isOnline={isOnline} T={T}/>}
         {page==="manage"  &&<ManagePage entries={entries} settings={settings} onAddDirect={addEntryDirect} onUpdate={updateEntry} onDelete={deleteEntry} isOnline={isOnline} T={T}/>}
         {page==="reports" &&<ReportsPage entries={entries} settings={settings} isOnline={isOnline} T={T}/>}
-        {page==="settings"&&<SettingsPage settings={settings} defaults={defaults} theme={theme} setSettings={saveSettings} setDefaults={saveDefaults} setTheme={saveTheme} user={user} entries={entries} onImport={handleImport} clearAll={clearAll} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} T={T}/>}
+        {page==="settings"&&<SettingsPage settings={settings} defaults={defaults} theme={theme} setSettings={saveSettings} setDefaults={saveDefaults} setTheme={saveTheme} dayRolloverMin={dayRolloverMin} setDayRolloverMin={saveDayRollover} user={user} entries={entries} onImport={handleImport} clearAll={clearAll} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} T={T}/>}
       </div>
 
       <nav style={{display:"flex",background:T.navBg,borderTop:`1px solid ${T.border}`,flexShrink:0,alignItems:"center"}}>
@@ -1337,7 +1373,7 @@ function importConfigCSV(csvText){
   return result;
 }
 
-function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,user,entries,onImport,onImportConfig,onClearEntries,onClearConfig,onClearAll,T}){
+function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,dayRolloverMin,setDayRolloverMin,user,entries,onImport,onImportConfig,onClearEntries,onClearConfig,onClearAll,T}){
   const[stab,setStab]=useState("general");const[ctab,setCtab]=useState("food");const[newItem,setNewItem]=useState("");const[applyFlash,setApplyFlash]=useState(false);
   const active=defaults;
   const updateActive=updater=>setDefaults(typeof updater==="function"?updater(defaults):updater);
@@ -1364,6 +1400,7 @@ function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,
         <div style={{fontSize:"0.62rem",color:T.border,fontFamily:"'DM Mono',monospace",marginLeft:4,alignSelf:"flex-end"}}>{APP_VERSION}</div>
       </div>
       <div className="card"><div className="slabel">🎨 Theme</div><div style={{display:"flex",gap:6}}>{[["dark","🌙 Dark"],["light","☀️ Light"],["system","💻 System"]].map(([m,l])=><button key={m} onClick={()=>setTheme(m)} style={{flex:1,padding:"7px 4px",borderRadius:8,border:"1px solid",fontSize:"0.78rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit",borderColor:theme===m?T.accentBtn:T.border,background:theme===m?T.accentBg:T.cardBg,color:theme===m?T.accent:T.textMuted}}>{l}</button>)}</div></div>
+      <div className="card"><div className="slabel">🌙 Day Rollover</div><div style={{fontSize:"0.72rem",color:T.textMuted,marginBottom:8,lineHeight:1.5}}>Entries logged before this time still count toward the previous day — useful on nights you're up late.</div><select value={dayRolloverMin} onChange={e=>setDayRolloverMin(parseInt(e.target.value,10))} style={{width:"100%",padding:"9px 10px",borderRadius:8,border:`1px solid ${T.border}`,background:T.inputBg,color:T.text,fontFamily:"inherit",fontSize:"0.85rem"}}>{[[0,"Midnight (12:00 AM)"],[30,"12:30 AM"],[60,"1:00 AM"],[90,"1:30 AM"],[120,"2:00 AM"],[150,"2:30 AM"],[180,"3:00 AM"],[240,"4:00 AM"]].map(([m,l])=><option key={m} value={m}>{l}</option>)}</select></div>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"10px 0 6px"}}>
         <div className="slabel" style={{marginBottom:0}}>⚙️ Default Config</div>
         <div style={{display:"flex",gap:6}}>
