@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.62";
+const APP_VERSION="v4.64";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -104,6 +104,28 @@ const THEMES={
 const getOfflineQ  =uid=>{try{return JSON.parse(localStorage.getItem(`jivanlog-offlineQ-${uid}`)||"[]");}catch{return[];}};
 const saveOfflineQ =(uid,arr)=>{try{localStorage.setItem(`jivanlog-offlineQ-${uid}`,JSON.stringify(arr));}catch(e){console.warn("OfflineQ:",e);}};
 const clearOfflineQ=uid=>{try{localStorage.removeItem(`jivanlog-offlineQ-${uid}`);}catch{}};
+// Remove ONLY the specified ids from the queue (entries added meanwhile survive).
+const removeFromQueue=(uid,ids)=>{const set=new Set(ids);const left=getOfflineQ(uid).filter(e=>!set.has(e.id));saveOfflineQ(uid,left);return left;};
+
+// ── FULL LOCAL MIRROR ─ durable copy of ALL entries (offline view + recovery) ─
+const getMirror =uid=>{try{return JSON.parse(localStorage.getItem(`jivanlog-mirror-${uid}`)||"[]");}catch{return[];}};
+const saveMirror=(uid,allEntries)=>{try{localStorage.setItem(`jivanlog-mirror-${uid}`,JSON.stringify(allEntries));}catch(e){console.warn("Mirror:",e);}};
+
+// ── DAILY BACKUP ─ small snapshot of TODAY's entries, overwritten each day ─────
+const saveDailyBackupLocal=(uid,allEntries)=>{
+  try{
+    const t=today();
+    const todays=allEntries.filter(e=>e.date===t);
+    localStorage.setItem(`jivanlog-dailyBackup-${uid}`,JSON.stringify({date:t,savedAt:new Date().toISOString(),entries:todays}));
+  }catch(e){console.warn("DailyBackup local:",e);}
+};
+const getDailyBackupLocal=uid=>{try{return JSON.parse(localStorage.getItem(`jivanlog-dailyBackup-${uid}`)||"null");}catch{return null;}};
+
+// ── CACHED AUTH IDENTITY ─ lets the app open offline after one online sign-in ──
+const saveCachedAuthUser=u=>{try{localStorage.setItem("jivanlog-authUser",JSON.stringify({uid:u.uid,displayName:u.displayName,email:u.email,photoURL:u.photoURL}));}catch(e){}};
+const getCachedAuthUser =()=>{try{return JSON.parse(localStorage.getItem("jivanlog-authUser")||"null");}catch{return null;}};
+const clearCachedAuthUser=()=>{try{localStorage.removeItem("jivanlog-authUser");}catch{}};
+
 const saveTodayCache=(uid,allEntries)=>{
   try{
     const t=today();
@@ -255,6 +277,8 @@ function App(){
   const[isOnline,setIsOnline]=useState(navigator.onLine);
   const isOnlineRef=useRef(navigator.onLine);
   const[queueSize,setQueueSize]=useState(0);
+  const[offlineAuth,setOfflineAuth]=useState(false);
+  const deliberateClearRef=useRef(false);
   const entriesRef=useRef(null);
 
   const T=theme==="system"?THEMES[sysDark()?"dark":"light"]:(THEMES[theme]||THEMES.dark);
@@ -284,11 +308,12 @@ function App(){
       if(cd){const d=JSON.parse(cd);setDefaults(d);}
     }catch(e){}
     try{
-      const ct=localStorage.getItem(`jivanlog-todayCache-${uid}-${today()}`);
-      const todayE=ct?JSON.parse(ct):[];
+      // Hydrate from the FULL local mirror (all history), not today-only — so
+      // offline boot shows everything and a write can never clobber unseen data.
+      const mirror=getMirror(uid);
       const queued=getOfflineQ(uid);
-      const qIds=new Set(queued.map(e=>e.id));
-      const merged=[...todayE.filter(e=>!qIds.has(e.id)),...queued.map(e=>({...e,date:normDate(e.date)}))];
+      const mIds=new Set(mirror.map(e=>e.id));
+      const merged=[...mirror.map(e=>({...e,date:normDate(e.date)})),...queued.filter(e=>!mIds.has(e.id)).map(e=>({...e,date:normDate(e.date)}))];
       setEntries(merged);
       setDataLoaded(true);
     }catch(e){}
@@ -304,55 +329,95 @@ function App(){
     return()=>ref.off('value',handler);
   },[user]);
 
-  // Auth listener
+  // Auth listener — with OFFLINE LOGIN fallback.
+  // Firebase Auth needs the network to restore/refresh a session when something
+  // (e.g. App Check enforcement) forces a token round-trip. If we're offline but
+  // the user has signed in before, we let them into the app using a cached
+  // identity: they see their mirrored data and can keep logging (queued locally).
+  // When connectivity + real auth return, the real user replaces the offline one
+  // and the queue flushes automatically.
   useEffect(()=>{
+    let resolved=false;
+    const goOfflineSession=()=>{
+      if(resolved)return;
+      const cu=getCachedAuthUser();
+      if(cu&&!navigator.onLine){
+        resolved=true;
+        setUser({uid:cu.uid,displayName:cu.displayName,email:cu.email,photoURL:cu.photoURL,_offline:true});
+        setOfflineAuth(true);
+        setAuthState("in");
+      }else{
+        setAuthState(prev=>prev==="checking"?"out":prev);
+      }
+    };
     const unsub=fbAuth.onAuthStateChanged(u=>{
-      if(u){setUser(u);setAuthState("in");}
-      else{setUser(null);setAuthState("out");setDataLoaded(false);setEntries([]);}
-    },e=>{setAuthError(e.message);setAuthState("out");});
-    // Safety net: persisted-session restore should be near-instant (it's a local
-    // IndexedDB read), but if something downstream (e.g. a stalled token-refresh
-    // call while offline) keeps onAuthStateChanged from firing, don't leave the
-    // user stuck on "Checking sign-in…" forever — fall through to the login screen.
-    const t=setTimeout(()=>{setAuthState(prev=>prev==="checking"?"out":prev);},6000);
+      if(u){
+        resolved=true;
+        setOfflineAuth(false);
+        saveCachedAuthUser(u);
+        setUser(u);setAuthState("in");
+      }else{
+        // No real session. Offline + previously signed in → offline session.
+        // Otherwise it's a genuine signed-out state.
+        if(!navigator.onLine&&getCachedAuthUser()){goOfflineSession();}
+        else{resolved=true;setOfflineAuth(false);setUser(null);setAuthState("out");setDataLoaded(false);setEntries([]);}
+      }
+    },e=>{setAuthError(e.message);if(!navigator.onLine&&getCachedAuthUser())goOfflineSession();else setAuthState("out");});
+    // Fallback: if auth never resolves at all (stalled offline), open offline session after 4s.
+    const t=setTimeout(goOfflineSession,4000);
     return()=>{unsub();clearTimeout(t);};
   },[]);
 
-  // Real-time entries listener — merges offline queue + writes today cache
+  // Real-time entries listener — READ-ONLY.
+  // It NEVER writes to Firebase and NEVER clears the offline queue. (The old
+  // version cleared the queue when Firebase's optimistic echo made a pending
+  // write "appear" synced — that was the lift-bug data-loss path.) The queue is
+  // now owned solely by addEntry (push) and flushOfflineQueue (remove on a
+  // CONFIRMED server write). This listener only reads, merges the queue for
+  // display, and refreshes the durable local mirror.
   useEffect(()=>{
-    if(!user){if(entriesRef.current){entriesRef.current();entriesRef.current=null;}return;}
+    if(!user||user._offline){if(entriesRef.current){entriesRef.current();entriesRef.current=null;}return;}
     const uid=user.uid;
     const ref=fbDb.ref(`users/${uid}/entries`);
     const handler=snap=>{
+      const queued=getOfflineQ(uid);
+      // Offline (or connectivity unconfirmed): the server snapshot isn't
+      // authoritative (no RTDB disk persistence). Keep showing the full mirror
+      // plus any pending queue items — do NOT let an empty/partial snapshot
+      // overwrite the visible history.
+      if(!isOnlineRef.current){
+        const mir=getMirror(uid);
+        const mIds=new Set(mir.map(e=>e.id));
+        setEntries([...mir,...queued.filter(e=>!mIds.has(e.id)).map(e=>({...e,date:normDate(e.date)}))]);
+        setDataLoaded(true);
+        return;
+      }
       const raw=snap.val()?Object.values(snap.val()):[];
       const fromFb=raw.map(e=>({...e,date:normDate(e.date)}));
-      const queued=getOfflineQ(uid);
-      let merged=fromFb;
-      if(queued.length){
-        const fbIds=new Set(fromFb.map(e=>e.id));
-        const newOnes=queued.filter(e=>!fbIds.has(e.id));
-        // merged is always queue-inclusive for display, regardless of connectivity
-        merged=[...fromFb,...newOnes.map(e=>({...e,date:normDate(e.date)}))];
-        // IMPORTANT: only touch the offline queue when connectivity is CONFIRMED
-        // (.info/connected, via isOnlineRef). The Firebase SDK echoes pending
-        // offline writes through this listener optimistically — fromFb can
-        // already "contain" an entry that the server has never actually
-        // acknowledged. Treating that echo as proof of sync was wiping the
-        // queue (the only durable copy) before the write had really landed,
-        // which caused entries added offline to be lost on refresh.
-        if(isOnlineRef.current){
-          if(newOnes.length){
-            const updates={};
-            newOnes.forEach(e=>{const k=e.id.replace(/[\s.#$\[\]/]/g,"_");updates[k]={...e,id:k};});
-            fbDb.ref(`users/${uid}/entries`).update(updates)
-              .then(()=>{clearOfflineQ(uid);setQueueSize(0);setSyncStatus("synced");setTimeout(()=>setSyncStatus("idle"),2000);})
-              .catch(e=>console.warn("Queue flush failed, retry later:",e));
-          }else{clearOfflineQ(uid);setQueueSize(0);}
-        }
+      // SAFETY GUARD: if the server snapshot is empty but we hold a healthy
+      // mirror, this is almost certainly a transient glitch (token expiry,
+      // momentary read failure) — NOT a real deletion. Refuse to wipe the
+      // mirror or the screen. A deliberate "Clear all" sets deliberateClearRef,
+      // which lets the empty through.
+      const mir0=getMirror(uid);
+      if(fromFb.length===0&&mir0.length>0&&!deliberateClearRef.current){
+        console.warn("Ignored empty Firebase snapshot — preserving mirror of",mir0.length,"entries");
+        const mIds=new Set(mir0.map(e=>e.id));
+        setEntries([...mir0,...queued.filter(e=>!mIds.has(e.id)).map(e=>({...e,date:normDate(e.date)}))]);
+        setDataLoaded(true);
+        return;
       }
+      if(deliberateClearRef.current&&fromFb.length===0)deliberateClearRef.current=false;
+      const fbIds=new Set(fromFb.map(e=>e.id));
+      const pendingOnly=queued.filter(e=>!fbIds.has(e.id));
+      const merged=[...fromFb,...pendingOnly.map(e=>({...e,date:normDate(e.date)}))];
       setEntries(merged);
       setDataLoaded(true);
+      // Refresh durable copies from the authoritative server set.
+      saveMirror(uid,fromFb);
       saveTodayCache(uid,merged);
+      // Daily safety snapshot (local + backend), once per day, from good data.
+      maybeDailyBackup(uid,fromFb);
     };
     ref.on("value",handler);
     entriesRef.current=()=>ref.off("value",handler);
@@ -424,25 +489,69 @@ function App(){
     })();
   },[user]);
 
-  // Flush pending offline queue to Firebase (called on reconnect or "Sync Now")
+  // Daily safety snapshot — small copy of TODAY's entries, overwritten each day.
+  // Local copy is instant; backend copy lives in a SEPARATE Firebase node
+  // (users/{uid}/dailyBackup) so a bad write to /entries can never destroy it.
+  // Runs at most once per calendar day (gated by a localStorage date flag).
+  const maybeDailyBackup=useCallback((uid,fullEntries)=>{
+    try{
+      const t=today();
+      // Always keep the local snapshot fresh (cheap, small).
+      saveDailyBackupLocal(uid,fullEntries);
+      // Backend snapshot once per day.
+      const flagKey=`jivanlog-lastRemoteBackup-${uid}`;
+      if(localStorage.getItem(flagKey)===t)return;
+      const todays=fullEntries.filter(e=>e.date===t);
+      fbDb.ref(`users/${uid}/dailyBackup`).set({date:t,savedAt:new Date().toISOString(),count:todays.length,entries:todays})
+        .then(()=>{try{localStorage.setItem(flagKey,t);}catch(e){}})
+        .catch(e=>console.warn("Backend daily backup deferred:",e));
+    }catch(e){console.warn("maybeDailyBackup:",e);}
+  },[]);
+
+  // Restore today's entries from the daily backup (backend first, then local).
+  // Additive .update() only — never deletes anything currently in /entries.
+  const restoreFromBackup=useCallback(async()=>{
+    if(!user||user._offline){alert("Restore needs an internet connection. Please reconnect and try again.");return;}
+    const uid=user.uid;
+    try{
+      let snap=await fbDb.ref(`users/${uid}/dailyBackup`).get();
+      let bk=snap.exists()?snap.val():null;
+      const local=getDailyBackupLocal(uid);
+      // Prefer whichever snapshot has more entries.
+      if(local&&(!bk||(local.entries||[]).length>(bk.entries||[]).length))bk=local;
+      const list=bk&&bk.entries?bk.entries:[];
+      if(!list.length){alert("No backup entries found to restore.");return;}
+      if(!confirm(`Restore ${list.length} entr${list.length===1?"y":"ies"} from the ${bk.date} backup?\n\nThis re-adds any missing entries. It does not delete anything you already have.`))return;
+      const updates={};
+      list.forEach(e=>{const k=String(e.id||genId()).replace(/[\s.#$\[\]/]/g,"_");updates[k]={...e,id:k};});
+      await fbDb.ref(`users/${uid}/entries`).update(updates);
+      alert("Restore complete. Your entries have been re-added.");
+    }catch(e){console.warn("Restore failed:",e);alert("Restore failed: "+(e.message||e));}
+  },[user]);
+
+  // Flush pending offline queue to Firebase (called on reconnect or "Sync Now").
+  // A queued entry is removed ONLY after its write is CONFIRMED by the server
+  // (the .update() promise resolves only on server ack while online). Entries
+  // added during the flush are preserved (we remove by exact id, not clear-all).
   const flushOfflineQueue=useCallback(async()=>{
-    if(!user)return;
+    if(!user||user._offline)return;          // offline session can't write to Firebase
+    if(!isOnlineRef.current)return;          // don't attempt while disconnected
     const uid=user.uid;
     const queued=getOfflineQ(uid);
     if(!queued.length)return;
     setSyncStatus("saving");
     try{
-      const snap=await fbDb.ref(`users/${uid}/entries`).get();
-      const existKeys=snap.val()?new Set(Object.keys(snap.val())):new Set();
-      const newOnes=queued.filter(e=>!existKeys.has(e.id.replace(/[\s.#$\[\]/]/g,"_")));
-      if(newOnes.length){
-        const updates={};
-        newOnes.forEach(e=>{const k=e.id.replace(/[\s.#$\[\]/]/g,"_");updates[k]={...e,id:k};});
-        await fbDb.ref(`users/${uid}/entries`).update(updates);
-      }
-      clearOfflineQ(uid);setQueueSize(0);
-      setSyncStatus("synced");setTimeout(()=>setSyncStatus("idle"),2000);
-    }catch(e){console.warn("Flush failed:",e);setSyncStatus("idle");}
+      const updates={};const ids=[];
+      queued.forEach(e=>{const k=e.id.replace(/[\s.#$\[\]/]/g,"_");updates[k]={...e,id:k};ids.push(e.id);});
+      // Race the write against a timeout so a mid-flush disconnect can't hang it.
+      await Promise.race([
+        fbDb.ref(`users/${uid}/entries`).update(updates),
+        new Promise((_,rej)=>setTimeout(()=>rej(new Error("flush-timeout")),12000))
+      ]);
+      // Confirmed by server — remove exactly these ids; keep anything added since.
+      const left=removeFromQueue(uid,ids);setQueueSize(left.length);
+      setSyncStatus("synced");setTimeout(()=>setSyncStatus("idle"),1500);
+    }catch(e){console.warn("Flush deferred, queue intact:",e&&e.message||e);setSyncStatus("idle");}
   },[user]);
 
   // Flush when .info/connected becomes true
@@ -453,15 +562,21 @@ function App(){
   // Persist helpers
   const persistEntries=useCallback(async arr=>{
     if(!user)return;
-    setSyncStatus("saving");
     const uid=user.uid;
+    // Always write cache first — survives even if Firebase write fails
     saveTodayCache(uid,arr);
+    setSyncStatus("saving");
     try{
-      const obj=arr.reduce((acc,e)=>{const k=e.id.replace(/[\s.#$\[\]/]/g,"_");acc[k]={...e,id:k};return acc;},{});
-      await fbDb.ref(`users/${uid}/entries`).set(arr.length?obj:null);
-      clearOfflineQ(uid);setQueueSize(0);
+      // Use .update() not .set() — writes only these entries, never wipes others.
+      // .set() on the full collection caused silent data loss when the write
+      // promise was killed mid-flight (e.g. by a Chrome extension intercepting
+      // the service worker message channel).
+      const updates=arr.reduce((acc,e)=>{const k=e.id.replace(/[\s.#$\[\]/]/g,"_");acc[k]={...e,id:k};return acc;},{});
+      await fbDb.ref(`users/${uid}/entries`).update(updates);
+      // Do NOT clearOfflineQ here — queue is managed by addEntry/flushOfflineQueue.
+      // Clearing it here would destroy entries queued while this write was in-flight.
       setSyncStatus("synced");setTimeout(()=>setSyncStatus("idle"),1500);
-    }catch(e){console.warn("persistEntries offline:",e);setSyncStatus("idle");}
+    }catch(e){console.warn("persistEntries failed:",e);setSyncStatus("idle");}
   },[user]);
 
   const persistKey=useCallback(async(key,val)=>{
@@ -493,37 +608,80 @@ function App(){
     const[h,mm]=entryTime.split(":").map(Number);
     const d=new Date();d.setHours(h,mm,0,0);
     const newEntry={...entry,id:genId(),timestamp:d.toISOString(),date:today()};
-    if(user){const uid=user.uid;const q=getOfflineQ(uid);q.push(newEntry);saveOfflineQ(uid,q);setQueueSize(q.length);}
-    saveEntries([...entries,newEntry]);
-  },[entries,saveEntries,entryTime,user]);
+    const next=[...entries,newEntry];
+    setEntries(next);
+    if(user){
+      const uid=user.uid;
+      // 1. Write durable local copies FIRST — survive regardless of network
+      saveMirror(uid,next);
+      saveTodayCache(uid,next);
+      saveDailyBackupLocal(uid,next);
+      // 2. Push to offline queue — the authoritative pending-write store
+      const q=getOfflineQ(uid);q.push(newEntry);saveOfflineQ(uid,q);setQueueSize(q.length);
+      // 3. If online, flush queue via .update() (safe, additive, not .set())
+      //    flushOfflineQueue is a no-op if offline — queue persists for later
+      if(isOnlineRef.current)flushOfflineQueue();
+    }
+  },[entries,flushOfflineQueue,entryTime,user]);
 
   const addEntryDirect=useCallback(entry=>{
-    if(user){const uid=user.uid;const q=getOfflineQ(uid);if(!q.find(e=>e.id===entry.id)){q.push(entry);saveOfflineQ(uid,q);setQueueSize(q.length);}}
-    saveEntries([...entries,entry]);
-  },[entries,saveEntries,user]);
+    const next=[...entries,entry];
+    setEntries(next);
+    if(user){
+      const uid=user.uid;
+      saveMirror(uid,next);saveTodayCache(uid,next);saveDailyBackupLocal(uid,next);
+      const q=getOfflineQ(uid);if(!q.find(e=>e.id===entry.id)){q.push(entry);saveOfflineQ(uid,q);setQueueSize(q.length);}
+      if(isOnlineRef.current)flushOfflineQueue();
+    }
+  },[entries,flushOfflineQueue,user]);
 
   const updateEntry=useCallback((id,data)=>{
     const next=entries.map(e=>e.id===id?{...e,...data}:e);
-    if(user)saveTodayCache(user.uid,next);
-    saveEntries(next);
-  },[entries,saveEntries,user]);
+    const changed=next.find(e=>e.id===id);
+    setEntries(next);
+    if(user){
+      const uid=user.uid;
+      saveMirror(uid,next);saveTodayCache(uid,next);saveDailyBackupLocal(uid,next);
+      if(user._offline){
+        // Offline session: queue the edited entry so it flushes on reconnect.
+        const q=getOfflineQ(uid).filter(e=>e.id!==id);q.push(changed);saveOfflineQ(uid,q);setQueueSize(q.length);
+      }else if(isOnlineRef.current){
+        const k=id.replace(/[\s.#$\[\]/]/g,"_");
+        fbDb.ref(`users/${uid}/entries/${k}`).update({...changed,id:k}).catch(e=>console.warn("updateEntry remote:",e));
+      }else{
+        const q=getOfflineQ(uid).filter(e=>e.id!==id);q.push(changed);saveOfflineQ(uid,q);setQueueSize(q.length);
+      }
+    }
+  },[entries,user]);
 
   const deleteEntry=useCallback(id=>{
     const next=entries.filter(e=>e.id!==id);
-    if(user)saveTodayCache(user.uid,next);
-    saveEntries(next);
-  },[entries,saveEntries,user]);
+    setEntries(next);
+    if(user){
+      const uid=user.uid;
+      // Drop it from the pending queue too (in case it was never synced).
+      removeFromQueue(uid,[id]);
+      saveMirror(uid,next);saveTodayCache(uid,next);saveDailyBackupLocal(uid,next);
+      setQueueSize(getOfflineQ(uid).length);
+      if(!user._offline){
+        // Delete the specific key from Firebase — .update() can't remove keys.
+        const k=id.replace(/[\s.#$\[\]/]/g,"_");
+        fbDb.ref(`users/${uid}/entries/${k}`).remove().catch(e=>console.warn("deleteEntry remote:",e));
+      }
+    }
+  },[entries,user]);
 
   const clearAll=useCallback(()=>{
     if(!confirm("CLEAR ALL DATA?\n\nAll entries permanently deleted.\nBackup CSV downloads first.\n\nPress OK to continue."))return;
     if(!confirm("FINAL CONFIRMATION\n\nPress OK to download backup then clear."))return;
     downloadCSV(buildAllCSV(entries),`jivanlog-backup-${today()}.csv`);
+    if(user){deliberateClearRef.current=true;clearOfflineQ(user.uid);setQueueSize(0);saveMirror(user.uid,[]);setEntries([]);}
     setTimeout(async()=>{if(user)try{await dbDel(user.uid,"entries");}catch(e){}},500);
   },[entries,user]);
 
   const onClearAll=useCallback(async()=>{
     downloadCSV(buildAllCSV(entries),`jivanlog-backup-full-${today()}.csv`);
-    if(user){try{
+    if(user){deliberateClearRef.current=true;clearOfflineQ(user.uid);setQueueSize(0);saveMirror(user.uid,[]);setEntries([]);try{
       await Promise.all([dbDel(user.uid,"entries"),dbDel(user.uid,"settings"),dbDel(user.uid,"defaults"),dbDel(user.uid,"theme"),dbDel(user.uid,"dayRolloverMin")]);
       const empty={foodCategories:[],liquidTypes:[],liquidNotes:{},liquidSubTypes:{},exerciseTypes:[],medicalPresets:[],medications:[]};
       setSettings({...empty});setDefaults({...empty});setTheme("system");setDayRolloverMinR(90);setDayRolloverCache(90);
@@ -531,7 +689,7 @@ function App(){
   },[entries,user]);
 
   const onClearEntries=useCallback(async()=>{
-    if(user)try{await dbDel(user.uid,"entries");}catch(e){}
+    if(user){deliberateClearRef.current=true;clearOfflineQ(user.uid);setQueueSize(0);saveMirror(user.uid,[]);setEntries([]);try{await dbDel(user.uid,"entries");}catch(e){}}
   },[user]);
 
   const onClearConfig=useCallback(async section=>{
@@ -566,14 +724,17 @@ function App(){
       const merged=Object.values(existMap);
       // Update React state immediately so UI reflects new data
       setEntries(merged);
+      if(user){saveMirror(user.uid,merged);saveTodayCache(user.uid,merged);}
       // Write ONLY the new entries to Firebase using .update() (faster, more reliable)
       await persistImport(imported);
       alert(`✓ Imported ${imported.length} entries.\nTotal in database: ${merged.length}\nOpen 📋 Manage — use ◀▶ buttons to browse past dates.`);
     }catch(err){alert("Import failed: "+err.message+"\n\nPlease try again.");console.error("Import error:",err);}
-  },[entries,saveEntries,persistImport]);
+  },[entries,user,persistImport]);
 
   const signOut=async()=>{
     if(!confirm("Sign out of JivanLog?\nYour data is saved to Firebase."))return;
+    clearCachedAuthUser();
+    setOfflineAuth(false);
     await fbAuth.signOut();setEntries([]);setDataLoaded(false);setLocked(false);
   };
 
@@ -634,11 +795,13 @@ function App(){
         </div>
       </div>
 
+      {offlineAuth&&<div style={{display:"flex",alignItems:"center",gap:7,padding:"6px 13px",background:T.accentBg,borderBottom:`1px solid ${T.border}`,fontSize:"0.72rem",color:T.accent,flexShrink:0}}>📵 Offline mode — you're signed in from saved data. New entries are stored on this device and will sync automatically when you're back online.</div>}
+
       <div style={{flex:1,overflowY:"auto",padding:"12px 13px"}} onClick={()=>showUserMenu&&setShowUserMenu(false)}>
         {page==="home"    &&<HomePage entries={entries} settings={settings} onAdd={addEntry} entryTime={entryTime} setEntryTime={setEntryTime} isOnline={isOnline} T={T}/>}
         {page==="manage"  &&<ManagePage entries={entries} settings={settings} onAddDirect={addEntryDirect} onUpdate={updateEntry} onDelete={deleteEntry} isOnline={isOnline} T={T}/>}
         {page==="reports" &&<ReportsPage entries={entries} settings={settings} isOnline={isOnline} T={T}/>}
-        {page==="settings"&&<SettingsPage settings={settings} defaults={defaults} theme={theme} setSettings={saveSettings} setDefaults={saveDefaults} setTheme={saveTheme} dayRolloverMin={dayRolloverMin} setDayRolloverMin={saveDayRollover} user={user} entries={entries} onImport={handleImport} clearAll={clearAll} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} T={T}/>}
+        {page==="settings"&&<SettingsPage settings={settings} defaults={defaults} theme={theme} setSettings={saveSettings} setDefaults={saveDefaults} setTheme={saveTheme} dayRolloverMin={dayRolloverMin} setDayRolloverMin={saveDayRollover} user={user} entries={entries} onImport={handleImport} clearAll={clearAll} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} onRestore={restoreFromBackup} offlineAuth={offlineAuth} T={T}/>}
       </div>
 
       <nav style={{display:"flex",background:T.navBg,borderTop:`1px solid ${T.border}`,flexShrink:0,alignItems:"center"}}>
@@ -1373,7 +1536,7 @@ function importConfigCSV(csvText){
   return result;
 }
 
-function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,dayRolloverMin,setDayRolloverMin,user,entries,onImport,onImportConfig,onClearEntries,onClearConfig,onClearAll,T}){
+function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,dayRolloverMin,setDayRolloverMin,user,entries,onImport,onImportConfig,onClearEntries,onClearConfig,onClearAll,onRestore,offlineAuth,T}){
   const[stab,setStab]=useState("general");const[ctab,setCtab]=useState("food");const[newItem,setNewItem]=useState("");const[applyFlash,setApplyFlash]=useState(false);
   const active=defaults;
   const updateActive=updater=>setDefaults(typeof updater==="function"?updater(defaults):updater);
@@ -1401,6 +1564,7 @@ function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,
       </div>
       <div className="card"><div className="slabel">🎨 Theme</div><div style={{display:"flex",gap:6}}>{[["dark","🌙 Dark"],["light","☀️ Light"],["system","💻 System"]].map(([m,l])=><button key={m} onClick={()=>setTheme(m)} style={{flex:1,padding:"7px 4px",borderRadius:8,border:"1px solid",fontSize:"0.78rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit",borderColor:theme===m?T.accentBtn:T.border,background:theme===m?T.accentBg:T.cardBg,color:theme===m?T.accent:T.textMuted}}>{l}</button>)}</div></div>
       <div className="card"><div className="slabel">🌙 Day Rollover</div><div style={{fontSize:"0.72rem",color:T.textMuted,marginBottom:8,lineHeight:1.5}}>Entries logged before this time still count toward the previous day — useful on nights you're up late.</div><select value={dayRolloverMin} onChange={e=>setDayRolloverMin(parseInt(e.target.value,10))} style={{width:"100%",padding:"9px 10px",borderRadius:8,border:`1px solid ${T.border}`,background:T.inputBg,color:T.text,fontFamily:"inherit",fontSize:"0.85rem"}}>{[[0,"Midnight (12:00 AM)"],[30,"12:30 AM"],[60,"1:00 AM"],[90,"1:30 AM"],[120,"2:00 AM"],[150,"2:30 AM"],[180,"3:00 AM"],[240,"4:00 AM"]].map(([m,l])=><option key={m} value={m}>{l}</option>)}</select></div>
+      <div className="card"><div className="slabel">🛟 Data Safety</div><div style={{fontSize:"0.72rem",color:T.textMuted,marginBottom:8,lineHeight:1.5}}>A backup of each day's entries is kept automatically — on this device and in a separate cloud location. If entries ever go missing, restore re-adds them without deleting anything you still have.</div><button onClick={onRestore} disabled={offlineAuth} style={{width:"100%",padding:"9px 10px",borderRadius:8,border:`1px solid ${T.accentBtn}`,background:offlineAuth?T.cardBg:T.accentBg,color:offlineAuth?T.textMuted:T.accent,fontFamily:"inherit",fontWeight:600,fontSize:"0.84rem",cursor:offlineAuth?"not-allowed":"pointer"}}>♻️ Restore from daily backup</button>{offlineAuth&&<div style={{fontSize:"0.68rem",color:T.textMuted,marginTop:6}}>Restore needs an internet connection.</div>}</div>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"10px 0 6px"}}>
         <div className="slabel" style={{marginBottom:0}}>⚙️ Default Config</div>
         <div style={{display:"flex",gap:6}}>
