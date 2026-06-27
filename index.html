@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.64";
+const APP_VERSION="v4.65";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -158,7 +158,7 @@ function dayReport(dayEntries,medPresets){
 }
 
 function buildAllCSV(entries){
-  const hdr=["ID","Date","Time","Type","SubType","Detail1","Detail2","Detail3","Unit","Notes"];
+  const hdr=["ID","Date","Time","Type","SubType","Detail1","Detail2","Detail3","Unit","Notes","Deleted","DeletedAt"];
   const rows=[...entries].sort((a,b)=>new Date(a.timestamp)-new Date(b.timestamp)).map(e=>{
     let t="",st="",d1="",d2="",d3="",u="",n=e.notes||"";
     if(e.type==="meal")      {t="Meal";st=e.mealType;d1=e.food+(e.foodSubType?" · "+e.foodSubType:"");d2=e.qty;u=e.unit;}
@@ -166,9 +166,13 @@ function buildAllCSV(entries){
     if(e.type==="exercise")  {t="Exercise";st=e.exType;d1=e.subType||"";d2=e.dist||"";d3=e.time||e.count||"";u=e.dist?"km":e.count?"count":"min";}
     if(e.type==="medical")   {t="Medical";st=e.readingType;d1=e.value;u=e.unit||"";}
     if(e.type==="medication"){t="Medication";st=e.med;d1=e.timing;}
-    return[e.id,normDate(e.date),fmt24(e.timestamp),t,st,d1,d2,d3,u,n].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",");
+    return[e.id,normDate(e.date),fmt24(e.timestamp),t,st,d1,d2,d3,u,n,e.deleted?"YES":"",e.deletedAt||""].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",");
   });
   return[hdr.join(","),...rows].join("\n");
+}
+// Lossless full export — every field of every entry, including tombstones.
+function buildFullJSON(allEntries){
+  return JSON.stringify({app:"JivanLog",exportedAt:new Date().toISOString(),count:allEntries.length,entries:allEntries},null,2);
 }
 function buildViewCSV(entries,dates,medPresets){
   const medNames=(medPresets||FD.medicalPresets).map(p=>typeof p==="string"?p:p.name);
@@ -265,6 +269,7 @@ function App(){
   const[page,setPage]=useState("home");
   const[locked,setLocked]=useState(false);
   const[entries,setEntries]=useState([]);
+  const[deletedEntries,setDeletedEntries]=useState([]);
   const[settings,setSettings]=useState(deepClone(FD));
   const[defaults,setDefaults]=useState(deepClone(FD));
   const[theme,setTheme]=useState("system");
@@ -292,7 +297,10 @@ function App(){
       const key=`jivanlog-lastBackup-${user.uid}`;
       const last=localStorage.getItem(key);
       if(last===today())return;          // already backed up today
-      downloadCSV(buildAllCSV(entries),`jivanlog-autobackup-${today()}.csv`);
+      const all=[...entries,...deletedEntries];
+      downloadCSV(buildAllCSV(all),`jivanlog-autobackup-${today()}.csv`);
+      // Also drop a lossless JSON alongside the CSV (full fidelity, incl. tombstones).
+      try{const blob=new Blob([buildFullJSON(all)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=`jivanlog-autobackup-${today()}.json`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},1200);}catch(e){}
       localStorage.setItem(key,today());
     }catch(e){console.warn("Auto-backup failed:",e);}
   },[dataLoaded,user]);  // intentionally omit entries — run once when data first loads
@@ -308,13 +316,16 @@ function App(){
       if(cd){const d=JSON.parse(cd);setDefaults(d);}
     }catch(e){}
     try{
-      // Hydrate from the FULL local mirror (all history), not today-only — so
+      // Hydrate from the FULL local mirror (all history incl. tombstones), so
       // offline boot shows everything and a write can never clobber unseen data.
-      const mirror=getMirror(uid);
+      const mirror=getMirror(uid).map(e=>({...e,date:normDate(e.date)}));
+      const live=mirror.filter(e=>!e.deleted);
+      const dead=mirror.filter(e=>e.deleted);
       const queued=getOfflineQ(uid);
-      const mIds=new Set(mirror.map(e=>e.id));
-      const merged=[...mirror.map(e=>({...e,date:normDate(e.date)})),...queued.filter(e=>!mIds.has(e.id)).map(e=>({...e,date:normDate(e.date)}))];
+      const lIds=new Set(live.map(e=>e.id));
+      const merged=[...live,...queued.filter(e=>!lIds.has(e.id)&&!e.deleted).map(e=>({...e,date:normDate(e.date)}))];
       setEntries(merged);
+      setDeletedEntries(dead);
       setDataLoaded(true);
     }catch(e){}
     setQueueSize(getOfflineQ(uid).length);
@@ -381,43 +392,29 @@ function App(){
     const ref=fbDb.ref(`users/${uid}/entries`);
     const handler=snap=>{
       const queued=getOfflineQ(uid);
-      // Offline (or connectivity unconfirmed): the server snapshot isn't
-      // authoritative (no RTDB disk persistence). Keep showing the full mirror
-      // plus any pending queue items — do NOT let an empty/partial snapshot
-      // overwrite the visible history.
-      if(!isOnlineRef.current){
-        const mir=getMirror(uid);
-        const mIds=new Set(mir.map(e=>e.id));
-        setEntries([...mir,...queued.filter(e=>!mIds.has(e.id)).map(e=>({...e,date:normDate(e.date)}))]);
-        setDataLoaded(true);
-        return;
-      }
       const raw=snap.val()?Object.values(snap.val()):[];
       const fromFb=raw.map(e=>({...e,date:normDate(e.date)}));
-      // SAFETY GUARD: if the server snapshot is empty but we hold a healthy
-      // mirror, this is almost certainly a transient glitch (token expiry,
-      // momentary read failure) — NOT a real deletion. Refuse to wipe the
-      // mirror or the screen. A deliberate "Clear all" sets deliberateClearRef,
-      // which lets the empty through.
-      const mir0=getMirror(uid);
-      if(fromFb.length===0&&mir0.length>0&&!deliberateClearRef.current){
-        console.warn("Ignored empty Firebase snapshot — preserving mirror of",mir0.length,"entries");
-        const mIds=new Set(mir0.map(e=>e.id));
-        setEntries([...mir0,...queued.filter(e=>!mIds.has(e.id)).map(e=>({...e,date:normDate(e.date)}))]);
-        setDataLoaded(true);
-        return;
+      const mirrorAll=getMirror(uid).map(e=>({...e,date:normDate(e.date)}));
+      // CONTENT decides, never a connection flag. Append-only means the server
+      // can never legitimately shrink to empty. If the snapshot is empty (offline
+      // cold cache, transient glitch) but we hold a mirror, keep the mirror and
+      // do NOT overwrite it. This is what prevents both the blank-screen bug and
+      // any empty-overwrite.
+      let all;
+      if(fromFb.length===0&&mirrorAll.length>0){
+        all=mirrorAll; // preserve; do not touch durable copies
+      }else{
+        all=fromFb;
+        saveMirror(uid,fromFb);          // authoritative server set (incl. tombstones)
+        maybeDailyBackup(uid,fromFb);
       }
-      if(deliberateClearRef.current&&fromFb.length===0)deliberateClearRef.current=false;
-      const fbIds=new Set(fromFb.map(e=>e.id));
-      const pendingOnly=queued.filter(e=>!fbIds.has(e.id));
-      const merged=[...fromFb,...pendingOnly.map(e=>({...e,date:normDate(e.date)}))];
-      setEntries(merged);
+      const live=all.filter(e=>!e.deleted);
+      const dead=all.filter(e=>e.deleted);
+      const liveIds=new Set(live.map(e=>e.id));
+      const pendingLive=queued.filter(e=>!liveIds.has(e.id)&&!e.deleted).map(e=>({...e,date:normDate(e.date)}));
+      setEntries([...live,...pendingLive]);
+      setDeletedEntries(dead);
       setDataLoaded(true);
-      // Refresh durable copies from the authoritative server set.
-      saveMirror(uid,fromFb);
-      saveTodayCache(uid,merged);
-      // Daily safety snapshot (local + backend), once per day, from good data.
-      maybeDailyBackup(uid,fromFb);
     };
     ref.on("value",handler);
     entriesRef.current=()=>ref.off("value",handler);
@@ -496,13 +493,14 @@ function App(){
   const maybeDailyBackup=useCallback((uid,fullEntries)=>{
     try{
       const t=today();
-      // Always keep the local snapshot fresh (cheap, small).
+      // Always keep the local snapshot fresh.
       saveDailyBackupLocal(uid,fullEntries);
-      // Backend snapshot once per day.
+      // Backend snapshot once per day — store the FULL set (incl. tombstones) in
+      // a separate node, so even total loss of /entries is recoverable from here.
       const flagKey=`jivanlog-lastRemoteBackup-${uid}`;
       if(localStorage.getItem(flagKey)===t)return;
-      const todays=fullEntries.filter(e=>e.date===t);
-      fbDb.ref(`users/${uid}/dailyBackup`).set({date:t,savedAt:new Date().toISOString(),count:todays.length,entries:todays})
+      if(!fullEntries.length)return; // never overwrite a good backup with nothing
+      fbDb.ref(`users/${uid}/dailyBackup`).set({date:t,savedAt:new Date().toISOString(),count:fullEntries.length,entries:fullEntries})
         .then(()=>{try{localStorage.setItem(flagKey,t);}catch(e){}})
         .catch(e=>console.warn("Backend daily backup deferred:",e));
     }catch(e){console.warn("maybeDailyBackup:",e);}
@@ -527,6 +525,31 @@ function App(){
       await fbDb.ref(`users/${uid}/entries`).update(updates);
       alert("Restore complete. Your entries have been re-added.");
     }catch(e){console.warn("Restore failed:",e);alert("Restore failed: "+(e.message||e));}
+  },[user]);
+
+  // Download a lossless full backup (all entries incl. tombstones) as JSON.
+  const exportFullBackup=useCallback(()=>{
+    const all=[...entries,...deletedEntries];
+    const blob=new Blob([buildFullJSON(all)],{type:"application/json"});
+    const url=URL.createObjectURL(blob);const a=document.createElement("a");
+    a.href=url;a.download=`jivanlog-full-backup-${today()}.json`;document.body.appendChild(a);a.click();
+    setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},1000);
+  },[entries,deletedEntries]);
+
+  // Restore from a full JSON backup — additive .update() preserving ALL fields
+  // (including deleted/deletedAt). Never removes anything.
+  const importFullBackup=useCallback(async(jsonText)=>{
+    if(!user||user._offline){alert("Importing a backup needs an internet connection.");return;}
+    try{
+      const data=JSON.parse(jsonText);
+      const list=Array.isArray(data)?data:(data.entries||[]);
+      if(!list.length){alert("No entries found in that backup file.");return;}
+      if(!confirm(`Import ${list.length} entries from this backup?\n\nThis re-adds/updates entries by ID. It never deletes anything you already have.`))return;
+      const updates={};
+      list.forEach(e=>{const k=String(e.id||genId()).replace(/[\s.#$\[\]/]/g,"_");updates[k]={...e,id:k,date:normDate(e.date)};});
+      await fbDb.ref(`users/${user.uid}/entries`).update(updates);
+      alert(`✓ Imported ${list.length} entries.`);
+    }catch(e){console.warn("JSON import failed:",e);alert("Import failed: "+(e.message||e));}
   },[user]);
 
   // Flush pending offline queue to Firebase (called on reconnect or "Sync Now").
@@ -654,43 +677,94 @@ function App(){
     }
   },[entries,user]);
 
+  // SOFT DELETE — never hard-deletes. Writes a tombstone {deleted,deletedAt}.
+  // The entry stays in /entries (append-only) and in the mirror; it's just
+  // hidden from live views and moved to Trash, fully restorable.
   const deleteEntry=useCallback(id=>{
+    const target=entries.find(e=>e.id===id);
     const next=entries.filter(e=>e.id!==id);
     setEntries(next);
-    if(user){
-      const uid=user.uid;
-      // Drop it from the pending queue too (in case it was never synced).
-      removeFromQueue(uid,[id]);
-      saveMirror(uid,next);saveTodayCache(uid,next);saveDailyBackupLocal(uid,next);
-      setQueueSize(getOfflineQ(uid).length);
-      if(!user._offline){
-        // Delete the specific key from Firebase — .update() can't remove keys.
-        const k=id.replace(/[\s.#$\[\]/]/g,"_");
-        fbDb.ref(`users/${uid}/entries/${k}`).remove().catch(e=>console.warn("deleteEntry remote:",e));
-      }
+    if(!user)return;
+    const uid=user.uid;
+    const tomb={...(target||{id}),deleted:true,deletedAt:new Date().toISOString()};
+    setDeletedEntries(prev=>[...prev.filter(e=>e.id!==id),tomb]);
+    // Mirror keeps EVERYTHING (live + tombstones) so nothing is ever lost locally.
+    const mirror=getMirror(uid).filter(e=>e.id!==id);mirror.push(tomb);saveMirror(uid,mirror);
+    saveTodayCache(uid,next);saveDailyBackupLocal(uid,next);
+    const k=id.replace(/[\s.#$\[\]/]/g,"_");
+    if(!user._offline){
+      // Single-key .update() setting the tombstone — never .remove(), never collection-level.
+      fbDb.ref(`users/${uid}/entries/${k}`).update({deleted:true,deletedAt:tomb.deletedAt}).catch(e=>console.warn("deleteEntry tombstone:",e));
+    }else{
+      // Offline: queue the tombstone write so it syncs on reconnect.
+      const q=getOfflineQ(uid).filter(e=>e.id!==id);q.push(tomb);saveOfflineQ(uid,q);setQueueSize(q.length);
+    }
+  },[entries,user]);
+
+  // Restore a tombstoned entry from Trash.
+  const restoreEntry=useCallback(id=>{
+    const target=deletedEntries.find(e=>e.id===id);
+    if(!target||!user)return;
+    const uid=user.uid;
+    const revived={...target,deleted:false,restoredAt:new Date().toISOString()};
+    delete revived.deletedAt;
+    setDeletedEntries(prev=>prev.filter(e=>e.id!==id));
+    setEntries(prev=>[...prev.filter(e=>e.id!==id),revived]);
+    const mirror=getMirror(uid).filter(e=>e.id!==id);mirror.push(revived);saveMirror(uid,mirror);
+    const k=id.replace(/[\s.#$\[\]/]/g,"_");
+    if(!user._offline){
+      fbDb.ref(`users/${uid}/entries/${k}`).update({deleted:false,deletedAt:null,restoredAt:revived.restoredAt}).catch(e=>console.warn("restoreEntry:",e));
+    }else{
+      const q=getOfflineQ(uid).filter(e=>e.id!==id);q.push(revived);saveOfflineQ(uid,q);setQueueSize(q.length);
+    }
+  },[deletedEntries,user]);
+
+  // Move ALL live entries to Trash via per-entry tombstone .update() (batched
+  // multi-path update — additive only, never a node remove). Fully reversible.
+  const tombstoneAll=useCallback(()=>{
+    if(!user)return;
+    const uid=user.uid;
+    const now=new Date().toISOString();
+    const live=entries.slice();
+    if(!live.length)return;
+    const tombs=live.map(e=>({...e,deleted:true,deletedAt:now}));
+    setEntries([]);
+    setDeletedEntries(prev=>{const ex=new Set(tombs.map(t=>t.id));return[...prev.filter(e=>!ex.has(e.id)),...tombs];});
+    // Mirror keeps everything (now all tombstoned + any previously-deleted).
+    const prevDead=getMirror(uid).filter(e=>e.deleted&&!live.find(l=>l.id===e.id));
+    saveMirror(uid,[...prevDead,...tombs]);
+    saveTodayCache(uid,[]);saveDailyBackupLocal(uid,[]);
+    if(!user._offline){
+      const updates={};
+      tombs.forEach(t=>{const k=t.id.replace(/[\s.#$\[\]/]/g,"_");updates[k]={deleted:true,deletedAt:now};});
+      fbDb.ref(`users/${uid}/entries`).update(updates).catch(e=>console.warn("tombstoneAll:",e));
+    }else{
+      const q=getOfflineQ(uid);tombs.forEach(t=>q.push(t));saveOfflineQ(uid,q);setQueueSize(q.length);
     }
   },[entries,user]);
 
   const clearAll=useCallback(()=>{
-    if(!confirm("CLEAR ALL DATA?\n\nAll entries permanently deleted.\nBackup CSV downloads first.\n\nPress OK to continue."))return;
-    if(!confirm("FINAL CONFIRMATION\n\nPress OK to download backup then clear."))return;
-    downloadCSV(buildAllCSV(entries),`jivanlog-backup-${today()}.csv`);
-    if(user){deliberateClearRef.current=true;clearOfflineQ(user.uid);setQueueSize(0);saveMirror(user.uid,[]);setEntries([]);}
-    setTimeout(async()=>{if(user)try{await dbDel(user.uid,"entries");}catch(e){}},500);
-  },[entries,user]);
+    if(!confirm("Clear all entries?\n\nEntries are moved to Trash (not destroyed) and can be restored. A backup downloads first.\n\nPress OK to continue."))return;
+    if(!confirm("FINAL CONFIRMATION\n\nPress OK to download backup, then move all entries to Trash."))return;
+    downloadCSV(buildAllCSV([...entries,...deletedEntries]),`jivanlog-backup-${today()}.csv`);
+    tombstoneAll();
+  },[entries,deletedEntries,user,tombstoneAll]);
 
   const onClearAll=useCallback(async()=>{
-    downloadCSV(buildAllCSV(entries),`jivanlog-backup-full-${today()}.csv`);
-    if(user){deliberateClearRef.current=true;clearOfflineQ(user.uid);setQueueSize(0);saveMirror(user.uid,[]);setEntries([]);try{
-      await Promise.all([dbDel(user.uid,"entries"),dbDel(user.uid,"settings"),dbDel(user.uid,"defaults"),dbDel(user.uid,"theme"),dbDel(user.uid,"dayRolloverMin")]);
+    downloadCSV(buildAllCSV([...entries,...deletedEntries]),`jivanlog-backup-full-${today()}.csv`);
+    // Entries → Trash (reversible). Config is reset (factory-restorable).
+    tombstoneAll();
+    if(user){try{
+      await Promise.all([dbSet(user.uid,"settings",{foodCategories:[],liquidTypes:[],liquidNotes:{},liquidSubTypes:{},exerciseTypes:[],medicalPresets:[],medications:[]}),dbSet(user.uid,"defaults",{foodCategories:[],liquidTypes:[],liquidNotes:{},liquidSubTypes:{},exerciseTypes:[],medicalPresets:[],medications:[]}),dbSet(user.uid,"theme","system")]);
       const empty={foodCategories:[],liquidTypes:[],liquidNotes:{},liquidSubTypes:{},exerciseTypes:[],medicalPresets:[],medications:[]};
       setSettings({...empty});setDefaults({...empty});setTheme("system");setDayRolloverMinR(90);setDayRolloverCache(90);
     }catch(e){console.error(e);}}
-  },[entries,user]);
+  },[entries,deletedEntries,user,tombstoneAll]);
 
   const onClearEntries=useCallback(async()=>{
-    if(user){deliberateClearRef.current=true;clearOfflineQ(user.uid);setQueueSize(0);saveMirror(user.uid,[]);setEntries([]);try{await dbDel(user.uid,"entries");}catch(e){}}
-  },[user]);
+    // Move all live entries to Trash (reversible) — never a node remove.
+    tombstoneAll();
+  },[entries,user,tombstoneAll]);
 
   const onClearConfig=useCallback(async section=>{
     const emptyMap={
@@ -801,7 +875,7 @@ function App(){
         {page==="home"    &&<HomePage entries={entries} settings={settings} onAdd={addEntry} entryTime={entryTime} setEntryTime={setEntryTime} isOnline={isOnline} T={T}/>}
         {page==="manage"  &&<ManagePage entries={entries} settings={settings} onAddDirect={addEntryDirect} onUpdate={updateEntry} onDelete={deleteEntry} isOnline={isOnline} T={T}/>}
         {page==="reports" &&<ReportsPage entries={entries} settings={settings} isOnline={isOnline} T={T}/>}
-        {page==="settings"&&<SettingsPage settings={settings} defaults={defaults} theme={theme} setSettings={saveSettings} setDefaults={saveDefaults} setTheme={saveTheme} dayRolloverMin={dayRolloverMin} setDayRolloverMin={saveDayRollover} user={user} entries={entries} onImport={handleImport} clearAll={clearAll} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} onRestore={restoreFromBackup} offlineAuth={offlineAuth} T={T}/>}
+        {page==="settings"&&<SettingsPage settings={settings} defaults={defaults} theme={theme} setSettings={saveSettings} setDefaults={saveDefaults} setTheme={saveTheme} dayRolloverMin={dayRolloverMin} setDayRolloverMin={saveDayRollover} user={user} entries={entries} deletedEntries={deletedEntries} onRestoreEntry={restoreEntry} onExportJSON={exportFullBackup} onImportJSON={importFullBackup} onImport={handleImport} clearAll={clearAll} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} onRestore={restoreFromBackup} offlineAuth={offlineAuth} T={T}/>}
       </div>
 
       <nav style={{display:"flex",background:T.navBg,borderTop:`1px solid ${T.border}`,flexShrink:0,alignItems:"center"}}>
@@ -1536,7 +1610,49 @@ function importConfigCSV(csvText){
   return result;
 }
 
-function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,dayRolloverMin,setDayRolloverMin,user,entries,onImport,onImportConfig,onClearEntries,onClearConfig,onClearAll,onRestore,offlineAuth,T}){
+function DataSafetyCard({entries,deletedEntries,onRestoreEntry,onExportJSON,onImportJSON,onRestore,offlineAuth,T}){
+  const[showTrash,setShowTrash]=React.useState(false);
+  const jsonInputRef=React.useRef(null);
+  const dead=(deletedEntries||[]).slice().sort((a,b)=>new Date(b.deletedAt||0)-new Date(a.deletedAt||0));
+  const label=e=>{
+    if(e.type==="meal")return`${e.mealType||"Meal"} · ${e.food||""}`;
+    if(e.type==="liquid")return`${e.liquidType||"Drink"}${e.ml?" · "+e.ml+"ml":""}`;
+    if(e.type==="exercise")return`${e.exType||"Exercise"}`;
+    if(e.type==="medical")return`${e.readingType||"Reading"} · ${e.value||""}${e.unit?" "+e.unit:""}`;
+    if(e.type==="medication")return`${e.med||"Med"}`;
+    return e.type||"Entry";
+  };
+  const onPickJSON=ev=>{const f=ev.target.files[0];if(!f)return;const r=new FileReader();r.onload=x=>onImportJSON(x.target.result);r.readAsText(f);ev.target.value="";};
+  const btn={width:"100%",padding:"9px 10px",borderRadius:8,fontFamily:"inherit",fontWeight:600,fontSize:"0.82rem",cursor:"pointer",marginTop:8};
+  return(
+    <div className="card">
+      <div className="slabel">🛟 Data Safety</div>
+      <div style={{fontSize:"0.72rem",color:T.textMuted,marginBottom:4,lineHeight:1.5}}>Nothing is ever permanently deleted. Removed entries go to Trash and can be restored. Daily backups are kept on this device and in the cloud.</div>
+      <button onClick={onExportJSON} style={{...btn,border:`1px solid ${T.border}`,background:T.inputBg,color:T.text}}>⬇️ Download full backup (JSON)</button>
+      <button onClick={()=>jsonInputRef.current&&jsonInputRef.current.click()} disabled={offlineAuth} style={{...btn,border:`1px solid ${T.border}`,background:offlineAuth?T.cardBg:T.inputBg,color:offlineAuth?T.textMuted:T.text,cursor:offlineAuth?"not-allowed":"pointer"}}>⬆️ Import backup (JSON)</button>
+      <input ref={jsonInputRef} type="file" accept="application/json,.json" onChange={onPickJSON} style={{display:"none"}}/>
+      <button onClick={onRestore} disabled={offlineAuth} style={{...btn,border:`1px solid ${T.accentBtn}`,background:offlineAuth?T.cardBg:T.accentBg,color:offlineAuth?T.textMuted:T.accent,cursor:offlineAuth?"not-allowed":"pointer"}}>♻️ Restore from daily backup</button>
+      <button onClick={()=>setShowTrash(s=>!s)} style={{...btn,border:`1px solid ${T.border}`,background:T.inputBg,color:T.text}}>🗑️ Trash {dead.length?`(${dead.length})`:""} {showTrash?"▲":"▼"}</button>
+      {showTrash&&(dead.length?
+        <div style={{marginTop:8,maxHeight:260,overflowY:"auto",border:`1px solid ${T.border}`,borderRadius:8}}>
+          {dead.map(e=>(
+            <div key={e.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"7px 9px",borderBottom:`1px solid ${T.border}`}}>
+              <div style={{minWidth:0}}>
+                <div style={{fontSize:"0.78rem",color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{label(e)}</div>
+                <div style={{fontSize:"0.66rem",color:T.textMuted}}>{normDate(e.date)} · deleted {e.deletedAt?new Date(e.deletedAt).toLocaleString():""}</div>
+              </div>
+              <button onClick={()=>onRestoreEntry(e.id)} disabled={offlineAuth} style={{flexShrink:0,padding:"4px 10px",borderRadius:6,border:"none",background:offlineAuth?T.cardBg:T.accentBtn,color:offlineAuth?T.textMuted:"#fff",fontFamily:"inherit",fontWeight:600,fontSize:"0.72rem",cursor:offlineAuth?"not-allowed":"pointer"}}>Restore</button>
+            </div>
+          ))}
+        </div>
+        :<div style={{fontSize:"0.72rem",color:T.textMuted,marginTop:8,padding:"6px 2px"}}>Trash is empty.</div>
+      )}
+      {offlineAuth&&<div style={{fontSize:"0.68rem",color:T.textMuted,marginTop:8}}>Cloud restore/import needs an internet connection. (Download backup works offline.)</div>}
+    </div>
+  );
+}
+
+function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,dayRolloverMin,setDayRolloverMin,user,entries,deletedEntries,onRestoreEntry,onExportJSON,onImportJSON,onImport,onImportConfig,onClearEntries,onClearConfig,onClearAll,onRestore,offlineAuth,T}){
   const[stab,setStab]=useState("general");const[ctab,setCtab]=useState("food");const[newItem,setNewItem]=useState("");const[applyFlash,setApplyFlash]=useState(false);
   const active=defaults;
   const updateActive=updater=>setDefaults(typeof updater==="function"?updater(defaults):updater);
@@ -1564,7 +1680,7 @@ function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,
       </div>
       <div className="card"><div className="slabel">🎨 Theme</div><div style={{display:"flex",gap:6}}>{[["dark","🌙 Dark"],["light","☀️ Light"],["system","💻 System"]].map(([m,l])=><button key={m} onClick={()=>setTheme(m)} style={{flex:1,padding:"7px 4px",borderRadius:8,border:"1px solid",fontSize:"0.78rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit",borderColor:theme===m?T.accentBtn:T.border,background:theme===m?T.accentBg:T.cardBg,color:theme===m?T.accent:T.textMuted}}>{l}</button>)}</div></div>
       <div className="card"><div className="slabel">🌙 Day Rollover</div><div style={{fontSize:"0.72rem",color:T.textMuted,marginBottom:8,lineHeight:1.5}}>Entries logged before this time still count toward the previous day — useful on nights you're up late.</div><select value={dayRolloverMin} onChange={e=>setDayRolloverMin(parseInt(e.target.value,10))} style={{width:"100%",padding:"9px 10px",borderRadius:8,border:`1px solid ${T.border}`,background:T.inputBg,color:T.text,fontFamily:"inherit",fontSize:"0.85rem"}}>{[[0,"Midnight (12:00 AM)"],[30,"12:30 AM"],[60,"1:00 AM"],[90,"1:30 AM"],[120,"2:00 AM"],[150,"2:30 AM"],[180,"3:00 AM"],[240,"4:00 AM"]].map(([m,l])=><option key={m} value={m}>{l}</option>)}</select></div>
-      <div className="card"><div className="slabel">🛟 Data Safety</div><div style={{fontSize:"0.72rem",color:T.textMuted,marginBottom:8,lineHeight:1.5}}>A backup of each day's entries is kept automatically — on this device and in a separate cloud location. If entries ever go missing, restore re-adds them without deleting anything you still have.</div><button onClick={onRestore} disabled={offlineAuth} style={{width:"100%",padding:"9px 10px",borderRadius:8,border:`1px solid ${T.accentBtn}`,background:offlineAuth?T.cardBg:T.accentBg,color:offlineAuth?T.textMuted:T.accent,fontFamily:"inherit",fontWeight:600,fontSize:"0.84rem",cursor:offlineAuth?"not-allowed":"pointer"}}>♻️ Restore from daily backup</button>{offlineAuth&&<div style={{fontSize:"0.68rem",color:T.textMuted,marginTop:6}}>Restore needs an internet connection.</div>}</div>
+      <DataSafetyCard entries={entries} deletedEntries={deletedEntries} onRestoreEntry={onRestoreEntry} onExportJSON={onExportJSON} onImportJSON={onImportJSON} onRestore={onRestore} offlineAuth={offlineAuth} T={T}/>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"10px 0 6px"}}>
         <div className="slabel" style={{marginBottom:0}}>⚙️ Default Config</div>
         <div style={{display:"flex",gap:6}}>
