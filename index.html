@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.65";
+const APP_VERSION="v4.66";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -1494,7 +1494,7 @@ function ReportsPage({entries,settings,isOnline,T}){
 // ═══════════════════════════════════════════════════════════════════════════════
 // SETTINGS
 // ═══════════════════════════════════════════════════════════════════════════════
-const STABS=[["general","General"],["backup","💾 Backup"]];
+const STABS=[["general","⚙️ General"],["config","🗂️ Config"],["backup","💾 Backup & Restore"]];
 const CTABS=[["food","🍽️ Food"],["drinks","☕ Drinks"],["exercise","🏃 Exercise"],["medical","🩺 Medical"],["meds","💊 Meds"]];
 
 
@@ -1675,16 +1675,17 @@ function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,
       <div className="card" style={{display:"flex",alignItems:"center",gap:12,padding:"10px 13px"}}>
         {user.photoURL&&<img src={user.photoURL} style={{width:38,height:38,borderRadius:"50%",border:`2px solid ${T.accentBtn}`}} alt="avatar"/>}
         <div style={{flex:1}}><div style={{fontWeight:600,fontSize:"0.88rem"}}>{user.displayName||"User"}</div><div style={{fontSize:"0.72rem",color:T.textMuted}}>{user.email}</div></div>
-        
         <div style={{fontSize:"0.62rem",color:T.border,fontFamily:"'DM Mono',monospace",marginLeft:4,alignSelf:"flex-end"}}>{APP_VERSION}</div>
       </div>
       <div className="card"><div className="slabel">🎨 Theme</div><div style={{display:"flex",gap:6}}>{[["dark","🌙 Dark"],["light","☀️ Light"],["system","💻 System"]].map(([m,l])=><button key={m} onClick={()=>setTheme(m)} style={{flex:1,padding:"7px 4px",borderRadius:8,border:"1px solid",fontSize:"0.78rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit",borderColor:theme===m?T.accentBtn:T.border,background:theme===m?T.accentBg:T.cardBg,color:theme===m?T.accent:T.textMuted}}>{l}</button>)}</div></div>
       <div className="card"><div className="slabel">🌙 Day Rollover</div><div style={{fontSize:"0.72rem",color:T.textMuted,marginBottom:8,lineHeight:1.5}}>Entries logged before this time still count toward the previous day — useful on nights you're up late.</div><select value={dayRolloverMin} onChange={e=>setDayRolloverMin(parseInt(e.target.value,10))} style={{width:"100%",padding:"9px 10px",borderRadius:8,border:`1px solid ${T.border}`,background:T.inputBg,color:T.text,fontFamily:"inherit",fontSize:"0.85rem"}}>{[[0,"Midnight (12:00 AM)"],[30,"12:30 AM"],[60,"1:00 AM"],[90,"1:30 AM"],[120,"2:00 AM"],[150,"2:30 AM"],[180,"3:00 AM"],[240,"4:00 AM"]].map(([m,l])=><option key={m} value={m}>{l}</option>)}</select></div>
-      <DataSafetyCard entries={entries} deletedEntries={deletedEntries} onRestoreEntry={onRestoreEntry} onExportJSON={onExportJSON} onImportJSON={onImportJSON} onRestore={onRestore} offlineAuth={offlineAuth} T={T}/>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"10px 0 6px"}}>
-        <div className="slabel" style={{marginBottom:0}}>⚙️ Default Config</div>
+    </>}
+
+    {stab==="config"&&<>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"4px 0 8px"}}>
+        <div className="slabel" style={{marginBottom:0}}>🗂️ Config Lists</div>
         <div style={{display:"flex",gap:6}}>
-          <button onClick={()=>{if(!confirm("Reset all config to factory defaults?\n\nThis restores all original built-in lists."))return;updateActive(()=>deepClone(FD));}} style={{padding:"5px 12px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontFamily:"inherit",fontWeight:600,fontSize:"0.79rem",cursor:"pointer"}}>↺ Reset to Factory</button>
+          <button onClick={()=>{if(!confirm("Reset all config to factory defaults?\n\nThis restores all original built-in lists."))return;updateActive(()=>deepClone(FD));}} style={{padding:"5px 12px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontFamily:"inherit",fontWeight:600,fontSize:"0.79rem",cursor:"pointer"}}>↺ Factory</button>
           <button onClick={applyToSettings} style={{padding:"5px 14px",borderRadius:8,border:"none",background:applyFlash?T.ok:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:600,fontSize:"0.79rem",cursor:"pointer",transition:"background 0.3s"}}>{applyFlash?"✔ Applied!":"Apply ▶"}</button>
         </div>
       </div>
@@ -1698,136 +1699,230 @@ function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,
       {ctab==="meds"&&<EList items={active.medications||FD.medications} onRemove={item=>removeItem("medications",item)} onReorder={arr=>updateActive(p=>({...p,medications:arr}))} icons={active.medicationIcons||{}} onIconUpdate={(name,ic)=>updateActive(p=>({...p,medicationIcons:{...(p.medicationIcons||{}),[name]:ic}}))} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("medications")} T={T}/>}
     </>}
 
-    {stab==="backup"&&<BackupPanel entries={entries} settings={settings} defaults={defaults} onImport={onImport} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} T={T}/>}
+    {stab==="backup"&&<BackupPanel entries={entries} deletedEntries={deletedEntries} settings={settings} defaults={defaults} onImport={onImport} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} onRestoreEntry={onRestoreEntry} onExportJSON={onExportJSON} onImportJSON={onImportJSON} onRestore={onRestore} offlineAuth={offlineAuth} T={T}/>}
   </div>);
 }
 
-function BackupPanel({entries,settings,defaults,onImport,onImportConfig,onClearEntries,onClearConfig,onClearAll,T}){
+function BackupPanel({entries,deletedEntries,settings,defaults,onImport,onImportConfig,onClearEntries,onClearConfig,onClearAll,onRestoreEntry,onExportJSON,onImportJSON,onRestore,offlineAuth,T}){
   const dataRef=useRef();
   const cfgRef=useRef();
-  const[section,setSection]=useState("entries"); // entries | config
-  const[cfgSub,setCfgSub]=useState("all");       // all | food | drinks | exercise | medical | meds
-  const[entrySub,setEntrySub]=useState("all");   // all | meal | liquid | exercise | medical | medication
+  const jsonRef=useRef();
+  const[section,setSection]=useState("data");  // data | config | restore
+  const[cfgSub,setCfgSub]=useState("all");
+  const[entrySub,setEntrySub]=useState("all");
   const[showClear,setShowClear]=useState(false);
 
-  const ENTRY_SUBS=[["all","All entries"],["meal","🍽️ Food"],["liquid","💧 Drinks"],["exercise","🏃 Exercise"],["medical","🩺 Medical"],["medication","💊 Meds"]];
-  const CFG_SUBS=[["all","All config"],["food","🍽️ Food"],["drinks","💧 Drinks"],["exercise","🏃 Exercise"],["medical","🩺 Medical Readings"],["meds","💊 Medications"]];
+  // ── Local daily backup status ────────────────────────────────────────────
+  const[localBk,setLocalBk]=useState(null);
+  useEffect(()=>{
+    try{
+      const uid=entries.length>0?(entries[0]&&window._jivanUid)||"":"";
+      // Read from all possible localStorage keys for this user
+      for(let i=0;i<localStorage.length;i++){
+        const k=localStorage.key(i);
+        if(k&&k.startsWith("jivanlog-dailyBackup-")){
+          const v=JSON.parse(localStorage.getItem(k)||"null");
+          if(v)setLocalBk(v);
+          break;
+        }
+      }
+    }catch(e){}
+  },[]);
+
+  const ENTRY_SUBS=[["all","All"],["meal","🍽️ Meals"],["liquid","💧 Drinks"],["exercise","🏃 Exercise"],["medical","🩺 Medical"],["medication","💊 Meds"]];
+  const CFG_SUBS=[["all","All"],["food","🍽️ Food"],["drinks","💧 Drinks"],["exercise","🏃 Exercise"],["medical","🩺 Medical"],["meds","💊 Meds"]];
   const CLEAR_OPTS=[
-    {key:"all",   label:"⚠️ Clear EVERYTHING",  desc:"All entries + all config + theme. Full reset.",danger:true},
-    {key:"entries",label:"🗑️ Clear all entries", desc:"Delete all logged entries. Config is kept."},
-    {key:"food",   label:"🍽️ Clear Food config",    desc:"Delete all food items. List becomes empty. Entries are kept."},
-    {key:"drinks", label:"💧 Clear Drinks config",  desc:"Delete all drink types. List becomes empty. Entries are kept."},
-    {key:"exercise",label:"🏃 Clear Exercise config",desc:"Delete all exercise types. List becomes empty. Entries are kept."},
-    {key:"medical",label:"🩺 Clear Medical config",  desc:"Delete all medical reading types. List becomes empty. Entries are kept."},
-    {key:"meds",   label:"💊 Clear Meds config",     desc:"Delete all medications. List becomes empty. Entries are kept."},
+    {key:"all",   label:"⚠️ Clear EVERYTHING",  desc:"All entries moved to Trash + all config reset to factory.",danger:true},
+    {key:"entries",label:"🗑️ Clear all entries", desc:"All entries moved to Trash. Config is kept."},
+    {key:"food",   label:"🍽️ Clear Food config",    desc:"Food list emptied. Entries unaffected."},
+    {key:"drinks", label:"💧 Clear Drinks config",  desc:"Drinks list emptied. Entries unaffected."},
+    {key:"exercise",label:"🏃 Clear Exercise config",desc:"Exercise types emptied. Entries unaffected."},
+    {key:"medical",label:"🩺 Clear Medical config",  desc:"Medical presets emptied. Entries unaffected."},
+    {key:"meds",   label:"💊 Clear Meds config",     desc:"Medications list emptied. Entries unaffected."},
   ];
 
-  const doExport=()=>{
-    if(section==="entries"){
-      const filtered=entrySub==="all"?entries:entries.filter(e=>e.type===entrySub);
-      const label=entrySub==="all"?"all":entrySub;
-      downloadCSV(buildAllCSV(filtered),`jivanlog-entries-${label}-${today()}.csv`);
-    } else {
-      downloadCSV(exportConfigCSV(settings,cfgSub),`jivanlog-config-${cfgSub}-${today()}.csv`);
-    }
+  const doExportCSV=()=>{
+    const all=[...entries,...(deletedEntries||[])];
+    const filtered=entrySub==="all"?all:all.filter(e=>e.type===entrySub);
+    downloadCSV(buildAllCSV(filtered),`jivanlog-data-${entrySub}-${today()}.csv`);
   };
+  const doExportCfgCSV=()=>downloadCSV(exportConfigCSV(settings,cfgSub),`jivanlog-config-${cfgSub}-${today()}.csv`);
 
   const handleDataFile=e=>{
     const f=e.target.files[0];if(!f)return;
     const r=new FileReader();
-    r.onload=ev=>{
-      if(section==="entries")onImport(ev.target.result);
-      else{try{const cfg=importConfigCSV(ev.target.result);onImportConfig(cfg);}catch(err){alert("Import failed: "+err.message);}}
-    };
-    r.readAsText(f);
-    e.target.value="";
+    r.onload=ev=>onImport(ev.target.result);
+    r.readAsText(f);e.target.value="";
   };
-
+  const handleCfgFile=e=>{
+    const f=e.target.files[0];if(!f)return;
+    const r=new FileReader();
+    r.onload=ev=>{try{const cfg=importConfigCSV(ev.target.result);onImportConfig(cfg);}catch(err){alert("Config import failed: "+err.message);}};
+    r.readAsText(f);e.target.value="";
+  };
+  const handleJSONFile=e=>{
+    const f=e.target.files[0];if(!f)return;
+    const r=new FileReader();
+    r.onload=ev=>onImportJSON(ev.target.result);
+    r.readAsText(f);e.target.value="";
+  };
   const doClear=key=>{
     const opt=CLEAR_OPTS.find(o=>o.key===key);
-    const msg=key==="all"
-      ?"CLEAR EVERYTHING?\n\nThis deletes ALL entries AND resets ALL config to factory defaults.\n\nThis CANNOT be undone. Export a backup first."
-      :`${opt.label}\n\n${opt.desc}\n\nThis cannot be undone.`;
-    if(!confirm(msg))return;
+    if(!confirm(opt.label+"\n\n"+opt.desc+"\n\nPress OK to confirm."))return;
     if(key==="all"){if(!confirm("FINAL CONFIRMATION — press OK to clear everything."))return;onClearAll();}
-    else if(key==="entries"){if(!confirm("FINAL CONFIRMATION — delete all entries?"))return;onClearEntries();}
+    else if(key==="entries"){if(!confirm("FINAL CONFIRMATION — move all entries to Trash?"))return;onClearEntries();}
     else onClearConfig(key);
     setShowClear(false);
   };
 
-  const SubBtn=({val,label,cur,set})=>(
-    <button onClick={()=>set(val)} className={`tbtn${cur===val?" on":""}`} style={{fontSize:"0.72rem",padding:"4px 8px",flexShrink:0}}>{label}</button>
+  const Pill=({val,label,cur,set})=>(
+    <button onClick={()=>set(val)} className={`tbtn${cur===val?" on":""}`} style={{fontSize:"0.72rem",padding:"4px 9px",flexShrink:0}}>{label}</button>
+  );
+  const SecBtn=({val,label})=>(
+    <button onClick={()=>setSection(val)} className={`tbtn${section===val?" on":""}`} style={{flex:1,fontWeight:600,fontSize:"0.8rem"}}>{label}</button>
+  );
+  const Row=({label,children})=>(
+    <div style={{marginBottom:8}}>
+      <div className="slabel">{label}</div>
+      {children}
+    </div>
   );
 
+  const liveCount=entries.length;
+  const deadCount=(deletedEntries||[]).length;
+
   return(<div>
-    {/* ── Section toggle ── */}
-    <div style={{display:"flex",gap:5,marginBottom:10}}>
-      {[["entries","📋 Entries"],["config","⚙️ Config"]].map(([k,l])=>(
-        <button key={k} onClick={()=>setSection(k)} className={`tbtn${section===k?" on":""}`} style={{flex:1,fontWeight:600}}>{l}</button>
-      ))}
+    {/* ── Section tabs ── */}
+    <div style={{display:"flex",gap:4,marginBottom:12}}>
+      <SecBtn val="data"    label="📊 Data"/>
+      <SecBtn val="config"  label="⚙️ Config"/>
+      <SecBtn val="restore" label="🛟 Restore"/>
     </div>
 
-    {/* ── Sub-section pills ── */}
-    <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:10}}>
-      {(section==="entries"?ENTRY_SUBS:CFG_SUBS).map(([k,l])=>(
-        <SubBtn key={k} val={k} label={l} cur={section==="entries"?entrySub:cfgSub} set={section==="entries"?setEntrySub:setCfgSub}/>
-      ))}
-    </div>
-
-    {/* ── Export ── */}
-    <div className="slabel">⬇️ Export</div>
-    <div className="card" style={{marginBottom:8}}>
-      <div style={{fontSize:"0.76rem",color:T.textSub,marginBottom:8,lineHeight:1.5}}>
-        {section==="entries"
-          ?`Export ${entrySub==="all"?"all entries":entrySub+" entries"} as CSV. You can edit and re-import.`
-          :`Export ${cfgSub==="all"?"all config":cfgSub+" config"} as CSV. Edit in Excel/Sheets, re-import to restore.`}
-      </div>
-      <button onClick={doExport} style={{width:"100%",padding:"10px",borderRadius:9,border:"none",background:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:600,fontSize:"0.85rem",cursor:"pointer"}}>
-        ⬇️ Download CSV
-      </button>
-    </div>
-
-    {/* ── Import ── */}
-    <div className="slabel">⬆️ Import</div>
-    <div className="card" style={{marginBottom:8}}>
-      <div style={{fontSize:"0.76rem",color:T.textSub,marginBottom:8,lineHeight:1.5}}>
-        {section==="entries"
-          ?"Import from a previously exported CSV. Duplicate IDs are skipped."
-          :"Import from a previously exported config CSV. Existing lists will be replaced."}
-      </div>
-      <button onClick={()=>dataRef.current.click()} style={{width:"100%",padding:"10px",borderRadius:9,border:`1px solid ${T.accentBtn}`,background:"transparent",color:T.accent,fontFamily:"inherit",fontWeight:600,fontSize:"0.85rem",cursor:"pointer"}}>
-        ⬆️ Select CSV file…
-      </button>
-      <input ref={dataRef} type="file" accept=".csv" style={{display:"none"}} onChange={handleDataFile}/>
-    </div>
-
-    {/* ── Clear / Danger Zone ── */}
-    <div style={{marginTop:14}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
-        <div className="slabel" style={{marginBottom:0,color:T.danger}}>⚠️ Clear & Reset</div>
-        <button onClick={()=>setShowClear(v=>!v)} style={{fontSize:"0.72rem",padding:"3px 10px",borderRadius:7,border:`1px solid ${T.danger}`,background:"transparent",color:T.danger,cursor:"pointer",fontFamily:"inherit"}}>
-          {showClear?"Hide":"Show options"}
-        </button>
-      </div>
-      {showClear&&<div className="card" style={{border:`1px solid ${T.danger}44`}}>
-        {CLEAR_OPTS.map(opt=>(
-          <div key={opt.key} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${T.border}22`}}>
-            <div>
-              <div style={{fontSize:"0.82rem",fontWeight:600,color:opt.danger?T.danger:T.text}}>{opt.label}</div>
-              <div style={{fontSize:"0.7rem",color:T.textMuted}}>{opt.desc}</div>
+    {/* ══════════════ DATA BACKUP ══════════════ */}
+    {section==="data"&&<>
+      {/* Status card */}
+      <div className="card" style={{marginBottom:8}}>
+        <div className="slabel">📊 Data status</div>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:"0.78rem",color:T.text,lineHeight:2}}>
+          <span>✅ Live entries</span><span style={{fontWeight:600}}>{liveCount}</span>
+        </div>
+        <div style={{display:"flex",justifyContent:"space-between",fontSize:"0.78rem",color:T.textMuted,lineHeight:2}}>
+          <span>🗑️ In Trash</span><span>{deadCount}</span>
+        </div>
+        {localBk&&<>
+          <div style={{borderTop:`1px solid ${T.border}`,marginTop:6,paddingTop:6}}>
+            <div style={{fontSize:"0.7rem",color:T.textMuted}}>📱 Last device backup</div>
+            <div style={{fontSize:"0.72rem",color:T.text,marginTop:2}}>
+              {localBk.date} · {(localBk.entries||[]).length} today's entries · saved {localBk.savedAt?new Date(localBk.savedAt).toLocaleTimeString():""}
             </div>
-            <button onClick={()=>doClear(opt.key)} style={{flexShrink:0,marginLeft:10,padding:"5px 11px",borderRadius:8,border:`1px solid ${opt.danger?T.danger:T.border}`,background:"transparent",color:opt.danger?T.danger:T.textMuted,cursor:"pointer",fontFamily:"inherit",fontWeight:600,fontSize:"0.75rem"}}>
-              Clear
-            </button>
           </div>
-        ))}
-      </div>}
-    </div>
+        </>}
+      </div>
+
+      {/* Filter pills */}
+      <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}}>
+        {ENTRY_SUBS.map(([k,l])=><Pill key={k} val={k} label={l} cur={entrySub} set={setEntrySub}/>)}
+      </div>
+
+      <Row label="⬇️ Export data">
+        <div className="card">
+          <div style={{fontSize:"0.73rem",color:T.textMuted,marginBottom:8,lineHeight:1.5}}>
+            CSV export — {entrySub==="all"?"all entries including Trash":entrySub+" entries"}. Includes Deleted and DeletedAt columns so Trash entries are preserved in the file.
+          </div>
+          <button onClick={doExportCSV} style={{width:"100%",padding:"9px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:600,fontSize:"0.82rem",cursor:"pointer",marginBottom:6}}>
+            ⬇️ Download CSV ({liveCount+deadCount} entries)
+          </button>
+          <button onClick={onExportJSON} style={{width:"100%",padding:"9px",borderRadius:8,border:`1px solid ${T.accentBtn}`,background:"transparent",color:T.accent,fontFamily:"inherit",fontWeight:600,fontSize:"0.82rem",cursor:"pointer"}}>
+            ⬇️ Download full backup JSON
+          </button>
+        </div>
+      </Row>
+
+      <Row label="⬆️ Import data">
+        <div className="card">
+          <div style={{fontSize:"0.73rem",color:T.textMuted,marginBottom:8,lineHeight:1.5}}>Import a CSV or JSON backup. Existing entries are never overwritten — only new IDs are added.</div>
+          <button onClick={()=>dataRef.current&&dataRef.current.click()} style={{width:"100%",padding:"9px",borderRadius:8,border:`1px solid ${T.border}`,background:T.inputBg,color:T.text,fontFamily:"inherit",fontWeight:600,fontSize:"0.82rem",cursor:"pointer",marginBottom:6}}>
+            ⬆️ Import CSV
+          </button>
+          <button onClick={()=>jsonRef.current&&jsonRef.current.click()} disabled={offlineAuth} style={{width:"100%",padding:"9px",borderRadius:8,border:`1px solid ${T.border}`,background:offlineAuth?T.cardBg:T.inputBg,color:offlineAuth?T.textMuted:T.text,fontFamily:"inherit",fontWeight:600,fontSize:"0.82rem",cursor:offlineAuth?"not-allowed":"pointer"}}>
+            ⬆️ Import JSON backup
+          </button>
+          <input ref={dataRef} type="file" accept=".csv" onChange={handleDataFile} style={{display:"none"}}/>
+          <input ref={jsonRef} type="file" accept="application/json,.json" onChange={handleJSONFile} style={{display:"none"}}/>
+        </div>
+      </Row>
+
+      <Row label="⚠️ Clear entries">
+        <div className="card">
+          {!showClear
+            ?<button onClick={()=>setShowClear(true)} style={{width:"100%",padding:"9px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontFamily:"inherit",fontWeight:600,fontSize:"0.82rem",cursor:"pointer"}}>Show clear options…</button>
+            :<div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {CLEAR_OPTS.filter(o=>o.key==="entries"||o.key==="all").map(o=>(
+                <button key={o.key} onClick={()=>doClear(o.key)} style={{width:"100%",padding:"8px",borderRadius:8,border:`1px solid ${o.danger?"#ef4444":T.border}`,background:"transparent",color:o.danger?"#ef4444":T.text,fontFamily:"inherit",fontWeight:600,fontSize:"0.78rem",cursor:"pointer",textAlign:"left"}}>
+                  {o.label}<div style={{fontSize:"0.66rem",fontWeight:400,color:T.textMuted,marginTop:2}}>{o.desc}</div>
+                </button>
+              ))}
+              <button onClick={()=>setShowClear(false)} style={{padding:"6px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontFamily:"inherit",fontSize:"0.78rem",cursor:"pointer"}}>Cancel</button>
+            </div>
+          }
+        </div>
+      </Row>
+    </>}
+
+    {/* ══════════════ CONFIG BACKUP ══════════════ */}
+    {section==="config"&&<>
+      <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}}>
+        {CFG_SUBS.map(([k,l])=><Pill key={k} val={k} label={l} cur={cfgSub} set={setCfgSub}/>)}
+      </div>
+
+      <Row label="⬇️ Export config">
+        <div className="card">
+          <div style={{fontSize:"0.73rem",color:T.textMuted,marginBottom:8,lineHeight:1.5}}>
+            Download your {cfgSub==="all"?"complete config":(cfgSub+" config")} as CSV. Keep a copy before making changes.
+          </div>
+          <button onClick={doExportCfgCSV} style={{width:"100%",padding:"9px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:600,fontSize:"0.82rem",cursor:"pointer"}}>
+            ⬇️ Download config CSV
+          </button>
+        </div>
+      </Row>
+
+      <Row label="⬆️ Import config">
+        <div className="card">
+          <div style={{fontSize:"0.73rem",color:T.textMuted,marginBottom:8,lineHeight:1.5}}>
+            Import a previously exported config CSV. Matching sections will be replaced.
+          </div>
+          <button onClick={()=>cfgRef.current&&cfgRef.current.click()} style={{width:"100%",padding:"9px",borderRadius:8,border:`1px solid ${T.border}`,background:T.inputBg,color:T.text,fontFamily:"inherit",fontWeight:600,fontSize:"0.82rem",cursor:"pointer"}}>
+            ⬆️ Select config CSV…
+          </button>
+          <input ref={cfgRef} type="file" accept=".csv" onChange={handleCfgFile} style={{display:"none"}}/>
+        </div>
+      </Row>
+
+      <Row label="⚠️ Clear config">
+        <div className="card">
+          {!showClear
+            ?<button onClick={()=>setShowClear(true)} style={{width:"100%",padding:"9px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontFamily:"inherit",fontWeight:600,fontSize:"0.82rem",cursor:"pointer"}}>Show clear options…</button>
+            :<div style={{display:"flex",flexDirection:"column",gap:6}}>
+              {CLEAR_OPTS.filter(o=>!["all","entries"].includes(o.key)).map(o=>(
+                <button key={o.key} onClick={()=>doClear(o.key)} style={{width:"100%",padding:"8px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.text,fontFamily:"inherit",fontWeight:600,fontSize:"0.78rem",cursor:"pointer",textAlign:"left"}}>
+                  {o.label}<div style={{fontSize:"0.66rem",fontWeight:400,color:T.textMuted,marginTop:2}}>{o.desc}</div>
+                </button>
+              ))}
+              <button onClick={()=>setShowClear(false)} style={{padding:"6px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontFamily:"inherit",fontSize:"0.78rem",cursor:"pointer"}}>Cancel</button>
+            </div>
+          }
+        </div>
+      </Row>
+    </>}
+
+    {/* ══════════════ RESTORE & SAFETY ══════════════ */}
+    {section==="restore"&&<DataSafetyCard entries={entries} deletedEntries={deletedEntries} onRestoreEntry={onRestoreEntry} onExportJSON={onExportJSON} onImportJSON={onImportJSON} onRestore={onRestore} offlineAuth={offlineAuth} T={T}/>}
+
   </div>);
 }
 
 
-// ── Settings sub-components ───────────────────────────────────────────────────
 function MedicalPresetSetting({presets,onAdd,onRemove,onReorder,onUpdate,T}){
   const[nm,setNm]=useState("");const[ut,setUt]=useState("");
   const add=()=>{if(!nm.trim())return;onAdd(nm.trim(),ut.trim());setNm("");setUt("");};
