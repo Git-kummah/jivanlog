@@ -97,8 +97,8 @@ const foodItems=arr=>(arr||[]).map(f=>typeof f==="string"?{name:f,note:"",subTyp
 // status can never be lost or revoked by any DB write, bad import, or bug.
 // To find your UID: Firebase Console → Authentication → Users tab → copy the
 // "User UID" value for your row. Paste it below, replacing the placeholder.
-const SUPERADMIN_UID="REPLACE_WITH_YOUR_FIREBASE_UID";
-const isSuperAdmin=uid=>!!uid&&SUPERADMIN_UID!=="REPLACE_WITH_YOUR_FIREBASE_UID"&&uid===SUPERADMIN_UID;
+const SUPERADMIN_UID="JVrBRWCGlUhlHrWO3U5rjC3E9GH3";
+const isSuperAdmin=uid=>!!uid&&SUPERADMIN_UID!=="JVrBRWCGlUhlHrWO3U5rjC3E9GH3"&&uid===SUPERADMIN_UID;
 // Sanitize an email into a safe Firebase key (keys can't contain . # $ [ ] /).
 const emailKey=email=>(email||"").trim().toLowerCase().replace(/[.#$\[\]/]/g,"_");
 
