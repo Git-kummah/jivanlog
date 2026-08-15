@@ -10,14 +10,14 @@
   <meta name="theme-color" content="#0a1628"/>
   <title>JivanLog</title>
   <link rel="manifest" href="manifest.json"/>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check-compat.js"></script>
-  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" integrity="sha384-AQ3POAMqIhwS81FrUH95ekxqBZHeP5tG2JfEL3+7GuTtfRLWnrRh32UxwzM+//A9" crossorigin="anonymous"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" integrity="sha384-TnlRYaR4JYz/lpaGuaiU61PjNberSA4vjLjtF+oRC/IkohkJqnWxw5EmDSOt1vA1" crossorigin="anonymous"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js" integrity="sha384-1/m+A1jVWbD3yiK3/vtFvm1+LjK1WLpSoDY+Kaxppwn/yP9BVSgdHTNQVOjrzUO5" crossorigin="anonymous"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check-compat.js" integrity="sha384-E3vxFxXu8FhW5kvqdQJ5Yf8ugrV7iCJP8jgnItRH2Rk8Q08cJzJGTi/oMC3FEp3j" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" integrity="sha384-tMH8h3BGESGckSAVGZ82T9n90ztNXxvdwvdM6UoR56cYcf+0iGXBliJ29D+wZ/x8" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" integrity="sha384-bm7MnzvK++ykSwVJ2tynSE5TRdN+xL418osEVF2DE/L/gfWHj91J2Sphe582B1Bh" crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" integrity="sha384-bs/nf9FbdNouRbMiFcrcZfLXYPKiPaGVGplVbv7dLGECccEXDW+S3zjqSKR5ZEaD" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js" integrity="sha384-aGlMNK3U/x0wl4lEH5jD1PGhJlX9hApuPmIiA5gtiYCOQ1J8ejIdC0btaU/TMoBD" crossorigin="anonymous"></script>
   <style>html,body,#root{height:100%;margin:0;padding:0;background:#0a1628}*{-webkit-tap-highlight-color:transparent;box-sizing:border-box}</style>
 </head>
 <body>
@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.70";
+const APP_VERSION="v4.72";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -124,7 +124,27 @@ const byUsage=(items,counts,nameOf)=>items
   .map(x=>x.item);
 
 const autoMeal=()=>{const m=new Date().getHours()*60+new Date().getMinutes();return m<705?"Breakfast":m<945?"Lunch":m<1125?"Snack":"Dinner";};
-const makeTS  =(dateStr,timeStr)=>{const[y,mo,d]=dateStr.split("-").map(Number);const[h,mi]=(timeStr||"00:00").split(":").map(Number);return new Date(y,mo-1,d,h,mi,0,0).toISOString();};
+// B2: makeTS previously threw RangeError on shorthand times ("920", "9", "9.20"),
+// which silently killed the Save handler in Manage. It now parses the same shorthand
+// the Home TimeInput accepts, and clamps rather than producing an Invalid Date.
+const parseTimeParts=timeStr=>{
+  const s=String(timeStr==null?"":timeStr).trim();
+  let h,mi;
+  // An explicit separator is authoritative: "9:2" is 09:02, not 92 minutes.
+  const sep=s.match(/^(\d{1,2})\s*[:.]\s*(\d{1,2})$/);
+  if(sep){h=+sep[1];mi=+sep[2];}
+  else{
+    const raw=s.replace(/[^0-9]/g,"");
+    if(!raw)return[0,0];
+    if(raw.length<=2){h=+raw;mi=0;}
+    else if(raw.length===3){h=+raw[0];mi=+raw.slice(1);}
+    else{h=+raw.slice(0,2);mi=+raw.slice(2,4);}
+  }
+  if(!isFinite(h))h=0;
+  if(!isFinite(mi))mi=0;
+  return[Math.min(23,Math.max(0,h)),Math.min(59,Math.max(0,mi))];
+};
+const makeTS  =(dateStr,timeStr)=>{const[y,mo,d]=dateStr.split("-").map(Number);const[h,mi]=parseTimeParts(timeStr);const dt=new Date(y,mo-1,d,h,mi,0,0);return isNaN(dt.getTime())?new Date().toISOString():dt.toISOString();};
 
 const THEMES={
   dark:{bg:"#0a1628",cardBg:"#112240",navBg:"#0d1e35",inputBg:"#0d1e35",border:"#1e3a5f",text:"#e6edf3",textMuted:"#4a7fa5",textSub:"#7aa0bf",accent:"#00e676",accentBg:"#00897b22",accentBtn:"#00897b",danger:"#ef5350",waterBtn:"#0d2a3d",waterBtnText:"#40c4ff",even:"#0a1628",ok:"#1b5e20",lock:"#060e1a"},
@@ -485,12 +505,21 @@ function App(){
     const cacheKey=`jivanlog-approved-${uid}`;
     (async()=>{
       try{
-        const[approvedSnap,adminSnap]=await Promise.all([
+        // R1b: these two reads must NOT share a failure. `admins/{uid}` is not
+        // self-readable for a non-admin, so under Promise.all its permission-denied
+        // rejected the whole check — the approval result was never inspected, the
+        // allowlist branch below was unreachable, and approved users on a fresh
+        // device got bounced to the waiting room with a duplicate pendingRequest.
+        // allSettled lets each read fail on its own terms.
+        const[approvedRes,adminRes]=await Promise.allSettled([
           fbDb.ref(`approvedUsers/${uid}/allowed`).get(),
           fbDb.ref(`admins/${uid}`).get(),
         ]);
         if(cancelled)return;
-        setIsAdminUser(adminSnap.exists());
+        // A denied admins read means "not an admin", not "check failed".
+        setIsAdminUser(adminRes.status==="fulfilled"&&adminRes.value.exists());
+        if(approvedRes.status==="rejected")throw approvedRes.reason;
+        const approvedSnap=approvedRes.value;
         if(approvedSnap.exists()&&approvedSnap.val()===true){
           try{localStorage.setItem(cacheKey,"1");}catch(e){}
           setAccessState("approved");return;
@@ -504,8 +533,11 @@ function App(){
           setAccessState("approved");return;
         }catch(allowlistErr){/* not on allowlist — fall through to pending */}
         try{
-          const existing=await fbDb.ref(`pendingRequests/${uid}`).get();
-          if(!existing.exists()){
+          // A denied read here (rules without the self-read) must not prevent the
+          // write — otherwise no access request is ever recorded for the admin.
+          let alreadyRequested=false;
+          try{alreadyRequested=(await fbDb.ref(`pendingRequests/${uid}`).get()).exists();}catch(readErr){}
+          if(!alreadyRequested){
             await fbDb.ref(`pendingRequests/${uid}`).set({name:user.displayName||"",email:user.email||"",photoURL:user.photoURL||"",message:"",requestedAt:firebase.database.ServerValue.TIMESTAMP});
           }
         }catch(e){console.warn("pendingRequests write:",e);}
@@ -1175,14 +1207,11 @@ function HomePage({entries,settings,onAdd,entryTime,setEntryTime,isOnline,T}){
 }
 
 // ── Shared time-input blur normaliser ────────────────────────────────────────
+// B2: shares parseTimeParts with makeTS so Home and Manage normalise identically.
 const normTime=setter=>e=>{
-  const raw=e.target.value.replace(/[^0-9]/g,"");
-  if(!raw)return;
-  let h,mi;
-  if(raw.length<=2){h=+raw;mi=0;}
-  else if(raw.length===3){h=+raw[0];mi=+raw.slice(1);}
-  else{h=+raw.slice(0,2);mi=+raw.slice(2,4);}
-  h=Math.min(23,Math.max(0,h));mi=Math.min(59,Math.max(0,mi));
+  const v=e.target.value;
+  if(!String(v).replace(/[^0-9]/g,""))return;
+  const[h,mi]=parseTimeParts(v);
   setter(String(h).padStart(2,"0")+":"+String(mi).padStart(2,"0"));
 };
 // ── Shared time input element ─────────────────────────────────────────────────
@@ -1278,7 +1307,7 @@ function MedicalEntry({settings,entries,onAdd,entryTime,setEntryTime,T}){
   const save=()=>{if(!rt||!val)return;onAdd({type:"medical",readingType:rt,value:val,unit,notes});setVal("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
   return(<div className="card"><div className="slabel">🩺 Medical Reading</div>
     <div style={{display:"flex",gap:5,marginBottom:6}}>
-      <select value={rt} onChange={e=>{setRt(e.target.value);setVal("");}} style={{flex:"0 0 90px"}}><option value="">Type...</option>{rankedPresets.map(p=>{const n=p.name||p;const ic=typeof p==="object"?p.icon||"":"";return<option key={n} value={n}>{pickIcon(n,"medical",ic)} {n}</option>;})}</select>
+      <select value={rt} onChange={e=>{setRt(e.target.value);setVal("");}} style={{flex:"1 1 118px",minWidth:0}}><option value="">Type...</option>{rankedPresets.map(p=>{const n=p.name||p;const ic=typeof p==="object"?p.icon||"":"";return<option key={n} value={n}>{pickIcon(n,"medical",ic)} {n}</option>;})}</select>
       <div style={{flex:1,position:"relative"}}>
         <input value={val} onChange={e=>setVal(e.target.value)} placeholder={unit||"Value"} style={{width:"100%",paddingRight:unit&&!val?(unit.length*8+12)+"px":"9px"}}/>
         {unit&&!val&&<span style={{position:"absolute",right:9,top:"50%",transform:"translateY(-50%)",fontSize:"0.74rem",color:T.textMuted,pointerEvents:"none",fontFamily:"'DM Mono',monospace"}}>{unit}</span>}
@@ -1412,7 +1441,7 @@ function EditEntry({entry,settings,onSave,onCancel,label,T}){
       <div className="slabel" style={{color:T.accent,marginBottom:7}}>{label||"✏️ Editing"}</div>
       <div style={{display:"flex",gap:5,marginBottom:8}}>
         <input type="date" value={editDate} onChange={e=>setEditDate(e.target.value)} style={{flex:1,fontSize:"0.8rem",padding:"5px 7px"}}/>
-        <input type="text" inputMode="numeric" value={editTime} onChange={e=>{let v=e.target.value.replace(/[^0-9:]/g,"");if(v.length===4&&!v.includes(":"))v=v.slice(0,2)+":"+v.slice(2);setEditTime(v.slice(0,5));}} placeholder="HH:MM" maxLength={5} style={{flex:"0 0 72px",fontSize:"0.8rem",padding:"5px 7px",fontFamily:"'DM Mono',monospace"}}/>
+        <input type="text" inputMode="numeric" value={editTime} onChange={e=>setEditTime(e.target.value.replace(/[^0-9:.]/g,"").slice(0,5))} onBlur={normTime(setEditTime)} placeholder="9.20" title="Entry time" maxLength={5} style={{flex:"0 0 72px",fontSize:"0.8rem",padding:"5px 7px",fontFamily:"'DM Mono',monospace"}}/>
       </div>
       {d.type==="meal"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}>
         {(()=>{const foods=foodItems(settings.foodCategories||FD.foodCategories);const fo=foods.find(f=>f.name===d.food);return(<>
@@ -1440,7 +1469,7 @@ function EditEntry({entry,settings,onSave,onCancel,label,T}){
         <input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100%"}}/>
       </div>}
       {d.type==="medical"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}>
-        <select value={d.readingType} onChange={e=>set("readingType",e.target.value)} style={{flex:"0 0 90px"}}>{mp.map(p=>{const n=p.name||p;return <option key={n}>{n}</option>;})}</select>
+        <select value={d.readingType} onChange={e=>set("readingType",e.target.value)} style={{flex:"1 1 118px",minWidth:0}}>{mp.map(p=>{const n=p.name||p;return <option key={n}>{n}</option>;})}</select>
         <input value={d.value} onChange={e=>set("value",e.target.value)} placeholder={(mp.find(p=>(p.name||p)===d.readingType)||{}).unit||""} style={{flex:1}}/>
         <input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100%"}}/>
       </div>}
@@ -1725,7 +1754,10 @@ function TrendsPanel({entries,settings,T}){
 }
 
 function ReportsPage({entries,settings,isOnline,T}){
-  if(!isOnline)return(<div style={{textAlign:"center",padding:"50px 20px",color:T.textMuted}}><div style={{fontSize:"2.5rem",marginBottom:14}}>📵</div><div style={{fontWeight:600,fontSize:"0.9rem",marginBottom:8,color:T.text}}>Reports require an internet connection.</div><div style={{fontSize:"0.78rem",lineHeight:1.6}}>Your entries are safe and stored locally.<br/>Connect to view trends and reports.</div></div>);
+  // B1: every hook must run on every render. The offline early-return used to sit
+  // ABOVE these useState calls, so flipping isOnline changed the hook count between
+  // renders and React unmounted the whole tree ("Rendered fewer hooks than expected").
+  // The offline notice now lives at the bottom, after all hooks have been called.
   const[tab,setTab]=useState("view");const mostRecentDate=(()=>{const ds=entries.map(e=>e.date).filter(Boolean).sort();return ds.length?ds[ds.length-1]:today();})();
   const[vd,setVd]=useState(mostRecentDate);
   const[cd,setCd]=useState([today()]);const[ad,setAd]=useState(today());const[qr,setQr]=useState("");
@@ -1742,6 +1774,8 @@ function ReportsPage({entries,settings,isOnline,T}){
   const allRows=[{key:"water",label:"Water"},{key:"drinks",label:"Drinks"},{key:"medication",label:"Medications"},{key:"exercise",label:"Exercise"},{key:"Breakfast",label:"Breakfast"},{key:"Lunch",label:"Lunch"},{key:"Snack",label:"Snack"},{key:"Dinner",label:"Dinner"},...medNames.map(n=>({key:n,label:n}))];
   const doExport=(csv,fn)=>downloadCSV(csv,fn);
   const applyQr=v=>{setQr(v);if(!v)return;const n=parseInt(v);setCd(Array.from({length:n},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);}));};
+  // Safe to return early from here on — every hook above has already been called.
+  if(!isOnline)return(<div style={{textAlign:"center",padding:"50px 20px",color:T.textMuted}}><div style={{fontSize:"2.5rem",marginBottom:14}}>📵</div><div style={{fontWeight:600,fontSize:"0.9rem",marginBottom:8,color:T.text}}>Reports require an internet connection.</div><div style={{fontSize:"0.78rem",lineHeight:1.6}}>Your entries are safe and stored locally.<br/>Connect to view trends and reports.</div></div>);
   return(<div><div style={{display:"flex",alignItems:"center",gap:4,marginBottom:10,flexWrap:"wrap"}}><span style={{fontWeight:700,fontSize:"0.92rem",marginRight:4}}>📊 Reports</span><button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} onClick={()=>doExport(buildViewCSV(entries,tab==="view"?[vd]:cd,medPresets),`jivanlog-view-${today()}.csv`)}>⬇️ Export view</button></div><div style={{display:"flex",gap:5,marginBottom:9,alignItems:"center"}}><button className={`tbtn${tab==="view"?" on":""}`} onClick={()=>setTab("view")}>View</button><button className={`tbtn${tab==="compare"?" on":""}`} onClick={()=>setTab("compare")}>Compare</button><button className={`tbtn${tab==="trends"?" on":""}`} onClick={()=>setTab("trends")}>📈 Trends</button>{tab==="view"&&<input type="date" value={vd} onChange={e=>{if(e.target.value)setVd(e.target.value);}}
         style={{flex:1,padding:"5px 7px",borderRadius:8,border:`2px solid ${T.accent}`,
           background:T.cardBg,color:T.text,fontWeight:600,fontSize:"0.82rem",fontFamily:"inherit",colorScheme:T.bg==="#0a1628"?"dark":"light"}}/>}{tab==="compare"&&<><select value={qr} onChange={e=>applyQr(e.target.value)} style={{flex:"0 0 auto",fontSize:"0.79rem",padding:"5px 6px",width:110}}><option value="">Quick…</option>{[2,3,4,5,6,7,8,9,10].map(n=><option key={n} value={n}>Last {n} days</option>)}</select><input type="date" value={ad} onChange={e=>{if(e.target.value)setAd(e.target.value);}}
@@ -1969,7 +2003,12 @@ function AdminPanel({pendingRequests,adminsMap,allowlistMap,approvedUsersMap,onA
   const pendingList=Object.entries(pendingRequests||{});
   const adminList=Object.entries(adminsMap||{});
   const allowlistList=Object.entries(allowlistMap||{});
-  const approvedNotAdmin=Object.entries(approvedUsersMap||{}).filter(([uid])=>!(adminsMap&&adminsMap[uid]));
+  // R2: the rules block writing the superadmin's own /admins record, so the
+  // self-heal can never create it. Filtering on adminsMap alone would therefore
+  // let the superadmin appear in their own promote list if a stray
+  // approvedUsers/{superadmin} node exists. isSuperAdmin() is a code constant and
+  // does not depend on database state, so it holds regardless.
+  const approvedNotAdmin=Object.entries(approvedUsersMap||{}).filter(([uid])=>!(adminsMap&&adminsMap[uid])&&!isSuperAdmin(uid));
   const relTime=ts=>{if(!ts)return"";const d=Date.now()-ts;const m=Math.floor(d/60000);if(m<1)return"just now";if(m<60)return`${m}m ago`;const h=Math.floor(m/60);if(h<24)return`${h}h ago`;return`${Math.floor(h/24)}d ago`;};
   return(<>
     <div className="card">
@@ -2337,10 +2376,25 @@ const ICON_MAP=[
 // Category fallbacks when no keyword matches
 const ICON_DEFAULTS={food:"🍽️",drink:"💧",exercise:"🏃",medical:"🩺",medication:"💊"};
 
+// B3: ICON_MAP is a single ordered list scanned first-match-wins, so a keyword that
+// appears in an earlier category block shadows the same keyword in a later one.
+// "weight" hit the Exercise entry (🏋️) before the Medical entry (⚖️), and "Herbal Tea"
+// hit "tea" (🍵) before "herbal" (🌿). These per-category lists are consulted first,
+// so a category can claim a keyword without disturbing the global fallback order.
+const ICON_SCOPED={
+  medical:[["heart rate","💓"],["pulse","💓"],["weight","⚖️"],["height","📏"],
+           ["sugar","🩸"],["glucose","🩸"],["hba1c","🩸"],
+           ["bp","❤️"],["blood pressure","❤️"],["pressure","❤️"]],
+  drink:  [["herbal","🌿"],["tulsi","🌿"],["green tea","🌿"]],
+  exercise:[["stairs","🪜"],["floors","🪜"],["weight","🏋️"]],
+};
+
 function pickIcon(name, category="food", stored=""){
   if(stored)return stored;
   if(!name)return ICON_DEFAULTS[category]||"•";
   const lc=name.toLowerCase();
+  const scoped=ICON_SCOPED[category];
+  if(scoped){for(const[kw,icon] of scoped){if(lc.includes(kw))return icon;}}
   for(const[kw,icon] of ICON_MAP){
     if(lc.includes(kw))return icon;
   }
