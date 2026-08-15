@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.69";
+const APP_VERSION="v4.70";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -394,7 +394,13 @@ function App(){
     setQueueSize(getOfflineQ(uid).length);
   },[user]);
 
-  // .info/connected — authoritative connectivity source of truth
+  // .info/connected — authoritative connectivity source of truth.
+  // CAVEAT: this reflects the health of Firebase's own persistent socket, not
+  // general internet access. That socket can go stale — most commonly right
+  // after a network *handoff* (mobile data → home WiFi or vice versa) — and
+  // the SDK doesn't always notice the old connection died, so this can read
+  // "offline" indefinitely even though the device has a perfectly good
+  // connection. A watchdog below forces a fresh reconnect if that happens.
   useEffect(()=>{
     if(!user)return;
     const ref=fbDb.ref('.info/connected');
@@ -402,6 +408,20 @@ function App(){
     ref.on('value',handler);
     return()=>ref.off('value',handler);
   },[user]);
+
+  // Watchdog: if the browser reports a network (navigator.onLine) but the
+  // Firebase socket has not confirmed connected within ~8s, force-bounce the
+  // connection. This is the standard fix for the JS SDK not re-establishing
+  // its long-lived connection cleanly after a network interface change.
+  useEffect(()=>{
+    if(!user||isOnline)return;
+    const t=setTimeout(()=>{
+      if(navigator.onLine&&!isOnlineRef.current){
+        try{fbDb.goOffline();fbDb.goOnline();}catch(e){}
+      }
+    },8000);
+    return()=>clearTimeout(t);
+  },[user,isOnline]);
 
   // Auth listener — with OFFLINE LOGIN fallback.
   // Firebase Auth needs the network to restore/refresh a session when something
@@ -770,8 +790,23 @@ function App(){
 
   // Flush when .info/connected becomes true
   useEffect(()=>{if(isOnline&&user)flushOfflineQueue();},[isOnline,user,flushOfflineQueue]);
-  // Secondary flush trigger (navigator online fires before .info/connected sometimes)
-  useEffect(()=>{const f=()=>{if(user)flushOfflineQueue();};window.addEventListener("online",f);return()=>window.removeEventListener("online",f);},[user,flushOfflineQueue]);
+  // Secondary trigger: the browser's network-change events (online, and app
+  // resuming to foreground) fire independently of Firebase's own socket
+  // state and often catch a network handoff before .info/connected does.
+  // Force-bounce the Firebase connection here too, not just flush — a stale
+  // socket from before the handoff won't self-heal just because the browser
+  // says we're online again.
+  useEffect(()=>{
+    const nudge=()=>{
+      if(!navigator.onLine)return;
+      if(!isOnlineRef.current){try{fbDb.goOffline();fbDb.goOnline();}catch(e){}}
+      if(user)flushOfflineQueue();
+    };
+    const onVisible=()=>{if(document.visibilityState==="visible")nudge();};
+    window.addEventListener("online",nudge);
+    document.addEventListener("visibilitychange",onVisible);
+    return()=>{window.removeEventListener("online",nudge);document.removeEventListener("visibilitychange",onVisible);};
+  },[user,flushOfflineQueue]);
 
   // Persist helpers
   const persistEntries=useCallback(async arr=>{
