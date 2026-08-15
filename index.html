@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.72";
+const APP_VERSION="v4.73";
 const{useState,useEffect,useRef,useCallback}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -350,7 +350,8 @@ function App(){
   const[theme,setTheme]=useState("system");
   const[dayRolloverMin,setDayRolloverMinR]=useState(DAY_ROLLOVER_MIN);
   const[dataLoaded,setDataLoaded]=useState(false);
-  const[clock,setClock]=useState(nowTime());
+  // O1: clock moved to its own leaf component (see Clock, below) so a 1s
+  // tick no longer re-renders this whole App tree.
   const[entryTime,setEntryTime]=useState(nowHHMM());
   const[syncStatus,setSyncStatus]=useState("idle");
   const[showUserMenu,setShowUserMenu]=useState(false);
@@ -370,8 +371,6 @@ function App(){
   const[approvedUsersMap,setApprovedUsersMap]=useState({});
 
   const T=theme==="system"?THEMES[sysDark()?"dark":"light"]:(THEMES[theme]||THEMES.dark);
-
-  useEffect(()=>{const t=setInterval(()=>setClock(nowTime()),1000);return()=>clearInterval(t);},[]);
 
   // ── Auto-backup: once per calendar day on first open ─────────────────────
   useEffect(()=>{
@@ -1129,7 +1128,7 @@ function App(){
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           <span title={displaySync==="offline"?"Offline — entries saved locally":displaySync==="pending"?`${queueSize} pending — tap to sync`:displaySync==="saving"?"Syncing…":displaySync==="synced"?"Synced ✓":"Synced"} style={{fontSize:"1rem",color:syncColor,transition:"color 0.3s",cursor:queueSize>0?"pointer":"default"}} onClick={queueSize>0?flushOfflineQueue:undefined}>{syncIcon}</span>
           {queueSize>0&&<button onClick={flushOfflineQueue} title="Sync pending entries now" style={{fontSize:"0.62rem",padding:"2px 5px",borderRadius:5,border:`1px solid ${T.border}`,background:T.cardBg,color:T.waterBtnText,cursor:"pointer",fontFamily:"inherit",fontWeight:600,flexShrink:0}}>Sync {queueSize}</button>}
-          <div style={{fontFamily:"'DM Mono',monospace",fontSize:"0.88rem",color:T.waterBtnText}}>{clock}</div>
+          <Clock T={T}/>
         </div>
       </div>
 
@@ -1208,6 +1207,16 @@ function HomePage({entries,settings,onAdd,entryTime,setEntryTime,isOnline,T}){
 
 // ── Shared time-input blur normaliser ────────────────────────────────────────
 // B2: shares parseTimeParts with makeTS so Home and Manage normalise identically.
+// O1: previously `clock` was App-level state ticking every 1000ms, which
+// re-rendered the ENTIRE tree once a second — every dropdown's usage ranking,
+// every icon lookup, Today's Log, Reports tables, all recomputed 60x/minute
+// for a display that only ever appears in this one header span. The interval
+// now lives inside this leaf component, so a tick re-renders only the clock.
+function Clock({T}){
+  const[clock,setClock]=useState(nowTime());
+  useEffect(()=>{const t=setInterval(()=>setClock(nowTime()),1000);return()=>clearInterval(t);},[]);
+  return <div style={{fontFamily:"'DM Mono',monospace",fontSize:"0.88rem",color:T.waterBtnText}}>{clock}</div>;
+}
 const normTime=setter=>e=>{
   const v=e.target.value;
   if(!String(v).replace(/[^0-9]/g,""))return;
@@ -1225,12 +1234,14 @@ const TimeInput=({value,onChange,T})=>(
 function MealEntry({settings,entries,onAdd,entryTime,setEntryTime,T}){
   const[mt,setMt]=useState(autoMeal);const[food,setFood]=useState("");const[foodSub,setFoodSub]=useState("");const[qty,setQty]=useState("");const[unit,setUnit]=useState("g");const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
   const foods=foodItems(settings.foodCategories||FD.foodCategories);
-  // Usage-ranked: most-logged foods first, derived live from entries (Meal type tabs above stay fixed by design)
-  const foodCounts=usageCounts(entries,e=>e.type==="meal",e=>e.food);
+  // O3: usageCounts was an O(all entries) scan run on every render of this form —
+  // including every keystroke in Qty/Notes, which don't change the ranking at
+  // all. Memoized on the values that actually affect the result.
+  const foodCounts=useMemo(()=>usageCounts(entries,e=>e.type==="meal",e=>e.food),[entries]);
   const rankedFoods=byUsage(foods,foodCounts,f=>f.name);
   const foodObj=foods.find(f=>f.name===food);
   const hasFoodSub=foodObj?.subTypes?.length>0;
-  const subCounts=usageCounts(entries,e=>e.type==="meal"&&e.food===food,e=>e.foodSubType);
+  const subCounts=useMemo(()=>usageCounts(entries,e=>e.type==="meal"&&e.food===food,e=>e.foodSubType),[entries,food]);
   const rankedSubs=hasFoodSub?byUsage(foodObj.subTypes,subCounts,s=>s):[];
   const onFoodChange=name=>{setFood(name);setFoodSub("");const fi=foods.find(f=>f.name===name);setNotes(fi?.note||"");};
   useEffect(()=>{if(food){const fi=foods.find(f=>f.name===food);setNotes(fi?.note||"");}},[settings]);
@@ -1250,12 +1261,12 @@ function LiquidEntry({settings,entries,onAdd,entryTime,setEntryTime,T}){
   const add=amt=>setMl(s=>String((+s||0)+amt));
   // Usage-ranked. If a manual "── Drinks ──" divider row is present in config,
   // ranking would scramble its grouping, so we leave order untouched in that case.
-  const typeCounts=usageCounts(entries,e=>e.type==="liquid"||e.type==="water",e=>e.liquidType||e.waterTemp);
+  const typeCounts=useMemo(()=>usageCounts(entries,e=>e.type==="liquid"||e.type==="water",e=>e.liquidType||e.waterTemp),[entries]);
   const hasDivider=allTypes.includes("--------");
   const displayTypes=hasDivider?allTypes:byUsage(allTypes,typeCounts,t=>t);
   const curSubTypes=liqSubTypes[liqType]||[];
   const hasLiqSub=curSubTypes.length>0;
-  const subCounts=usageCounts(entries,e=>(e.type==="liquid"||e.type==="water")&&(e.liquidType===liqType),e=>e.liquidSubType);
+  const subCounts=useMemo(()=>usageCounts(entries,e=>(e.type==="liquid"||e.type==="water")&&(e.liquidType===liqType),e=>e.liquidSubType),[entries,liqType]);
   const rankedSubs=hasLiqSub?byUsage(curSubTypes,subCounts,s=>s):[];
   const onTypeChange=t=>{setLiqType(t);setLiqSub("");setNotes(liqNotes[t]||"");};
   // Re-seed notes when Firebase settings arrive (async load)
@@ -1278,7 +1289,7 @@ function LiquidEntry({settings,entries,onAdd,entryTime,setEntryTime,T}){
 function ExerciseEntry({settings,entries,onAdd,entryTime,setEntryTime,T}){
   const[et,setEt]=useState("");const[sub,setSub]=useState("");const[dist,setDist]=useState("");const[min,setMin]=useState("");const[cnt,setCnt]=useState("");const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
   const exTypes=settings.exerciseTypes||FD.exerciseTypes;
-  const exCounts=usageCounts(entries,e=>e.type==="exercise",e=>e.exType);
+  const exCounts=useMemo(()=>usageCounts(entries,e=>e.type==="exercise",e=>e.exType),[entries]);
   const rankedExTypes=byUsage(exTypes||[],exCounts,e=>e.name);
   const etObj=exTypes?.find(e=>e.name===et);
   // For metrics: FD is the ground truth for known types
@@ -1287,7 +1298,7 @@ function ExerciseEntry({settings,entries,onAdd,entryTime,setEntryTime,T}){
   const validMetrics=Array.isArray(storedMetrics)&&storedMetrics.length&&typeof storedMetrics[0]==="string";
   const etMetrics=validMetrics?storedMetrics:fdEx?.metrics||["time"];
   const hasSub=etObj?.subTypes?.length>0;const hasDist=etMetrics.includes("distance");const hasTime=etMetrics.includes("time");const hasCnt=etMetrics.includes("count");
-  const exSubCounts=usageCounts(entries,e=>e.type==="exercise"&&e.exType===et,e=>e.subType);
+  const exSubCounts=useMemo(()=>usageCounts(entries,e=>e.type==="exercise"&&e.exType===et,e=>e.subType),[entries,et]);
   const rankedExSubs=hasSub?byUsage(etObj.subTypes,exSubCounts,s=>s):[];
   const onTypeChange=t=>{setEt(t);setSub("");const obj=exTypes?.find(e=>e.name===t);setNotes(obj?.note||"");};
   // Re-sync when Firebase settings arrive — ensures metrics/notes are current
@@ -1301,7 +1312,7 @@ function ExerciseEntry({settings,entries,onAdd,entryTime,setEntryTime,T}){
 function MedicalEntry({settings,entries,onAdd,entryTime,setEntryTime,T}){
   const[rt,setRt]=useState("");const[val,setVal]=useState("");const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
   const presets=settings.medicalPresets||FD.medicalPresets||[];
-  const rtCounts=usageCounts(entries,e=>e.type==="medical",e=>e.readingType);
+  const rtCounts=useMemo(()=>usageCounts(entries,e=>e.type==="medical",e=>e.readingType),[entries]);
   const rankedPresets=byUsage(presets,rtCounts,p=>p.name||p);
   const unit=(presets.find(p=>(p.name||p)===rt)||{}).unit||"";
   const save=()=>{if(!rt||!val)return;onAdd({type:"medical",readingType:rt,value:val,unit,notes});setVal("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
@@ -1334,7 +1345,7 @@ function MedEntry({settings,entries,onAdd,entryTime,setEntryTime,T}){
   const medIcons=settings.medicationIcons||{};
   // Medications: usage-ranked. Timing (below) stays in fixed clinical/clock order — it's
   // auto-derived from time of day, not something that should reorder by frequency.
-  const medCounts=usageCounts(entries,e=>e.type==="medication",e=>e.med);
+  const medCounts=useMemo(()=>usageCounts(entries,e=>e.type==="medication",e=>e.med),[entries]);
   const rankedMeds=byUsage(settings.medications||[],medCounts,m=>m);
   useEffect(()=>setTiming(autoMedTiming(entryTime)),[entryTime]);
   const save=()=>{if(!med)return;onAdd({type:"medication",med,timing,notes});setMed("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
@@ -1770,7 +1781,24 @@ function ReportsPage({entries,settings,isOnline,T}){
   const d30=allDates;
   const medPresets=settings.medicalPresets||FD.medicalPresets;
   const medNames=medPresets.map(p=>typeof p==="string"?p:p.name);
-  const rpt=date=>dayReport(entries.filter(e=>e.date===date),medPresets);
+  // O2: `rpt(date)` used to re-filter the ENTIRE entries array and rebuild the
+  // whole dayReport object once per row, per date — measured at 130 calls per
+  // render on real data (13 rows x 10 dates in Compare), repeating every
+  // second because of O1. Grouping by date once, then caching each date's
+  // report for the lifetime of this render, cuts that to one dayReport() call
+  // per distinct date regardless of how many rows read from it.
+  const entriesByDate=useMemo(()=>{
+    const m=new Map();
+    for(const e of entries){if(!e.date)continue;const b=m.get(e.date);if(b)b.push(e);else m.set(e.date,[e]);}
+    return m;
+  },[entries]);
+  const reportCache=useMemo(()=>new Map(),[entriesByDate,medPresets]);
+  const rpt=date=>{
+    if(reportCache.has(date))return reportCache.get(date);
+    const r=dayReport(entriesByDate.get(date)||[],medPresets);
+    reportCache.set(date,r);
+    return r;
+  };
   const allRows=[{key:"water",label:"Water"},{key:"drinks",label:"Drinks"},{key:"medication",label:"Medications"},{key:"exercise",label:"Exercise"},{key:"Breakfast",label:"Breakfast"},{key:"Lunch",label:"Lunch"},{key:"Snack",label:"Snack"},{key:"Dinner",label:"Dinner"},...medNames.map(n=>({key:n,label:n}))];
   const doExport=(csv,fn)=>downloadCSV(csv,fn);
   const applyQr=v=>{setQr(v);if(!v)return;const n=parseInt(v);setCd(Array.from({length:n},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);}));};
@@ -2389,16 +2417,28 @@ const ICON_SCOPED={
   exercise:[["stairs","🪜"],["floors","🪜"],["weight","🏋️"]],
 };
 
+// O4: pickIcon does a linear substring scan over the keyword tables, run once
+// per option in every dropdown, every render. ICON_SCOPED/ICON_MAP/ICON_DEFAULTS
+// never change during a session, so (name, category, stored) always maps to the
+// same icon — a plain cache eliminates the repeat scans without needing a hook.
+const _iconCache=new Map();
 function pickIcon(name, category="food", stored=""){
-  if(stored)return stored;
-  if(!name)return ICON_DEFAULTS[category]||"•";
-  const lc=name.toLowerCase();
-  const scoped=ICON_SCOPED[category];
-  if(scoped){for(const[kw,icon] of scoped){if(lc.includes(kw))return icon;}}
-  for(const[kw,icon] of ICON_MAP){
-    if(lc.includes(kw))return icon;
+  const cacheKey=category+"|"+stored+"|"+name;
+  const cached=_iconCache.get(cacheKey);
+  if(cached!==undefined)return cached;
+  let icon;
+  if(stored)icon=stored;
+  else if(!name)icon=ICON_DEFAULTS[category]||"•";
+  else{
+    const lc=name.toLowerCase();
+    const scoped=ICON_SCOPED[category];
+    icon=undefined;
+    if(scoped){for(const[kw,ic] of scoped){if(lc.includes(kw)){icon=ic;break;}}}
+    if(icon===undefined){for(const[kw,ic] of ICON_MAP){if(lc.includes(kw)){icon=ic;break;}}}
+    if(icon===undefined)icon=ICON_DEFAULTS[category]||"•";
   }
-  return ICON_DEFAULTS[category]||"•";
+  _iconCache.set(cacheKey,icon);
+  return icon;
 }
 
 // ── Emoji picker ──────────────────────────────────────────────────────────────
