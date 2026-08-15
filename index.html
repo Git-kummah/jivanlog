@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.73";
+const APP_VERSION="v4.74";
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -153,14 +153,155 @@ const THEMES={
 
 // ── OFFLINE QUEUE & CACHE HELPERS ─────────────────────────────────────────────
 const getOfflineQ  =uid=>{try{return JSON.parse(localStorage.getItem(`jivanlog-offlineQ-${uid}`)||"[]");}catch{return[];}};
-const saveOfflineQ =(uid,arr)=>{try{localStorage.setItem(`jivanlog-offlineQ-${uid}`,JSON.stringify(arr));}catch(e){console.warn("OfflineQ:",e);}};
+const saveOfflineQ =(uid,arr)=>{
+  // The offline queue is the authoritative store for not-yet-synced entries.
+  // A silent failure here is the one remaining genuine data-loss path, so it
+  // must reach the UI rather than only the console.
+  try{localStorage.setItem(`jivanlog-offlineQ-${uid}`,JSON.stringify(arr));return true;}
+  catch(e){onStorageProblem("offline-queue",e);return false;}
+};
 const clearOfflineQ=uid=>{try{localStorage.removeItem(`jivanlog-offlineQ-${uid}`);}catch{}};
 // Remove ONLY the specified ids from the queue (entries added meanwhile survive).
 const removeFromQueue=(uid,ids)=>{const set=new Set(ids);const left=getOfflineQ(uid).filter(e=>!set.has(e.id));saveOfflineQ(uid,left);return left;};
 
 // ── FULL LOCAL MIRROR ─ durable copy of ALL entries (offline view + recovery) ─
-const getMirror =uid=>{try{return JSON.parse(localStorage.getItem(`jivanlog-mirror-${uid}`)||"[]");}catch{return[];}};
-const saveMirror=(uid,allEntries)=>{try{localStorage.setItem(`jivanlog-mirror-${uid}`,JSON.stringify(allEntries));}catch(e){console.warn("Mirror:",e);}};
+//
+// O5/O6 (v4.74): this used to be a single localStorage key holding a JSON array
+// of every entry. Two problems, both measured against real data (6,084 entries):
+//   • Every single save re-serialised and rewrote the WHOLE array — 1.12 MB per
+//     entry saved, growing ~1.86 MB/year. That's the pause you feel on Save.
+//   • localStorage's ~5 MB cap was ~1–2 years out, and QuotaExceededError was
+//     handled by a lone console.warn: the mirror would silently stop updating
+//     and the offline safety net would quietly disappear.
+//
+// It is now IndexedDB, written UPSERT-ONLY (one put per changed entry, never a
+// wholesale rewrite). That choice matters beyond speed: because the app is
+// append-only (deletes are tombstones, never removals), nothing legitimately
+// needs to disappear from the mirror — so never rewriting the whole store means
+// tombstones cannot be dropped by a live-entries-only write, which was a real
+// bug at four separate call sites.
+//
+// localStorage remains the fallback when IndexedDB is unavailable (private mode,
+// old browsers). The mirror is a data-loss safety net, so it must degrade, never
+// vanish.
+const MIRROR_DB_VERSION=1;
+const mirrorDbName=uid=>`jivanlog-mirror-${uid}`;
+const _idbConn={};
+let _idbBroken=false;
+
+function idbOpen(uid){
+  if(_idbBroken)return Promise.reject(new Error("idb-unavailable"));
+  if(_idbConn[uid])return _idbConn[uid];
+  _idbConn[uid]=new Promise((resolve,reject)=>{
+    let idb=null;
+    try{idb=window.indexedDB;}catch(e){}
+    if(!idb){reject(new Error("idb-unavailable"));return;}
+    let req;
+    try{req=idb.open(mirrorDbName(uid),MIRROR_DB_VERSION);}
+    catch(e){reject(e);return;}
+    req.onupgradeneeded=()=>{
+      const db=req.result;
+      if(!db.objectStoreNames.contains("entries"))db.createObjectStore("entries",{keyPath:"id"});
+    };
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error||new Error("idb-open-failed"));
+    req.onblocked=()=>reject(new Error("idb-blocked"));
+  }).catch(err=>{
+    // Don't cache a permanently-rejected promise; mark IDB unusable so every
+    // caller falls back to localStorage rather than retrying on every save.
+    delete _idbConn[uid];
+    _idbBroken=true;
+    throw err;
+  });
+  return _idbConn[uid];
+}
+
+function idbPutEntries(uid,list){
+  if(!list||!list.length)return Promise.resolve(true);
+  return idbOpen(uid).then(db=>new Promise((resolve,reject)=>{
+    let tx;
+    try{tx=db.transaction("entries","readwrite");}catch(e){reject(e);return;}
+    const st=tx.objectStore("entries");
+    for(const e of list){if(e&&e.id)st.put(e);}
+    tx.oncomplete=()=>resolve(true);
+    tx.onerror=()=>reject(tx.error||new Error("idb-tx-failed"));
+    tx.onabort=()=>reject(tx.error||new Error("idb-tx-aborted"));
+  }));
+}
+
+function idbGetAllEntries(uid){
+  return idbOpen(uid).then(db=>new Promise((resolve,reject)=>{
+    let tx;
+    try{tx=db.transaction("entries","readonly");}catch(e){reject(e);return;}
+    const req=tx.objectStore("entries").getAll();
+    req.onsuccess=()=>resolve(req.result||[]);
+    req.onerror=()=>reject(req.error||new Error("idb-read-failed"));
+  }));
+}
+
+// ── localStorage fallback (also the pre-v4.74 format we migrate FROM) ──
+const lsMirrorKey=uid=>`jivanlog-mirror-${uid}`;
+const getMirrorLS =uid=>{try{return JSON.parse(localStorage.getItem(lsMirrorKey(uid))||"[]");}catch{return[];}};
+const saveMirrorLS=(uid,allEntries)=>{
+  try{localStorage.setItem(lsMirrorKey(uid),JSON.stringify(allEntries));return true;}
+  catch(e){onStorageProblem("mirror",e);return false;}
+};
+// Upsert semantics for the fallback path (read-modify-write, the old cost —
+// only paid when IndexedDB is genuinely unavailable).
+const putMirrorLS=(uid,list)=>{
+  if(!list||!list.length)return true;
+  const byId=new Map(getMirrorLS(uid).map(e=>[e.id,e]));
+  for(const e of list){if(e&&e.id)byId.set(e.id,e);}
+  return saveMirrorLS(uid,Array.from(byId.values()));
+};
+
+// Surfaced to the UI so a failing write is never silent (was: console.warn only).
+let _storageProblemCb=null;
+const setStorageProblemHandler=fn=>{_storageProblemCb=fn;};
+function onStorageProblem(what,err){
+  const quota=err&&(err.name==="QuotaExceededError"||err.name==="NS_ERROR_DOM_QUOTA_REACHED"||err.code===22);
+  console.warn("Storage problem ["+what+"]:",err);
+  if(_storageProblemCb)_storageProblemCb({what,quota,message:(err&&err.message)||String(err)});
+}
+
+// ── Unified mirror API used by the app ──
+// Upsert one or more entries. Fire-and-forget: never blocks a save.
+function mirrorPut(uid,list){
+  if(!uid||!list||!list.length)return;
+  idbPutEntries(uid,list).catch(err=>{
+    // IndexedDB is unavailable — fall back to localStorage. saveMirrorLS reports
+    // its own failure with the accurate reason (quota vs other), so don't report
+    // the IndexedDB error on top of it: that would mask a genuine "out of space"
+    // with a misleading "idb-unavailable" and show the wrong message to the user.
+    console.warn("Mirror: IndexedDB write failed, using localStorage fallback",err);
+    putMirrorLS(uid,list);
+  });
+}
+// Read the complete mirror (live + tombstones), migrating the old localStorage
+// array into IndexedDB the first time. Returns [] rather than throwing.
+async function mirrorGetAll(uid){
+  if(!uid)return[];
+  const ls=getMirrorLS(uid);
+  try{
+    const rows=await idbGetAllEntries(uid);
+    if(rows.length)return rows;
+    if(ls.length){
+      // ── one-time migration from the pre-v4.74 localStorage array ──
+      await idbPutEntries(uid,ls);
+      const check=await idbGetAllEntries(uid);
+      // Only drop the localStorage copy once IndexedDB verifiably holds it all.
+      if(check.length>=ls.length){
+        try{localStorage.removeItem(lsMirrorKey(uid));}catch(e){}
+        return check;
+      }
+      return ls;
+    }
+    return[];
+  }catch(err){
+    console.warn("Mirror: IndexedDB unavailable, using localStorage fallback",err);
+    return ls;
+  }
+}
 
 // ── DAILY BACKUP ─ small snapshot of TODAY's entries, overwritten each day ─────
 const saveDailyBackupLocal=(uid,allEntries)=>{
@@ -359,8 +500,13 @@ function App(){
   const isOnlineRef=useRef(navigator.onLine);
   const[queueSize,setQueueSize]=useState(0);
   const[offlineAuth,setOfflineAuth]=useState(false);
+  const[storageWarn,setStorageWarn]=useState(null);
   const deliberateClearRef=useRef(false);
   const entriesRef=useRef(null);
+  // Mirror of (live + tombstoned) entries as last rendered. Lets the Firebase
+  // listener answer "do we hold local data?" synchronously, without a storage
+  // read — required now that the durable mirror is async IndexedDB.
+  const localAllRef=useRef([]);
 
   // ── Admin-gated signup state ─────────────────────────────────────────────
   const[accessState,setAccessState]=useState("checking"); // checking|approved|pending|denied
@@ -371,6 +517,13 @@ function App(){
   const[approvedUsersMap,setApprovedUsersMap]=useState({});
 
   const T=theme==="system"?THEMES[sysDark()?"dark":"light"]:(THEMES[theme]||THEMES.dark);
+
+  // Keep the synchronous snapshot used by the entries listener's anti-wipe guard
+  // in step with what's actually rendered.
+  useEffect(()=>{localAllRef.current=[...entries,...deletedEntries];},[entries,deletedEntries]);
+
+  // Surface storage failures (quota, IndexedDB errors) instead of swallowing them.
+  useEffect(()=>{setStorageProblemHandler(p=>setStorageWarn(p));return()=>setStorageProblemHandler(null);},[]);
 
   // ── Auto-backup: once per calendar day on first open ─────────────────────
   useEffect(()=>{
@@ -397,20 +550,27 @@ function App(){
       const cd=localStorage.getItem(`jivanlog-defaultsCache-${uid}`);
       if(cd){const d=JSON.parse(cd);setDefaults(d);}
     }catch(e){}
-    try{
-      // Hydrate from the FULL local mirror (all history incl. tombstones), so
-      // offline boot shows everything and a write can never clobber unseen data.
-      const mirror=getMirror(uid).map(e=>({...e,date:normDate(e.date)}));
-      const live=mirror.filter(e=>!e.deleted);
-      const dead=mirror.filter(e=>e.deleted);
-      const queued=getOfflineQ(uid);
-      const lIds=new Set(live.map(e=>e.id));
-      const merged=[...live,...queued.filter(e=>!lIds.has(e.id)&&!e.deleted).map(e=>({...e,date:normDate(e.date)}))];
-      setEntries(merged);
-      setDeletedEntries(dead);
-      setDataLoaded(true);
-    }catch(e){}
+    let cancelled=false;
+    (async()=>{
+      try{
+        // Hydrate from the FULL local mirror (all history incl. tombstones), so
+        // offline boot shows everything and a write can never clobber unseen data.
+        // Async since v4.74 (IndexedDB); the app already shows a loading state
+        // until dataLoaded, so this doesn't add a visible delay.
+        const mirror=(await mirrorGetAll(uid)).map(e=>({...e,date:normDate(e.date)}));
+        if(cancelled)return;
+        const live=mirror.filter(e=>!e.deleted);
+        const dead=mirror.filter(e=>e.deleted);
+        const queued=getOfflineQ(uid);
+        const lIds=new Set(live.map(e=>e.id));
+        const merged=[...live,...queued.filter(e=>!lIds.has(e.id)&&!e.deleted).map(e=>({...e,date:normDate(e.date)}))];
+        setEntries(merged);
+        setDeletedEntries(dead);
+        setDataLoaded(true);
+      }catch(e){console.warn("Mirror hydrate:",e);}
+    })();
     setQueueSize(getOfflineQ(uid).length);
+    return()=>{cancelled=true;};
   },[user]);
 
   // .info/connected — authoritative connectivity source of truth.
@@ -636,18 +796,26 @@ function App(){
       const queued=getOfflineQ(uid);
       const raw=snap.val()?Object.values(snap.val()):[];
       const fromFb=raw.map(e=>({...e,date:normDate(e.date)}));
-      const mirrorAll=getMirror(uid).map(e=>({...e,date:normDate(e.date)}));
       // CONTENT decides, never a connection flag. Append-only means the server
       // can never legitimately shrink to empty. If the snapshot is empty (offline
-      // cold cache, transient glitch) but we hold a mirror, keep the mirror and
-      // do NOT overwrite it. This is what prevents both the blank-screen bug and
-      // any empty-overwrite.
+      // cold cache, transient glitch) but we hold local data, keep the local data
+      // and do NOT overwrite it. This is what prevents both the blank-screen bug
+      // and any empty-overwrite.
+      //
+      // v4.74: this used to read the whole mirror out of localStorage on every
+      // snapshot just to answer "do we have anything locally?". That answer is
+      // already in memory — localAllRef holds live + tombstones as last rendered
+      // — so the guard no longer needs a storage read at all, which also keeps
+      // it synchronous now that the mirror is async IndexedDB.
+      const localAll=localAllRef.current||[];
       let all;
-      if(fromFb.length===0&&mirrorAll.length>0){
-        all=mirrorAll; // preserve; do not touch durable copies
+      if(fromFb.length===0&&localAll.length>0){
+        all=localAll; // preserve; do not touch durable copies
       }else{
         all=fromFb;
-        saveMirror(uid,fromFb);          // authoritative server set (incl. tombstones)
+        // Upsert-only: never a wholesale rewrite, so tombstones and any
+        // not-yet-synced local rows can't be clobbered by a server snapshot.
+        mirrorPut(uid,fromFb);
         maybeDailyBackup(uid,fromFb);
       }
       const live=all.filter(e=>!e.deleted);
@@ -893,7 +1061,7 @@ function App(){
     if(user){
       const uid=user.uid;
       // 1. Write durable local copies FIRST — survive regardless of network
-      saveMirror(uid,next);
+      mirrorPut(uid,[newEntry]);
       saveTodayCache(uid,next);
       saveDailyBackupLocal(uid,next);
       // 2. Push to offline queue — the authoritative pending-write store
@@ -909,7 +1077,7 @@ function App(){
     setEntries(next);
     if(user){
       const uid=user.uid;
-      saveMirror(uid,next);saveTodayCache(uid,next);saveDailyBackupLocal(uid,next);
+      mirrorPut(uid,[entry]);saveTodayCache(uid,next);saveDailyBackupLocal(uid,next);
       const q=getOfflineQ(uid);if(!q.find(e=>e.id===entry.id)){q.push(entry);saveOfflineQ(uid,q);setQueueSize(q.length);}
       if(isOnlineRef.current)flushOfflineQueue();
     }
@@ -921,7 +1089,7 @@ function App(){
     setEntries(next);
     if(user){
       const uid=user.uid;
-      saveMirror(uid,next);saveTodayCache(uid,next);saveDailyBackupLocal(uid,next);
+      mirrorPut(uid,changed?[changed]:[]);saveTodayCache(uid,next);saveDailyBackupLocal(uid,next);
       if(user._offline){
         // Offline session: queue the edited entry so it flushes on reconnect.
         const q=getOfflineQ(uid).filter(e=>e.id!==id);q.push(changed);saveOfflineQ(uid,q);setQueueSize(q.length);
@@ -946,7 +1114,7 @@ function App(){
     const tomb={...(target||{id}),deleted:true,deletedAt:new Date().toISOString()};
     setDeletedEntries(prev=>[...prev.filter(e=>e.id!==id),tomb]);
     // Mirror keeps EVERYTHING (live + tombstones) so nothing is ever lost locally.
-    const mirror=getMirror(uid).filter(e=>e.id!==id);mirror.push(tomb);saveMirror(uid,mirror);
+    mirrorPut(uid,[tomb]);
     saveTodayCache(uid,next);saveDailyBackupLocal(uid,next);
     const k=id.replace(/[\s.#$\[\]/]/g,"_");
     if(!user._offline){
@@ -967,7 +1135,7 @@ function App(){
     delete revived.deletedAt;
     setDeletedEntries(prev=>prev.filter(e=>e.id!==id));
     setEntries(prev=>[...prev.filter(e=>e.id!==id),revived]);
-    const mirror=getMirror(uid).filter(e=>e.id!==id);mirror.push(revived);saveMirror(uid,mirror);
+    mirrorPut(uid,[revived]);
     const k=id.replace(/[\s.#$\[\]/]/g,"_");
     if(!user._offline){
       fbDb.ref(`users/${uid}/entries/${k}`).update({deleted:false,deletedAt:null,restoredAt:revived.restoredAt}).catch(e=>console.warn("restoreEntry:",e));
@@ -988,8 +1156,7 @@ function App(){
     setEntries([]);
     setDeletedEntries(prev=>{const ex=new Set(tombs.map(t=>t.id));return[...prev.filter(e=>!ex.has(e.id)),...tombs];});
     // Mirror keeps everything (now all tombstoned + any previously-deleted).
-    const prevDead=getMirror(uid).filter(e=>e.deleted&&!live.find(l=>l.id===e.id));
-    saveMirror(uid,[...prevDead,...tombs]);
+    mirrorPut(uid,tombs);
     saveTodayCache(uid,[]);saveDailyBackupLocal(uid,[]);
     if(!user._offline){
       const updates={};
@@ -1055,7 +1222,7 @@ function App(){
       const merged=Object.values(existMap);
       // Update React state immediately so UI reflects new data
       setEntries(merged);
-      if(user){saveMirror(user.uid,merged);saveTodayCache(user.uid,merged);}
+      if(user){mirrorPut(user.uid,imported);saveTodayCache(user.uid,merged);}
       // Write ONLY the new entries to Firebase using .update() (faster, more reliable)
       await persistImport(imported);
       alert(`✓ Imported ${imported.length} entries.\nTotal in database: ${merged.length}\nOpen 📋 Manage — use ◀▶ buttons to browse past dates.`);
@@ -1132,6 +1299,16 @@ function App(){
         </div>
       </div>
 
+      {storageWarn&&<div style={{display:"flex",alignItems:"flex-start",gap:7,padding:"7px 13px",background:T.dangerBg||T.accentBg,borderBottom:`1px solid ${T.danger}`,fontSize:"0.72rem",color:T.danger,flexShrink:0}}>
+        <span style={{flex:1,lineHeight:1.5}}>
+          {storageWarn.quota
+            ? <>⚠️ <b>This device is out of storage space.</b> {storageWarn.what==="offline-queue"
+                ? "An entry may not be saved locally — check your connection and make sure it syncs."
+                : "The local backup copy could not be updated. Your entries are still saved to the cloud when online."}</>
+            : <>⚠️ <b>Local storage problem.</b> The offline backup copy could not be updated ({storageWarn.what}). Your entries are still saved to the cloud when online.</>}
+        </span>
+        <button onClick={()=>setStorageWarn(null)} style={{background:"none",border:"none",color:T.danger,cursor:"pointer",fontSize:"0.9rem",padding:0,lineHeight:1,flexShrink:0}}>×</button>
+      </div>}
       {offlineAuth&&<div style={{display:"flex",alignItems:"center",gap:7,padding:"6px 13px",background:T.accentBg,borderBottom:`1px solid ${T.border}`,fontSize:"0.72rem",color:T.accent,flexShrink:0}}>📵 Offline mode — you're signed in from saved data. New entries are stored on this device and will sync automatically when you're back online.</div>}
 
       <div style={{flex:1,overflowY:"auto",padding:"12px 13px"}} onClick={()=>showUserMenu&&setShowUserMenu(false)}>
