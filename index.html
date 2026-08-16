@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.78";
+const APP_VERSION="v4.79";
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -116,6 +116,96 @@ const combineNotes=(itemNote,subTypeNote)=>{
   if(b.includes(a))return b;
   return a+" + "+b;
 };
+
+// ── N6: config rename with historical cascade ────────────────────────────────
+// Entries store config names as plain STRINGS (food:"Nuts"), not ids, so
+// renaming a config item would otherwise orphan every past entry: reports and
+// usage ranking would silently fragment across the old and new names. These
+// pure helpers describe what a rename touches; the App callback applies them.
+//
+// Every write goes through per-entry `.update()` paths — never `.set()` on the
+// entries node, which is the pattern behind the original data-loss incident.
+const RENAME_SPECS={
+  food:        {types:["meal"],            field:"food"},
+  foodSub:     {types:["meal"],            field:"foodSubType",   parentField:"food"},
+  drink:       {types:["liquid","water"],  field:"liquidType"},
+  drinkSub:    {types:["liquid","water"],  field:"liquidSubType", parentField:"liquidType"},
+  exercise:    {types:["exercise"],        field:"exType"},
+  exerciseSub: {types:["exercise"],        field:"subType",       parentField:"exType"},
+  medical:     {types:["medical"],         field:"readingType"},
+  med:         {types:["medication"],      field:"med"},
+};
+const renameMatches=(e,kind,parent,oldName)=>{
+  const sp=RENAME_SPECS[kind];
+  if(!sp||!e)return false;
+  if(!sp.types.includes(e.type))return false;
+  if(sp.parentField&&e[sp.parentField]!==parent)return false;
+  return (e[sp.field]||"")===oldName;
+};
+const countRenameHits=(all,kind,parent,oldName)=>(all||[]).filter(e=>renameMatches(e,kind,parent,oldName)).length;
+
+// Rewrites the config object itself. Pure: returns a new settings object.
+function renameInConfig(settings,kind,parent,oldName,newName){
+  const s=deepClone(settings||{});
+  const renSub=list=>(list||[]).map(x=>subName(x)===oldName?(subNote(x)?{name:newName,note:subNote(x)}:newName):x);
+  const renKey=(obj,ok,nk)=>{
+    if(!obj||!Object.prototype.hasOwnProperty.call(obj,ok))return obj;
+    const out={};Object.keys(obj).forEach(k=>{out[k===ok?nk:k]=obj[k];});return out;
+  };
+  if(kind==="food")        s.foodCategories=(s.foodCategories||[]).map(f=>(f.name||f)===oldName?(typeof f==="string"?newName:{...f,name:newName}):f);
+  if(kind==="foodSub")     s.foodCategories=(s.foodCategories||[]).map(f=>(f.name||f)===parent?{...f,subTypes:renSub(f.subTypes)}:f);
+  if(kind==="drink"){
+    s.liquidTypes=(s.liquidTypes||[]).map(t=>t===oldName?newName:t);
+    s.liquidNotes=renKey(s.liquidNotes,oldName,newName);
+    s.liquidSubTypes=renKey(s.liquidSubTypes,oldName,newName);
+    s.liquidIcons=renKey(s.liquidIcons,oldName,newName);
+  }
+  if(kind==="drinkSub"&&s.liquidSubTypes) s.liquidSubTypes={...s.liquidSubTypes,[parent]:renSub(s.liquidSubTypes[parent])};
+  if(kind==="exercise")    s.exerciseTypes=(s.exerciseTypes||[]).map(e=>e.name===oldName?{...e,name:newName}:e);
+  if(kind==="exerciseSub") s.exerciseTypes=(s.exerciseTypes||[]).map(e=>e.name===parent?{...e,subTypes:renSub(e.subTypes)}:e);
+  if(kind==="medical")     s.medicalPresets=(s.medicalPresets||[]).map(p=>(p.name||p)===oldName?(typeof p==="string"?newName:{...p,name:newName}):p);
+  if(kind==="med"){
+    s.medications=(s.medications||[]).map(m=>m===oldName?newName:m);
+    s.medicationIcons=renKey(s.medicationIcons,oldName,newName);
+  }
+  return s;
+}
+
+// ── Data repair: emoji baked into stored names ───────────────────────────────
+// Before v4.36, icon-decorated <option> elements were missing a value=
+// attribute, so the browser submitted the DISPLAY text — emoji and all. Those
+// entries still carry names like "🩸 Sugar", which no longer match any config
+// item, so they are silently excluded from Reports and Trends. Detection is
+// deliberately conservative: a value is only offered for repair when stripping
+// its leading emoji makes it match a real config name EXACTLY.
+const LEADING_EMOJI=/^[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{FE0F}\u{2B00}-\u{2BFF}]+\s*/u;
+const stripLeadingEmoji=v=>String(v==null?"":v).replace(LEADING_EMOJI,"").trim();
+function findEmojiRepairs(all,settings){
+  const st=settings||{};
+  const known={
+    food:new Set(foodItems(st.foodCategories||FD.foodCategories).map(f=>f.name)),
+    drink:new Set((st.liquidTypes||FD.liquidTypes||[]).filter(t=>t!=="--------")),
+    exercise:new Set((st.exerciseTypes||FD.exerciseTypes||[]).map(e=>e.name||e)),
+    medical:new Set((st.medicalPresets||FD.medicalPresets||[]).map(p=>p.name||p)),
+    med:new Set(st.medications||FD.medications||[]),
+  };
+  const plan=[];
+  const bump=(field,e,pool)=>{
+    const cur=e[field];
+    if(!cur||!LEADING_EMOJI.test(String(cur)))return;
+    const fixed=stripLeadingEmoji(cur);
+    if(!fixed||!pool.has(fixed))return;           // only repair provable matches
+    plan.push({id:e.id,field,from:cur,to:fixed});
+  };
+  (all||[]).forEach(e=>{
+    if(e.type==="meal")                     bump("food",e,known.food);
+    if(e.type==="liquid"||e.type==="water") bump("liquidType",e,known.drink);
+    if(e.type==="exercise")                 bump("exType",e,known.exercise);
+    if(e.type==="medical")                  bump("readingType",e,known.medical);
+    if(e.type==="medication")               bump("med",e,known.med);
+  });
+  return plan;
+}
 
 // ── Access control (admin-gated signup) ────────────────────────────────────
 // The superadmin UID is hardcoded here, not only in the database, so admin
@@ -1335,6 +1425,89 @@ function App(){
     if(user){try{await Promise.all([dbSet(user.uid,"settings",newSet),dbSet(user.uid,CONFIG_MODEL_KEY,CONFIG_MODEL_V2)]);}catch(e){}}
   },[settings,user]);
 
+  // ── N6: rename a config item and cascade it across all history ────────────
+  // Writes are chunked multi-path `.update()` calls scoped to individual entry
+  // fields (`{entryId}/{field}`), so no other field of any entry is touched and
+  // the entries node is never `.set()`. Tombstoned entries are included too —
+  // otherwise restoring one later would resurrect the old name.
+  const applyEntryPatches=useCallback(async(patches)=>{
+    if(!user||!patches.length)return 0;
+    const uid=user.uid;
+    const CHUNK=400;
+    for(let i=0;i<patches.length;i+=CHUNK){
+      const slice=patches.slice(i,i+CHUNK);
+      const updates={};
+      slice.forEach(p=>{
+        const key=String(p.id).replace(/[\s.#$\[\]/]/g,"_");
+        updates[`${key}/${p.field}`]=p.to;
+      });
+      await fbDb.ref(`users/${uid}/entries`).update(updates);
+    }
+    // Mirror + local state, so the change is visible immediately and survives
+    // a reload even before the listener echoes it back.
+    const byId=new Map(patches.map(p=>[p.id,p]));
+    const applyLocal=list=>list.map(e=>byId.has(e.id)?{...e,[byId.get(e.id).field]:byId.get(e.id).to}:e);
+    const nextLive=applyLocal(entries), nextDead=applyLocal(deletedEntries);
+    setEntries(nextLive);setDeletedEntries(nextDead);
+    mirrorPut(uid,[...nextLive,...nextDead].filter(e=>byId.has(e.id)));
+    // Anything still queued offline must be patched too, or the flush would
+    // write the stale name back over the rename.
+    const q=getOfflineQ(uid);
+    if(q.length){
+      const nq=q.map(e=>byId.has(e.id)?{...e,[byId.get(e.id).field]:byId.get(e.id).to}:e);
+      saveOfflineQ(uid,nq);
+    }
+    return patches.length;
+  },[user,entries,deletedEntries]);
+
+  const renameConfigItem=useCallback(async(kind,parent,oldName,newName)=>{
+    const nn=(newName||"").trim();
+    if(!nn||nn===oldName)return;
+    if(!isOnline){
+      alert("Renaming needs a connection.\n\nIt rewrites past entries, which must not go through the offline queue. Try again once you're back online.");
+      return;
+    }
+    const all=[...entries,...deletedEntries];
+    const hits=all.filter(e=>renameMatches(e,kind,parent,oldName));
+    const ok=confirm(
+      `Rename "${oldName}" to "${nn}"?\n\n`+
+      (hits.length
+        ? `This also updates ${hits.length} past ${hits.length===1?"entry":"entries"} so your history, reports and trends stay consistent.\n\n`
+        : `No past entries use this name.\n\n`)+
+      `A backup will be downloaded first.`);
+    if(!ok)return;
+    try{
+      exportFullBackup();                                    // safety net before any bulk write
+      const patches=hits.map(e=>({id:e.id,field:RENAME_SPECS[kind].field,to:nn}));
+      await applyEntryPatches(patches);
+      saveSettings(renameInConfig(settings,kind,parent,oldName,nn));
+      alert(`Renamed to "${nn}".${hits.length?`\n${hits.length} past ${hits.length===1?"entry":"entries"} updated.`:""}`);
+    }catch(err){
+      console.error("Rename failed:",err);
+      alert("Rename failed: "+(err&&err.message||err)+"\n\nNothing was left half-done in your config — re-check the list and try again.");
+    }
+  },[isOnline,entries,deletedEntries,settings,saveSettings,applyEntryPatches,exportFullBackup]);
+
+  const repairEmojiNames=useCallback(async()=>{
+    if(!isOnline){alert("Repair needs a connection — it rewrites past entries.");return;}
+    const plan=findEmojiRepairs([...entries,...deletedEntries],settings);
+    if(!plan.length){alert("Nothing to repair — no entries have an emoji stuck in a stored name.");return;}
+    const sample=[...new Set(plan.map(p=>`${p.from}  →  ${p.to}`))].slice(0,8);
+    if(!confirm(
+      `Repair ${plan.length} ${plan.length===1?"entry":"entries"}?\n\n`+
+      `These were saved with the icon accidentally stored as part of the name, so they don't match your config and are missing from Reports and Trends.\n\n`+
+      sample.join("\n")+(new Set(plan.map(p=>p.from)).size>8?"\n…":"")+
+      `\n\nA backup will be downloaded first.`))return;
+    try{
+      exportFullBackup();
+      await applyEntryPatches(plan);
+      alert(`Repaired ${plan.length} ${plan.length===1?"entry":"entries"}.\nThey'll now appear in Reports and Trends.`);
+    }catch(err){
+      console.error("Repair failed:",err);
+      alert("Repair failed: "+(err&&err.message||err));
+    }
+  },[isOnline,entries,deletedEntries,settings,applyEntryPatches,exportFullBackup]);
+
   const onImportConfig=useCallback(async cfg=>{
     const newSet={...settings,...cfg};
     setSettings(newSet);
@@ -1453,7 +1626,7 @@ function App(){
         {page==="home"    &&<HomePage entries={entries} settings={settings} onAdd={addEntry} entryTime={entryTime} setEntryTime={setEntryTime} isOnline={isOnline} T={T}/>}
         {page==="manage"  &&<ManagePage entries={entries} settings={settings} onAddDirect={addEntryDirect} onUpdate={updateEntry} onDelete={deleteEntry} isOnline={isOnline} T={T}/>}
         {page==="reports" &&<ReportsPage entries={entries} settings={settings} isOnline={isOnline} T={T}/>}
-        {page==="settings"&&<SettingsPage settings={settings} theme={theme} setSettings={saveSettings} setTheme={saveTheme} dayRolloverMin={dayRolloverMin} setDayRolloverMin={saveDayRollover} user={user} entries={entries} deletedEntries={deletedEntries} onRestoreEntry={restoreEntry} onExportJSON={exportFullBackup} onImportJSON={importFullBackup} onImport={handleImport} clearAll={clearAll} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} onRestore={restoreFromBackup} offlineAuth={offlineAuth}
+        {page==="settings"&&<SettingsPage settings={settings} theme={theme} setSettings={saveSettings} setTheme={saveTheme} dayRolloverMin={dayRolloverMin} setDayRolloverMin={saveDayRollover} user={user} entries={entries} deletedEntries={deletedEntries} onRestoreEntry={restoreEntry} onExportJSON={exportFullBackup} onImportJSON={importFullBackup} onImport={handleImport} clearAll={clearAll} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} onRestore={restoreFromBackup} onRename={renameConfigItem} onRepairEmoji={repairEmojiNames} offlineAuth={offlineAuth}
           isAdminUser={isAdminUser} pendingRequests={pendingRequests} adminsMap={adminsMap} allowlistMap={allowlistMap} approvedUsersMap={approvedUsersMap}
           onApproveRequest={approveRequest} onDenyRequest={denyRequest} onPromoteAdmin={promoteToAdmin} onDemoteAdmin={demoteAdmin} onAddAllowlist={addAllowlistEntry} onRemoveAllowlist={removeAllowlistEntry}
           T={T}/>}
@@ -2376,7 +2549,7 @@ function DataSafetyCard({entries,deletedEntries,onRestoreEntry,onExportJSON,onIm
   );
 }
 
-function SettingsPage({settings,theme,setSettings,setTheme,dayRolloverMin,setDayRolloverMin,user,entries,deletedEntries,onRestoreEntry,onExportJSON,onImportJSON,onImport,onImportConfig,onClearEntries,onClearConfig,onClearAll,onRestore,offlineAuth,isAdminUser,pendingRequests,adminsMap,allowlistMap,approvedUsersMap,onApproveRequest,onDenyRequest,onPromoteAdmin,onDemoteAdmin,onAddAllowlist,onRemoveAllowlist,T}){
+function SettingsPage({settings,theme,setSettings,setTheme,dayRolloverMin,setDayRolloverMin,user,entries,deletedEntries,onRestoreEntry,onExportJSON,onImportJSON,onImport,onImportConfig,onClearEntries,onClearConfig,onClearAll,onRestore,onRename,onRepairEmoji,offlineAuth,isAdminUser,pendingRequests,adminsMap,allowlistMap,approvedUsersMap,onApproveRequest,onDenyRequest,onPromoteAdmin,onDemoteAdmin,onAddAllowlist,onRemoveAllowlist,T}){
   const[stab,setStab]=useState("general");const[ctab,setCtab]=useState("food");const[newItem,setNewItem]=useState("");
   // C1: `active` was the `defaults` draft node and edits only reached entry
   // forms via Apply ▶. There is no draft any more — edits are the live config,
@@ -2416,12 +2589,12 @@ function SettingsPage({settings,theme,setSettings,setTheme,dayRolloverMin,setDay
       <div style={{display:"flex",gap:4,marginBottom:9,overflowX:"auto"}}>
         {CTABS.map(([k,l])=><button key={k} onClick={()=>{setCtab(k);setNewItem("");}} className={`tbtn${ctab===k?" on":""}`} style={{flexShrink:0,fontSize:"0.75rem"}}>{l}</button>)}
       </div>
-      {ctab==="food"&&<FoodSetting items={active.foodCategories||FD.foodCategories} onRemove={name=>removeItem("foodCategories",name)} onUpdate={updateFood} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("foodCategories")} T={T}/>}
-      {ctab==="drinks"&&<DrinkSetting types={active.liquidTypes||FD.liquidTypes} notes={active.liquidNotes||FD.liquidNotes||{}} subTypes={active.liquidSubTypes||FD.liquidSubTypes||{}} icons={active.liquidIcons||{}} onRemove={item=>removeItem("liquidTypes",item)} onUpdate={updateDrink} onIconUpdate={(name,ic)=>updateDrink("icons",{...(active.liquidIcons||{}),[name]:ic})} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("liquidTypes")} T={T}/>}
-      {ctab==="exercise"&&<ExerciseSetting types={active.exerciseTypes||FD.exerciseTypes} onChange={v=>updateActive(p=>({...p,exerciseTypes:v}))} T={T}/>}
-      {ctab==="medical"&&<MedicalPresetSetting presets={active.medicalPresets||FD.medicalPresets} onAdd={addMedPreset} onRemove={removeMedPreset} onReorder={arr=>updateActive(p=>({...p,medicalPresets:arr}))} onUpdate={arr=>updateActive(p=>({...p,medicalPresets:arr}))} T={T}/>}
-      {ctab==="meds"&&<EList items={active.medications||FD.medications} onRemove={item=>removeItem("medications",item)} onReorder={arr=>updateActive(p=>({...p,medications:arr}))} icons={active.medicationIcons||{}} onIconUpdate={(name,ic)=>updateActive(p=>({...p,medicationIcons:{...(p.medicationIcons||{}),[name]:ic}}))} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("medications")} T={T}/>}
-      <ConfigTools ctab={ctab} settings={settings} onImportConfig={onImportConfig} onClearConfig={onClearConfig} onFactorySection={sec=>{
+      {ctab==="food"&&<FoodSetting entries={entries} onRename={onRename} items={active.foodCategories||FD.foodCategories} onRemove={name=>removeItem("foodCategories",name)} onUpdate={updateFood} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("foodCategories")} T={T}/>}
+      {ctab==="drinks"&&<DrinkSetting entries={entries} onRename={onRename} types={active.liquidTypes||FD.liquidTypes} notes={active.liquidNotes||FD.liquidNotes||{}} subTypes={active.liquidSubTypes||FD.liquidSubTypes||{}} icons={active.liquidIcons||{}} onRemove={item=>removeItem("liquidTypes",item)} onUpdate={updateDrink} onIconUpdate={(name,ic)=>updateDrink("icons",{...(active.liquidIcons||{}),[name]:ic})} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("liquidTypes")} T={T}/>}
+      {ctab==="exercise"&&<ExerciseSetting entries={entries} onRename={onRename} types={active.exerciseTypes||FD.exerciseTypes} onChange={v=>updateActive(p=>({...p,exerciseTypes:v}))} T={T}/>}
+      {ctab==="medical"&&<MedicalPresetSetting entries={entries} onRename={onRename} presets={active.medicalPresets||FD.medicalPresets} onAdd={addMedPreset} onRemove={removeMedPreset} onReorder={arr=>updateActive(p=>({...p,medicalPresets:arr}))} onUpdate={arr=>updateActive(p=>({...p,medicalPresets:arr}))} T={T}/>}
+      {ctab==="meds"&&<EList entries={entries} onRename={onRename} items={active.medications||FD.medications} onRemove={item=>removeItem("medications",item)} onReorder={arr=>updateActive(p=>({...p,medications:arr}))} icons={active.medicationIcons||{}} onIconUpdate={(name,ic)=>updateActive(p=>({...p,medicationIcons:{...(p.medicationIcons||{}),[name]:ic}}))} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("medications")} T={T}/>}
+      <ConfigTools ctab={ctab} settings={settings} entries={entries} onRepairEmoji={onRepairEmoji} onImportConfig={onImportConfig} onClearConfig={onClearConfig} onFactorySection={sec=>{
         const map={food:["foodCategories"],drinks:["liquidTypes","liquidNotes","liquidSubTypes","liquidIcons"],exercise:["exerciseTypes"],medical:["medicalPresets"],meds:["medications","medicationIcons"]};
         const keys=map[sec]||[];
         const patch={};keys.forEach(k=>{if(FD[k]!==undefined)patch[k]=deepClone(FD[k]);});
@@ -2510,7 +2683,7 @@ function AdminPanel({pendingRequests,adminsMap,allowlistMap,approvedUsersMap,onA
 // N8: config export / import / clear / factory-reset used to live under the
 // Backup tab, separated from the config editing they act on. They now sit
 // directly beneath the list being edited, scoped to the section in view.
-function ConfigTools({ctab,settings,onImportConfig,onClearConfig,onFactorySection,onFactoryAll,T}){
+function ConfigTools({ctab,settings,entries,onRepairEmoji,onImportConfig,onClearConfig,onFactorySection,onFactoryAll,T}){
   const cfgRef=useRef();
   const[open,setOpen]=useState(false);
   const LABEL={food:"Food",drinks:"Drinks",exercise:"Exercise",medical:"Medical",meds:"Meds"};
@@ -2522,6 +2695,8 @@ function ConfigTools({ctab,settings,onImportConfig,onClearConfig,onFactorySectio
     r.readAsText(f);e.target.value="";
   };
   const btn={width:"100%",padding:"8px",borderRadius:8,border:`1px solid ${T.border}`,background:T.inputBg,color:T.text,fontFamily:"inherit",fontWeight:600,fontSize:"0.78rem",cursor:"pointer",marginBottom:6};
+  // Only surfaced when there is actually something to fix.
+  const repairCount=useMemo(()=>findEmojiRepairs(entries,settings).length,[entries,settings]);
   return(<div className="card" style={{marginTop:10}}>
     {!open
       ?<button onClick={()=>setOpen(true)} style={{width:"100%",padding:"8px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontFamily:"inherit",fontWeight:600,fontSize:"0.78rem",cursor:"pointer"}}>🛠️ {label} tools — export, import, reset…</button>
@@ -2532,12 +2707,22 @@ function ConfigTools({ctab,settings,onImportConfig,onClearConfig,onFactorySectio
         </div>
         <button onClick={()=>downloadCSV(exportConfigCSV(settings,ctab),`jivanlog-config-${ctab}-${today()}.csv`)} style={{...btn,background:T.accentBtn,color:"#fff",border:"none"}}>⬇️ Export {label} CSV</button>
         <button onClick={()=>downloadCSV(exportConfigCSV(settings,"all"),`jivanlog-config-all-${today()}.csv`)} style={btn}>⬇️ Export ALL config CSV</button>
+        {/* Reference copy of the built-in tables. exportConfigCSV takes any
+            config-shaped object, so passing FD emits the hard-coded factory
+            lists in the same format as a normal export — useful for diffing
+            your config against the defaults without overwriting anything. */}
+        <button onClick={()=>downloadCSV(exportConfigCSV(FD,"all"),`jivanlog-factory-defaults-${APP_VERSION}-${today()}.csv`)} style={btn}>⬇️ Export FACTORY defaults CSV (reference)</button>
+        <div style={{fontSize:"0.68rem",color:T.textMuted,margin:"2px 0 8px",lineHeight:1.5}}>Factory export is read-only reference — downloading it changes nothing.</div>
         <button onClick={()=>cfgRef.current&&cfgRef.current.click()} style={btn}>⬆️ Import config CSV…</button>
         <div style={{fontSize:"0.68rem",color:T.textMuted,margin:"2px 0 8px",lineHeight:1.5}}>Import replaces whichever sections the file contains. Other sections are untouched.</div>
         <button onClick={()=>{if(!confirm(`Reset ${label} to factory defaults?\n\nThis restores the built-in ${label} list. Your logged entries are unaffected.`))return;onFactorySection(ctab);}} style={btn}>↺ Reset {label} to factory</button>
         <button onClick={()=>{if(!confirm(`Empty the ${label} list?\n\nThe list becomes blank until you re-add or re-import. Your logged entries are unaffected.`))return;onClearConfig(ctab);}} style={{...btn,color:T.danger,borderColor:T.danger}}>⚠️ Clear {label} list</button>
         <div style={{borderTop:`1px solid ${T.border}`,marginTop:6,paddingTop:8}}>
-          <button onClick={()=>{if(!confirm("Reset ALL config sections to factory defaults?\n\nEvery list is restored to its built-in version. Your logged entries are unaffected."))return;onFactoryAll();}} style={{...btn,marginBottom:0,color:T.textMuted}}>↺ Reset ALL config to factory</button>
+          <button onClick={()=>{if(!confirm("Reset ALL config sections to factory defaults?\n\nEvery list is restored to its built-in version. Your logged entries are unaffected."))return;onFactoryAll();}} style={{...btn,color:T.textMuted}}>↺ Reset ALL config to factory</button>
+          {repairCount>0&&<>
+            <button onClick={onRepairEmoji} style={{...btn,marginBottom:2,borderColor:T.accentBtn,color:T.accent}}>🩹 Repair {repairCount} mis-saved {repairCount===1?"entry":"entries"}</button>
+            <div style={{fontSize:"0.68rem",color:T.textMuted,lineHeight:1.5}}>These were saved with the icon stuck to the name (e.g. "🩸 Sugar"), so they don't match your config and are missing from Reports and Trends.</div>
+          </>}
         </div>
         <input ref={cfgRef} type="file" accept=".csv" onChange={handleCfgFile} style={{display:"none"}}/>
       </>}
@@ -2704,7 +2889,7 @@ function DataPanel({entries,deletedEntries,onImport,onClearEntries,onClearAll,on
 }
 
 
-function MedicalPresetSetting({presets,onAdd,onRemove,onReorder,onUpdate,T}){
+function MedicalPresetSetting({presets,onAdd,onRemove,onReorder,onUpdate,entries,onRename,T}){
   const[nm,setNm]=useState("");const[ut,setUt]=useState("");
   const add=()=>{if(!nm.trim())return;onAdd(nm.trim(),ut.trim());setNm("");setUt("");};
   return(<div><div className="card" style={{marginBottom:7}}>
@@ -2715,10 +2900,11 @@ function MedicalPresetSetting({presets,onAdd,onRemove,onReorder,onUpdate,T}){
     <button onClick={()=>onReorder([...(presets||[])].sort((a,b)=>(a.name||a).localeCompare(b.name||b)))} style={{padding:"2px 9px",borderRadius:6,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontSize:"0.72rem",fontFamily:"inherit"}}>A→Z</button>
     <button onClick={()=>onReorder([...(presets||[])].sort((a,b)=>(b.name||b).localeCompare(a.name||a)))} style={{padding:"2px 9px",borderRadius:6,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontSize:"0.72rem",fontFamily:"inherit"}}>Z→A</button>
   </div>
-  {(presets||[]).map((p,i)=>{const nm2=typeof p==="string"?p:p.name;const ut2=typeof p==="string"?"":p.unit;return(<div key={nm2} style={{display:"flex",alignItems:"center",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}>
+  {(presets||[]).map((p,i)=>{const nm2=typeof p==="string"?p:p.name;const ut2=typeof p==="string"?"":p.unit;return(<div key={nm2} style={{display:"flex",alignItems:"center",flexWrap:"wrap",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}>
     <ReorderBtns i={i} total={(presets||[]).length} onMove={(idx,dir)=>{const moved=moveItem(presets,idx,dir);onReorder(moved);}} T={T}/>
     <IconBtn name={nm2} category="medical" stored={typeof p==="object"?p.icon||"":""} onSet={ic=>onUpdate&&onUpdate(presets.map((x,j)=>j===i?{...(typeof x==="object"?x:{name:x}),icon:ic}:x))} T={T}/>
     <span style={{flex:1,marginLeft:5}}>{nm2}{ut2&&<span style={{color:T.textMuted,fontSize:"0.75rem",marginLeft:6}}>({ut2})</span>}</span>
+    <RenameBox current={nm2} hits={countRenameHits(entries,"medical",null,nm2)} onRename={nn=>onRename&&onRename("medical",null,nm2,nn)} T={T}/>
     <button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(nm2)}>🗑️</button>
   </div>);})}</div>);
 }
@@ -2979,7 +3165,7 @@ function IconBtn({name, category, stored, onSet, T}){
     </div>
   );
 }
-function FoodSetting({items,onRemove,onUpdate,newItem,setNew,onAdd,T}){
+function FoodSetting({items,onRemove,onUpdate,newItem,setNew,onAdd,entries,onRename,T}){
   const[ei,setEi]=useState(null);
   const fi=foodItems(items);
   const upd=(name,patch)=>onUpdate(fi.map(f=>f.name===name?{...f,...patch}:f));
@@ -3013,11 +3199,13 @@ function FoodSetting({items,onRemove,onUpdate,newItem,setNew,onAdd,T}){
         </div>
         <input placeholder="Default note (optional)" value={item.note||""} onChange={e=>upd(item.name,{note:e.target.value})} style={{width:"100%",fontSize:"0.76rem",padding:"4px 7px",marginBottom:ei===item.name?6:0,color:T.textSub}}/>
         {ei===item.name&&<div style={{marginTop:5}}>
-          <div className="slabel">Sub-types</div>
+          <RenameBox current={item.name} hits={countRenameHits(entries,"food",null,item.name)} onRename={nn=>onRename&&onRename("food",null,item.name,nn)} T={T}/>
+          <div className="slabel" style={{marginTop:8}}>Sub-types</div>
           {subItems(item.subTypes).map((s,si)=>(<div key={s.name} style={{padding:"3px 0",borderBottom:`1px solid ${T.border}`}}>
             <div style={{display:"flex",alignItems:"center",fontSize:"0.8rem"}}>
               <ReorderBtns i={si} total={(item.subTypes||[]).length} onMove={(idx,dir)=>moveSub(item.name,idx,dir)} T={T}/>
               <span style={{flex:1}}>{s.name}</span>
+              <RenameBox current={s.name} hits={countRenameHits(entries,"foodSub",item.name,s.name)} onRename={nn=>onRename&&onRename("foodSub",item.name,s.name,nn)} T={T}/>
               <button className="ibtn" style={{color:T.danger}} onClick={()=>remSub(item.name,s.name)}>🗑️</button>
             </div>
             <input placeholder="Sub-type note (optional)" value={s.note||""} onChange={e=>updSubNote(item.name,s.name,e.target.value)} style={{width:"100%",fontSize:"0.72rem",padding:"3px 6px",margin:"2px 0 3px",color:T.textSub}}/>
@@ -3029,7 +3217,7 @@ function FoodSetting({items,onRemove,onUpdate,newItem,setNew,onAdd,T}){
   </div>);
 }
 
-function DrinkSetting({types,notes,subTypes,icons,onRemove,onUpdate,onIconUpdate,newItem,setNew,onAdd,T}){
+function DrinkSetting({types,notes,subTypes,icons,onRemove,onUpdate,onIconUpdate,newItem,setNew,onAdd,entries,onRename,T}){
   const[ei,setEi]=useState(null);
   const drinks=(types||[]).filter(t=>t!=="--------");
   const updNote=(name,note)=>onUpdate("notes",{...notes,[name]:note});
@@ -3062,11 +3250,13 @@ function DrinkSetting({types,notes,subTypes,icons,onRemove,onUpdate,onIconUpdate
         </div>
         <input placeholder="Default note (optional)" value={(notes||{})[name]||""} onChange={e=>updNote(name,e.target.value)} style={{width:"100%",fontSize:"0.76rem",padding:"4px 7px",marginBottom:ei===name?6:0,color:T.textSub}}/>
         {ei===name&&<div style={{marginTop:5}}>
-          <div className="slabel">Sub-types</div>
+          <RenameBox current={name} hits={countRenameHits(entries,"drink",null,name)} onRename={nn=>onRename&&onRename("drink",null,name,nn)} T={T}/>
+          <div className="slabel" style={{marginTop:8}}>Sub-types</div>
           {subItems((subTypes||{})[name]).map((s,si)=>(<div key={s.name} style={{padding:"3px 0",borderBottom:`1px solid ${T.border}`}}>
             <div style={{display:"flex",alignItems:"center",fontSize:"0.8rem"}}>
               <ReorderBtns i={si} total={((subTypes||{})[name]||[]).length} onMove={(idx,dir)=>moveSub(name,idx,dir)} T={T}/>
               <span style={{flex:1}}>{s.name}</span>
+              <RenameBox current={s.name} hits={countRenameHits(entries,"drinkSub",name,s.name)} onRename={nn=>onRename&&onRename("drinkSub",name,s.name,nn)} T={T}/>
               <button className="ibtn" style={{color:T.danger}} onClick={()=>remSub(name,s.name)}>🗑️</button>
             </div>
             <input placeholder="Sub-type note (optional)" value={s.note||""} onChange={e=>updSubNote(name,s.name,e.target.value)} style={{width:"100%",fontSize:"0.72rem",padding:"3px 6px",margin:"2px 0 3px",color:T.textSub}}/>
@@ -3078,22 +3268,23 @@ function DrinkSetting({types,notes,subTypes,icons,onRemove,onUpdate,onIconUpdate
   </div>);
 }
 
-function EList({items,onRemove,onReorder,icons,onIconUpdate,newItem,setNew,onAdd,T}){
+function EList({items,onRemove,onReorder,icons,onIconUpdate,newItem,setNew,onAdd,entries,onRename,T}){
   return(<div className="card"><div style={{display:"flex",gap:7,marginBottom:9}}><input placeholder="Add new item…" value={newItem} onChange={e=>setNew(e.target.value)} onKeyDown={e=>e.key==="Enter"&&onAdd()}/><button onClick={onAdd} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div>
   <div style={{display:"flex",gap:5,marginBottom:6,alignItems:"center"}}>
     <span style={{fontSize:"0.72rem",color:T.textMuted}}>Sort:</span>
     <button onClick={()=>onReorder&&onReorder([...(items||[])].sort((a,b)=>a.localeCompare(b)))} style={{padding:"2px 9px",borderRadius:6,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontSize:"0.72rem",fontFamily:"inherit"}}>A→Z</button>
     <button onClick={()=>onReorder&&onReorder([...(items||[])].sort((a,b)=>b.localeCompare(a)))} style={{padding:"2px 9px",borderRadius:6,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontSize:"0.72rem",fontFamily:"inherit"}}>Z→A</button>
   </div>
-  {(items||[]).map((item,i)=>(<div key={item} style={{display:"flex",alignItems:"center",padding:"4px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}>
+  {(items||[]).map((item,i)=>(<div key={item} style={{display:"flex",alignItems:"center",flexWrap:"wrap",padding:"4px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}>
     {onReorder&&<ReorderBtns i={i} total={(items||[]).length} onMove={(idx,dir)=>onReorder(moveItem(items,idx,dir))} T={T}/>}
     <IconBtn name={item} category="medication" stored={(icons||{})[item]||""} onSet={ic=>onIconUpdate&&onIconUpdate(item,ic)} T={T}/>
     <span style={{flex:1,marginLeft:5}}>{item}</span>
+    <RenameBox current={item} hits={countRenameHits(entries,"med",null,item)} onRename={nn=>onRename&&onRename("med",null,item,nn)} T={T}/>
     <button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(item)}>🗑️</button>
   </div>))}
   </div>);
 }
-function ExerciseSetting({types,onChange,T}){
+function ExerciseSetting({types,onChange,entries,onRename,T}){
   const[ei,setEi]=useState(null);const[nn,setNn]=useState("");
   const add=()=>{if(!nn.trim())return;onChange([...types,{name:nn.trim(),subTypes:[],metrics:["time"],note:"",icon:""}]);setNn("");};
   const rem=i=>onChange(types.filter((_,x)=>x!==i));
@@ -3118,11 +3309,14 @@ function ExerciseSetting({types,onChange,T}){
     </div>
     <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:3}}>{["distance","time","count"].map(m=>(<button key={m} onClick={()=>togM(i,m)} style={{padding:"2px 9px",borderRadius:20,fontSize:"0.72rem",border:"1px solid",cursor:"pointer",borderColor:t.metrics.includes(m)?T.accentBtn:T.border,background:t.metrics.includes(m)?T.accentBg:"transparent",color:t.metrics.includes(m)?T.accent:T.textMuted}}>{m}</button>))}</div>
     <input placeholder="Default note (optional, e.g. 30 min brisk)" value={t.note||""} onChange={e=>onChange(types.map((x,j)=>j===i?{...x,note:e.target.value}:x))} style={{width:"100%",fontSize:"0.76rem",padding:"4px 7px",marginBottom:3,color:T.textSub}}/>
-    {ei===i&&<div style={{marginTop:7}}><div className="slabel">Sub-types</div>
+    {ei===i&&<div style={{marginTop:7}}>
+      <RenameBox current={t.name} hits={countRenameHits(entries,"exercise",null,t.name)} onRename={nn=>onRename&&onRename("exercise",null,t.name,nn)} T={T}/>
+      <div className="slabel" style={{marginTop:8}}>Sub-types</div>
       {subItems(t.subTypes).map((s,si)=>(<div key={s.name} style={{padding:"3px 0",borderBottom:`1px solid ${T.border}`}}>
         <div style={{display:"flex",alignItems:"center",fontSize:"0.8rem"}}>
           <ReorderBtns i={si} total={(t.subTypes||[]).length} onMove={(idx,dir)=>moveSub(i,idx,dir)} T={T}/>
           <span style={{flex:1}}>{s.name}</span>
+          <RenameBox current={s.name} hits={countRenameHits(entries,"exerciseSub",t.name,s.name)} onRename={nn=>onRename&&onRename("exerciseSub",t.name,s.name,nn)} T={T}/>
           <button className="ibtn" style={{color:T.danger}} onClick={()=>remSub(i,s.name)}>🗑️</button>
         </div>
         <input placeholder="Sub-type note (optional)" value={s.note||""} onChange={e=>updSubNote(i,s.name,e.target.value)} style={{width:"100%",fontSize:"0.72rem",padding:"3px 6px",margin:"2px 0 3px",color:T.textSub}}/>
@@ -3131,6 +3325,32 @@ function ExerciseSetting({types,onChange,T}){
     </div>}
   </div>))}
   </div>);
+}
+
+// N6: inline rename. Deliberately shows the affected-entry count BEFORE the
+// user commits, because a rename here rewrites history — it should never feel
+// like an innocent text edit.
+function RenameBox({label,current,hits,onRename,T}){
+  const[open,setOpen]=useState(false);
+  const[val,setVal]=useState(current);
+  useEffect(()=>{setVal(current);},[current]);
+  if(!open)return(
+    <button onClick={()=>setOpen(true)} style={{padding:"3px 8px",borderRadius:6,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontSize:"0.7rem",fontFamily:"inherit"}}>✏️ Rename</button>
+  );
+  const changed=val.trim()&&val.trim()!==current;
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:4,width:"100%",marginTop:4}}>
+      <div style={{display:"flex",gap:5,alignItems:"center"}}>
+        <input value={val} onChange={e=>setVal(e.target.value)} placeholder={label||"New name"} style={{flex:1,fontSize:"0.78rem",padding:"4px 7px"}}
+          onKeyDown={e=>{if(e.key==="Enter"&&changed){onRename(val.trim());setOpen(false);}if(e.key==="Escape")setOpen(false);}}/>
+        <button disabled={!changed} onClick={()=>{onRename(val.trim());setOpen(false);}} style={{flexShrink:0,padding:"4px 10px",borderRadius:7,border:"none",background:changed?T.accentBtn:T.border,color:"#fff",cursor:changed?"pointer":"not-allowed",fontFamily:"inherit",fontWeight:600,fontSize:"0.75rem"}}>Rename</button>
+        <button onClick={()=>{setVal(current);setOpen(false);}} style={{flexShrink:0,padding:"4px 8px",borderRadius:7,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontSize:"0.75rem",fontFamily:"inherit"}}>✖</button>
+      </div>
+      <div style={{fontSize:"0.66rem",color:hits>0?T.waterBtnText:T.textMuted,lineHeight:1.4}}>
+        {hits>0?`Also updates ${hits} past ${hits===1?"entry":"entries"} so history stays consistent.`:"No past entries use this name."}
+      </div>
+    </div>
+  );
 }
 
 function AddInline({placeholder,onAdd,T}){
