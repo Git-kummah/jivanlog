@@ -45,23 +45,28 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.79";
+const APP_VERSION="v5.0";
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
 const LOGO_SVG=`data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="22" fill="url(#bg)"/><defs><radialGradient id="bg" cx="50%" cy="30%" r="80%"><stop offset="0%" stop-color="#1a56db"/><stop offset="100%" stop-color="#0a2a7a"/></radialGradient><radialGradient id="glow" cx="50%" cy="60%" r="60%"><stop offset="0%" stop-color="#00e676" stop-opacity="0.5"/><stop offset="100%" stop-color="#00e676" stop-opacity="0"/></radialGradient></defs><ellipse cx="50" cy="72" rx="28" ry="10" fill="url(#glow)"/><path d="M50 15 L78 28 L78 55 Q78 75 50 88 Q22 75 22 55 L22 28 Z" fill="#00c853" opacity="0.25"/><path d="M50 20 L74 32 L74 55 Q74 72 50 84 Q26 72 26 55 L26 32 Z" fill="none" stroke="#00e676" stroke-width="2.5" opacity="0.9"/><text x="50" y="68" text-anchor="middle" font-family="Georgia,serif" font-size="38" font-weight="bold" fill="white" opacity="0.95">J</text><circle cx="50" cy="55" r="5" fill="white" opacity="0.5"/></svg>`)}`;
 
 // ── CONSTANTS ─────────────────────────────────────────────────────────────────
+// R8 (v5.0): rebuilt from Mahesh's real current config (jivanlog-config-all-
+// 2026-08-16.csv) — the old table was from March and never contained Heart
+// Rate, Stairs, LogJam, Cilnep/Nexovas, or Morning Drink. Items and sub-types
+// are ordered by actual usage frequency from the entries backup (confidently
+// matched entries only — see the accompanying summary for what was excluded
+// and why). Food items carry a `diet` field ("veg"/"nonveg") for the new
+// Veg/Non-Veg/All filter.
 const FD={
-  foodCategories:[{name:"Airline Meal",note:"",subTypes:[]},{name:"Lentils",note:"",subTypes:["Black Channa","Kabuli Channa","Rajma"]},{name:"Pulses",note:"",subTypes:["Green Gram","Red Gram","Channa Dal","Ambar Dal","Moong Dal"]},{name:"Thorans",note:"",subTypes:["Beans","Cabbage","Beetroot","Cheera"]},{name:"Chicken",note:"",subTypes:["Grilled","Tandoori"]},{name:"Egg",note:"",subTypes:["Boiled","Omlette","Burji","Salad"]},{name:"Salads",note:"",subTypes:["Lettuce","Cucumber","Brocolli"]},{name:"Curd Salad",note:"400g curd + 205g Cucumber + 15g Jalapeno + 15g beetroot + 5g beet vinegar",subTypes:[]},{name:"Paneer",note:"",subTypes:["Saute","Tikka","Curry"]},{name:"Nuts",note:"",subTypes:["Almonds","Walnuts"]},{name:"Seeds",note:"",subTypes:["7-Mix","Aliva","Black Sesame","Pumpkin"]},{name:"Fruits",note:"",subTypes:["Apple","Orange","Pear"]},{name:"Veg Saute",note:"",subTypes:["Karela","Kundri","Ladies Finger","Mix"]},{name:"Soya Chunks",note:"",subTypes:[]}],
-  liquidTypes:["Warm Water","Plain Water","Morning Drink","Morning Coffee","Milk Tea","Herbal Tea"],
-  liquidNotes:{"Morning Drink":"Warm water + 1Tsp Aliva seeds + cinnamon + turmeric + pepper + saffron honey","Morning Coffee":"60ml Milk + 1/4 Tsp Stevia","Milk Tea":"60ml Milk + 1/4 Tsp Stevia"},
-  liquidSubTypes:{"Herbal Tea":["Tulsi Ginger Chamomile","Tulsi Ginger Tumeric","Tulsi Honey Chamomile","Tulsi Muleti"]},
-  exerciseTypes:[{name:"Morning Walk",subTypes:[],metrics:["time","distance"],note:""},{name:"Additional Walk",subTypes:[],metrics:["time","distance"],note:""},{name:"Legs Up The Pillow",subTypes:[],metrics:["time"],note:""},{name:"Legs Up The Wall",subTypes:[],metrics:["time"],note:""}],
-  // ── Medical presets now carry unit — fixes issue #1 ───────────────────────
-  medicalPresets:[{name:"Sugar",unit:"mg/dL"},{name:"BP",unit:"Sys/Dia"},{name:"Weight",unit:"kg"},{name:"Height",unit:"cm"}],
-  medications:["Nexovas 10","Glycomet SR 500","50+ Muti-Vit","Calcium + Vit-D"],
-  // ── 3 named day templates (empty until user saves) ────────────────────────
+  foodCategories:[{name:"Nuts",note:"",subTypes:["Walnuts","Equal qty of Almonds+Walnuts+Unsalted Peanuts","Almonds","Peanuts Roasted unsalted","Peanuts Roasted salted","Cashew Nuts"],diet:"veg"},{name:"Curd",note:"",subTypes:[],diet:"veg"},{name:"Salads",note:"",subTypes:["Cucumber","Lettuce","Others","Cabbage","Brocolli"],diet:"veg"},{name:"Others",note:"",subTypes:["Others","Ghee"],diet:"veg"},{name:"Seeds",note:"",subTypes:["Aliva","Black Sesame","Pumpkin","Sunflower","Chia","Saunf","7-Mix","Flax"],diet:"veg"},{name:"Curd Veg Mix",note:"",subTypes:[],diet:"veg"},{name:"Fruits",note:"",subTypes:["Guava","Apple","Pear","Orange","Musk melon"],diet:"veg"},{name:"Egg",note:"",subTypes:["Omlette","Boiled","Burji","Scrambled","Salad","Tandoori"],diet:"nonveg"},{name:"Chicken",note:"",subTypes:["Tandoori","Grilled","Salad","Wings","Gavran Sukka","Sheekh"],diet:"nonveg"},{name:"Western Breads",note:"",subTypes:["Sandwich Bread","Pizza","Bun","Crossiant","Garlic Bread"],diet:"veg"},{name:"Paneer",note:"",subTypes:["Tikka","Palak","Saute","Veg Mix"],diet:"veg"},{name:"Super Salad",note:"Lettuce (49g) + Guava (48g) + Cucumber (81g) + Paneer (50g) + Mixed Cheese (21g) + Walnuts (15g) + Unsalted peanuts (10g) + Black Salt (1/8Tsp) + Crushed Pepper (1/4Tsp) + Extra Virgin Oilive Oil (8g) + American Mustard Sauce (0) + SouthWest Chiptle Sauce (0g)",subTypes:[],diet:"veg"},{name:"Veg Saute",note:"",subTypes:["Mix","Mushroom","Kundri","Ladies Finger","Carrots","Karela"],diet:"veg"},{name:"Fish",note:"",subTypes:["Tandoori","Curry","Fried"],diet:"nonveg"},{name:"Indian Bread",note:"",subTypes:["Jawarchi Bhakri","Roti","Paratha Plain","Pav","Paratha Stuffed","Poori"],diet:"veg"},{name:"Mutton",note:"",subTypes:["Sheekh","Roast","Sukka","Curry","Chops","Fry","Galouti"],diet:"nonveg"},{name:"Dals",note:"",subTypes:["Moong","Kali Dal","Sambar","Channa"],diet:"veg"},{name:"Soup",note:"",subTypes:["Carrot Soup","Lemon Coriander Soup"],diet:"veg"},{name:"Thorans",note:"",subTypes:["Cabbage","Beans","Beetroot","Cheera","Cowpeas"],diet:"veg"},{name:"Saag",note:"",subTypes:["Sarso","Palak"],diet:"veg"},{name:"Airline Meal",note:"",subTypes:[],diet:"veg"},{name:"Soya Chunks",note:"",subTypes:[],diet:"veg"},{name:"Pasta",note:"",subTypes:[],diet:"veg"},{name:"Prawns",note:"",subTypes:["Butter","Gavran Sukka","Sukka","Cocktail"],diet:"nonveg"},{name:"Biryani",note:"",subTypes:["Mutton","Chicken","Egg","Fish"],diet:"nonveg"},{name:"Pulses",note:"",subTypes:["Moong Dal","Green Gram","Red Gram","Channa Dal","Ambar Dal"],diet:"veg"},{name:"Beef",note:"",subTypes:["Curry","Fry","Roast","Sukka"],diet:"nonveg"},{name:"Lentils",note:"",subTypes:["Black Channa","Kabuli Channa","Rajma"],diet:"veg"}],
+  liquidTypes:["Warm Water","Plain Water","Morning Drink","Milk Coffee","Fennel Water","Milk Tea","Herbal Tea","Lemon Water","Black Coffee","Others","Coconut Water","Buttermilk"],
+  liquidNotes:{"Morning Drink":"Warm water +  Honey + Lemon + Turmeric + Pepper + Cinnamon","Milk Coffee":"60ml Milk + 3/8 Tsp Stevia","Milk Tea":"20ml Milk + 3/8 Tsp Stevia","Lemon Water":"Water with 1/2 squeezed lemon"},
+  liquidSubTypes:{"Herbal Tea":["Tulsi Ginger","Tulsi Honey Chamomile","Tulsi Ginger Chamomile","Tulsi Ginger Tumeric","Tulsi Muleti"]},
+  exerciseTypes:[{name:"Legs Up The Pillow",subTypes:[],metrics:["time"],note:""},{name:"Walking",subTypes:["Park/Outside","At Home","Treadmill","Shopping/Mall"],metrics:["time","distance"],note:""},{name:"LogJam",subTypes:[],metrics:["time"],note:""},{name:"Legs Up The Wall",subTypes:[],metrics:["time"],note:""},{name:"Stairs",subTypes:["Floors","Steps"],metrics:["count"],note:""},{name:"Swimming",subTypes:[],metrics:["time"],note:""},{name:"Cycling",subTypes:[],metrics:["time"],note:""}],
+  medicalPresets:[{name:"Sugar",unit:"mg/dL"},{name:"Weight",unit:"kg"},{name:"BP",unit:"Sys/Dia"},{name:"Heart Rate",unit:"bpm"}],
+  medications:["Glycomet SR 500","Cilnep/Nexovas 10","Vitamin B12 1500mcg","Vit D3 60K IU","Others"],
 };
 const deepClone=o=>JSON.parse(JSON.stringify(o));
 
@@ -243,7 +248,11 @@ const byUsage=(items,counts,nameOf)=>items
   .sort((a,b)=>b.c-a.c||a.i-b.i)
   .map(x=>x.item);
 
-const autoMeal=()=>{const m=new Date().getHours()*60+new Date().getMinutes();return m<705?"Breakfast":m<945?"Lunch":m<1125?"Snack":"Dinner";};
+// mealFromTime is the time-driven core; autoMeal() is the zero-arg form used
+// as MealEntry's initial state (mirrors autoMedTiming's existing shape so the
+// two "derive category from time" functions are consistent with each other).
+const mealFromTime=timeStr=>{const[h,m]=(timeStr||nowHHMM()).split(":").map(Number);const mins=h*60+(m||0);return mins<705?"Breakfast":mins<945?"Lunch":mins<1125?"Snack":"Dinner";};
+const autoMeal=()=>mealFromTime(nowHHMM());
 // B2: makeTS previously threw RangeError on shorthand times ("920", "9", "9.20"),
 // which silently killed the Save handler in Manage. It now parses the same shorthand
 // the Home TimeInput accepts, and clamps rather than producing an Invalid Date.
@@ -267,8 +276,8 @@ const parseTimeParts=timeStr=>{
 const makeTS  =(dateStr,timeStr)=>{const[y,mo,d]=dateStr.split("-").map(Number);const[h,mi]=parseTimeParts(timeStr);const dt=new Date(y,mo-1,d,h,mi,0,0);return isNaN(dt.getTime())?new Date().toISOString():dt.toISOString();};
 
 const THEMES={
-  dark:{bg:"#0a1628",cardBg:"#112240",navBg:"#0d1e35",inputBg:"#0d1e35",border:"#1e3a5f",text:"#e6edf3",textMuted:"#4a7fa5",textSub:"#7aa0bf",accent:"#00e676",accentBg:"#00897b22",accentBtn:"#00897b",danger:"#ef5350",waterBtn:"#0d2a3d",waterBtnText:"#40c4ff",even:"#0a1628",ok:"#1b5e20",lock:"#060e1a"},
-  light:{bg:"#e8eef5",cardBg:"#ffffff",navBg:"#d0dcea",inputBg:"#f2f6fb",border:"#a8c0d6",text:"#1c2e42",textMuted:"#3d6080",textSub:"#4e7a9a",accent:"#007a6e",accentBg:"#007a6e1a",accentBtn:"#007a6e",danger:"#c62828",waterBtn:"#c5ddf0",waterBtnText:"#1a4f72",even:"#ecf2f8",ok:"#2e7d32",lock:"#c8d8e8"},
+  dark:{isDark:true,bg:"#0a1628",cardBg:"#112240",navBg:"#0d1e35",inputBg:"#0d1e35",border:"#1e3a5f",text:"#e6edf3",textMuted:"#4a7fa5",textSub:"#7aa0bf",accent:"#00e676",accentBg:"#00897b22",accentBtn:"#00897b",danger:"#ef5350",waterBtn:"#0d2a3d",waterBtnText:"#40c4ff",even:"#0a1628",ok:"#1b5e20",lock:"#060e1a"},
+  light:{isDark:false,bg:"#e8eef5",cardBg:"#ffffff",navBg:"#d0dcea",inputBg:"#f2f6fb",border:"#a8c0d6",text:"#1c2e42",textMuted:"#3d6080",textSub:"#4e7a9a",accent:"#007a6e",accentBg:"#007a6e1a",accentBtn:"#007a6e",danger:"#c62828",waterBtn:"#c5ddf0",waterBtnText:"#1a4f72",even:"#ecf2f8",ok:"#2e7d32",lock:"#c8d8e8"},
 };
 
 // ── OFFLINE QUEUE & CACHE HELPERS ─────────────────────────────────────────────
@@ -493,7 +502,12 @@ function buildAllCSV(entries){
     if(e.type==="exercise")  {t="Exercise";st=e.exType;d1=e.subType||"";d2=e.dist||"";d3=e.time||e.count||"";u=e.dist?"km":e.count?"count":"min";}
     if(e.type==="medical")   {t="Medical";st=e.readingType;d1=e.value;u=e.unit||"";}
     if(e.type==="medication"){t="Medication";st=e.med;d1=e.timing;}
-    return[e.id,normDate(e.date),fmt24(e.timestamp),t,st,d1,d2,d3,u,n,e.deleted?"YES":"",e.deletedAt||""].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(",");
+    // S8: was unconditional-quote-wrap only, which does NOT stop formula
+    // injection — Excel evaluates the PARSED cell value, and CSV quotes are
+    // structural syntax stripped before that evaluation, not an escape a
+    // spreadsheet respects. csvCell() applies the real guard (a leading ' on
+    // any =+-@ value) uniformly with the config CSV exporter.
+    return[e.id,normDate(e.date),fmt24(e.timestamp),t,st,d1,d2,d3,u,n,e.deleted?"YES":"",e.deletedAt||""].map(csvCell).join(",");
   });
   return[hdr.join(","),...rows].join("\n");
 }
@@ -509,7 +523,7 @@ function buildViewCSV(entries,dates,medPresets){
     ...medNames.map(n=>({key:n,label:n})),
   ];
   const hdr=["Category",...dates.map(fmtDate)].join(",");
-  const dataRows=rows.map(({label,key})=>{const vals=dates.map(d=>{const r=dayReport(entries.filter(e=>e.date===d),medPresets);return`"${(r[key]||"-").replace(/"/g,'""')}"`;});return[`"${label}"`,...vals].join(",");});
+  const dataRows=rows.map(({label,key})=>{const vals=dates.map(d=>{const r=dayReport(entries.filter(e=>e.date===d),medPresets);return csvCell(r[key]||"-");});return[csvCell(label),...vals].join(",");});
   return[hdr,...dataRows].join("\n");
 }
 
@@ -520,7 +534,16 @@ function parseAndMergeCSV(csvText,existingEntries){
   const hdrs=lines[0].split(",").map(h=>h.replace(/^"|"$/g,"").trim());
   ["Date","Time","Type"].forEach(r=>{if(!hdrs.includes(r))throw new Error(`Missing column: ${r}`);});
   const col=k=>hdrs.indexOf(k);
-  const cell=(row,k)=>{const v=row[col(k)]||"";return v.replace(/^"|"$/g,"").replace(/""/g,'"').trim();};
+  const cell=(row,k)=>{
+    const v=row[col(k)]||"";
+    let s=v.replace(/^"|"$/g,"").replace(/""/g,'"').trim();
+    // S8: symmetric with csvCell()'s export-time guard — a leading ' was only
+    // ever added by us, specifically when the raw value started with =+-@.
+    // Undo it on import so round-tripping your own export doesn't leave a
+    // stray apostrophe stuck on every affected food/note/etc permanently.
+    if(/^'[=+\-@]/.test(s))s=s.slice(1);
+    return s;
+  };
   const existingIds=new Set(existingEntries.map(e=>e.id));
   const imported=[];
   for(let i=1;i<lines.length;i++){
@@ -1625,7 +1648,7 @@ function App(){
       <div style={{flex:1,overflowY:"auto",padding:"12px 13px"}} onClick={()=>showUserMenu&&setShowUserMenu(false)}>
         {page==="home"    &&<HomePage entries={entries} settings={settings} onAdd={addEntry} entryTime={entryTime} setEntryTime={setEntryTime} isOnline={isOnline} T={T}/>}
         {page==="manage"  &&<ManagePage entries={entries} settings={settings} onAddDirect={addEntryDirect} onUpdate={updateEntry} onDelete={deleteEntry} isOnline={isOnline} T={T}/>}
-        {page==="reports" &&<ReportsPage entries={entries} settings={settings} isOnline={isOnline} T={T}/>}
+        {page==="reports" &&<ReportsPage entries={entries} deletedEntries={deletedEntries} settings={settings} isOnline={isOnline} T={T}/>}
         {page==="settings"&&<SettingsPage settings={settings} theme={theme} setSettings={saveSettings} setTheme={saveTheme} dayRolloverMin={dayRolloverMin} setDayRolloverMin={saveDayRollover} user={user} entries={entries} deletedEntries={deletedEntries} onRestoreEntry={restoreEntry} onExportJSON={exportFullBackup} onImportJSON={importFullBackup} onImport={handleImport} clearAll={clearAll} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} onRestore={restoreFromBackup} onRename={renameConfigItem} onRepairEmoji={repairEmojiNames} offlineAuth={offlineAuth}
           isAdminUser={isAdminUser} pendingRequests={pendingRequests} adminsMap={adminsMap} allowlistMap={allowlistMap} approvedUsersMap={approvedUsersMap}
           onApproveRequest={approveRequest} onDenyRequest={denyRequest} onPromoteAdmin={promoteToAdmin} onDemoteAdmin={demoteAdmin} onAddAllowlist={addAllowlistEntry} onRemoveAllowlist={removeAllowlistEntry}
@@ -1668,7 +1691,18 @@ function App(){
 function HomePage({entries,settings,onAdd,entryTime,setEntryTime,isOnline,T}){
   const[active,setActive]=useState("meal");
   const todayE=entries.filter(e=>e.date===today()).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
-  const switchModule=m=>{setActive(m);setEntryTime(nowHHMM());};
+  // N: entry time previously refreshed to "now" only on switching the top-level
+  // tab. Selecting the meal type or the Level-1 category (food item, liquid
+  // type, exercise type, medical reading, medication) now refreshes it too —
+  // each represents starting a new entry, same as a tab switch. But if the
+  // person has manually backdated the time (typed into TimeInput), that
+  // deliberate edit must not get silently overwritten by a later selection in
+  // the same entry — timeTouched tracks that and is reset on tab switch, which
+  // is the one action that unambiguously means "starting over".
+  const[timeTouched,setTimeTouched]=useState(false);
+  const onTimeEdit=v=>{setTimeTouched(true);setEntryTime(v);};
+  const refreshTime=()=>{if(!timeTouched)setEntryTime(nowHHMM());};
+  const switchModule=m=>{setActive(m);setEntryTime(nowHHMM());setTimeTouched(false);};
   const MODULE_ITEMS=[["meal","Meal","🍽️"],["liquid","Liquids","💧"],["exercise","Exercise","🏃"],["medical","Medical","🩺"],["medication","Medication","💊"]];
   return(
     <div>
@@ -1680,11 +1714,11 @@ function HomePage({entries,settings,onAdd,entryTime,setEntryTime,isOnline,T}){
         </div>
 
       </div>
-      {active==="meal"      &&<MealEntry settings={settings} entries={entries} onAdd={onAdd} entryTime={entryTime} setEntryTime={setEntryTime} T={T}/>}
-      {active==="liquid"    &&<LiquidEntry settings={settings} entries={entries} onAdd={onAdd} entryTime={entryTime} setEntryTime={setEntryTime} T={T}/>}
-      {active==="exercise"  &&<ExerciseEntry settings={settings} entries={entries} onAdd={onAdd} entryTime={entryTime} setEntryTime={setEntryTime} T={T}/>}
-      {active==="medical"   &&<MedicalEntry settings={settings} entries={entries} onAdd={onAdd} entryTime={entryTime} setEntryTime={setEntryTime} T={T}/>}
-      {active==="medication"&&<MedEntry settings={settings} entries={entries} onAdd={onAdd} entryTime={entryTime} setEntryTime={setEntryTime} T={T}/>}
+      {active==="meal"      &&<MealEntry settings={settings} entries={entries} onAdd={onAdd} entryTime={entryTime} setEntryTime={onTimeEdit} refreshTime={refreshTime} T={T}/>}
+      {active==="liquid"    &&<LiquidEntry settings={settings} entries={entries} onAdd={onAdd} entryTime={entryTime} setEntryTime={onTimeEdit} refreshTime={refreshTime} T={T}/>}
+      {active==="exercise"  &&<ExerciseEntry settings={settings} entries={entries} onAdd={onAdd} entryTime={entryTime} setEntryTime={onTimeEdit} refreshTime={refreshTime} T={T}/>}
+      {active==="medical"   &&<MedicalEntry settings={settings} entries={entries} onAdd={onAdd} entryTime={entryTime} setEntryTime={onTimeEdit} refreshTime={refreshTime} T={T}/>}
+      {active==="medication"&&<MedEntry settings={settings} entries={entries} onAdd={onAdd} entryTime={entryTime} setEntryTime={onTimeEdit} refreshTime={refreshTime} T={T}/>}
       <div style={{marginTop:14}}>
         <div className="slabel">Today's Log</div>
         {todayE.length===0?<div style={{color:T.textMuted,fontSize:"0.8rem",textAlign:"center",padding:"18px 0"}}>No entries yet today</div>:<div className="card" style={{padding:"8px 11px"}}>{todayE.map(e=><TLE key={e.id} e={e} settings={settings} T={T}/>)}</div>}
@@ -1744,14 +1778,23 @@ const TimeInput=({value,onChange,T})=>(
     fontFamily:"'DM Mono',monospace",textAlign:"center",flexShrink:0}}/>
 );
 
-function MealEntry({settings,entries,onAdd,entryTime,setEntryTime,T}){
+function MealEntry({settings,entries,onAdd,entryTime,setEntryTime,refreshTime,T}){
   const[mt,setMt]=useState(autoMeal);const[food,setFood]=useState("");const[foodSub,setFoodSub]=useState("");const[qty,setQty]=useState("");const[unit,setUnit]=useState("g");const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
+  // R8: All/Veg/Non-Veg filter, chips rather than <optgroup> so usage-ranking
+  // still works correctly WITHIN whichever set is currently shown. Items with
+  // no diet tag (never classified) always show under All, and are excluded
+  // from the Veg/Non-Veg views rather than being guessed into one — a missing
+  // classification should never silently misrepresent a food as veg or not.
+  const[dietFilter,setDietFilter]=useState("all");
   const foods=foodItems(settings.foodCategories||FD.foodCategories);
   // O3: usageCounts was an O(all entries) scan run on every render of this form —
   // including every keystroke in Qty/Notes, which don't change the ranking at
   // all. Memoized on the values that actually affect the result.
   const foodCounts=useMemo(()=>usageCounts(entries,e=>e.type==="meal",e=>e.food),[entries]);
   const rankedFoods=byUsage(foods,foodCounts,f=>f.name);
+  // Filter AFTER ranking (not before) — usage counts stay computed over the
+  // full list regardless of which chip is active, only visibility narrows.
+  const visibleFoods=dietFilter==="all"?rankedFoods:rankedFoods.filter(f=>f.diet===dietFilter);
   const foodObj=foods.find(f=>f.name===food);
   const hasFoodSub=foodObj?.subTypes?.length>0;
   const subCounts=useMemo(()=>usageCounts(entries,e=>e.type==="meal"&&e.food===food,e=>e.foodSubType),[entries,food]);
@@ -1761,13 +1804,35 @@ function MealEntry({settings,entries,onAdd,entryTime,setEntryTime,T}){
     const fi=foods.find(f=>f.name===itemName);
     return combineNotes(fi?.note||"",subNote(findSub(fi?.subTypes,subTypeName)));
   };
-  const onFoodChange=name=>{setFood(name);setFoodSub("");setNotes(noteFor(name,""));};
+  const onFoodChange=name=>{refreshTime&&refreshTime();setFood(name);setFoodSub("");setNotes(noteFor(name,""));};
+  const setDietFilterSafe=f=>{
+    setDietFilter(f);
+    if(food){
+      const obj=foods.find(x=>x.name===food);
+      const stillVisible=f==="all"||(obj&&obj.diet===f);
+      if(!stillVisible){setFood("");setFoodSub("");setNotes("");}
+    }
+  };
+  // N: meal type (B/L/S/D) auto-derives from entryTime, same pattern MedEntry
+  // already used for medication timing. Re-fires only when entryTime itself
+  // changes value, so a manual override of mt (after time is set) survives
+  // subsequent renders that don't touch entryTime again.
+  useEffect(()=>{setMt(mealFromTime(entryTime));},[entryTime]);
   const onSubChange=sv=>{setFoodSub(sv);setNotes(noteFor(food,sv));};
   useEffect(()=>{if(food)setNotes(noteFor(food,foodSub));},[settings]);
   const save=()=>{if(!food||!qty)return;onAdd({type:"meal",mealType:mt,food,foodSubType:foodSub,qty,unit,notes});setFood("");setFoodSub("");setQty("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
-  return(<div className="card"><div className="slabel">🍽️ Meal</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={mt} onChange={e=>setMt(e.target.value)} style={{flex:"0 0 95px"}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select><select value={food} onChange={e=>onFoodChange(e.target.value)} style={{flex:"2 1 80px",minWidth:0}}><option value="">Food item…</option>{rankedFoods.map(f=><option key={f.name} value={f.name}>{pickIcon(f.name,"food",f.icon||"")} {f.name}</option>)}</select>{hasFoodSub&&<select value={foodSub} onChange={e=>onSubChange(e.target.value)} style={{flex:"1 1 90px",minWidth:0}}><option value="">Sub-type…</option>{rankedSubs.map(s=><option key={s}>{s}</option>)}</select>}<input type="number" placeholder="Qty" value={qty} onChange={e=>setQty(e.target.value)} style={{flex:"0 0 54px",width:54}}/><select value={unit} onChange={e=>setUnit(e.target.value)} style={{flex:"0 0 60px",width:60}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select></div><div style={{display:"flex",gap:6,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
+  return(<div className="card"><div className="slabel">🍽️ Meal</div>
+    <div style={{display:"flex",gap:4,marginBottom:6}}>
+      {[["all","All"],["veg","🟢 Veg"],["nonveg","🔴 Non-Veg"]].map(([v,l])=>(
+        <button key={v} onClick={()=>setDietFilterSafe(v)}
+          style={{flex:1,padding:"4px 0",borderRadius:7,border:`1px solid ${dietFilter===v?T.accentBtn:T.border}`,
+            background:dietFilter===v?T.accentBg:"transparent",color:dietFilter===v?T.accent:T.textMuted,
+            cursor:"pointer",fontSize:"0.72rem",fontFamily:"inherit",fontWeight:600}}>{l}</button>
+      ))}
+    </div>
+    <div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={mt} onChange={e=>{refreshTime&&refreshTime();setMt(e.target.value);}} style={{flex:"0 0 95px"}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select><select value={food} onChange={e=>onFoodChange(e.target.value)} style={{flex:"2 1 80px",minWidth:0}}><option value="">Food item…</option>{visibleFoods.map(f=><option key={f.name} value={f.name}>{pickIcon(f.name,"food",f.icon||"")} {f.name}</option>)}</select>{hasFoodSub&&<select value={foodSub} onChange={e=>onSubChange(e.target.value)} style={{flex:"1 1 90px",minWidth:0}}><option value="">Sub-type…</option>{rankedSubs.map(s=><option key={s}>{s}</option>)}</select>}<input type="number" placeholder="Qty" value={qty} onChange={e=>setQty(e.target.value)} style={{flex:"0 0 54px",width:54}}/><select value={unit} onChange={e=>setUnit(e.target.value)} style={{flex:"0 0 60px",width:60}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select></div><div style={{display:"flex",gap:6,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
 }
-function LiquidEntry({settings,entries,onAdd,entryTime,setEntryTime,T}){
+function LiquidEntry({settings,entries,onAdd,entryTime,setEntryTime,refreshTime,T}){
   const allTypes=(settings.liquidTypes||FD.liquidTypes||[]);
   const liqNotes=settings.liquidNotes||FD.liquidNotes||{};
   const liqSubTypes=settings.liquidSubTypes||FD.liquidSubTypes||{};
@@ -1788,7 +1853,7 @@ function LiquidEntry({settings,entries,onAdd,entryTime,setEntryTime,T}){
   const subCounts=useMemo(()=>usageCounts(entries,e=>(e.type==="liquid"||e.type==="water")&&(e.liquidType===liqType),e=>e.liquidSubType),[entries,liqType]);
   const rankedSubs=hasLiqSub?byUsage(subNames(curSubTypes),subCounts,s=>s):[];
   const noteFor=(t,sv)=>combineNotes(liqNotes[t]||"",subNote(findSub(liqSubTypes[t],sv)));
-  const onTypeChange=t=>{setLiqType(t);setLiqSub("");setNotes(noteFor(t,""));};
+  const onTypeChange=t=>{refreshTime&&refreshTime();setLiqType(t);setLiqSub("");setNotes(noteFor(t,""));};
   const onSubChange=sv=>{setLiqSub(sv);setNotes(noteFor(liqType,sv));};
   // Re-seed notes when Firebase settings arrive (async load)
   useEffect(()=>{setNotes(noteFor(liqType,liqSub));},[settings,liqType]);
@@ -1807,7 +1872,7 @@ function LiquidEntry({settings,entries,onAdd,entryTime,setEntryTime,T}){
     <div style={{display:"flex",gap:5,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><button onClick={save} style={{flexShrink:0,padding:"6px 12px",fontSize:"0.85rem",borderRadius:8,fontFamily:"inherit",fontWeight:500,cursor:"pointer",border:"none",background:fl?T.ok:T.accentBtn,color:"#fff"}}>{fl?"✔":"Save"}</button></div>
   </div>);
 }
-function ExerciseEntry({settings,entries,onAdd,entryTime,setEntryTime,T}){
+function ExerciseEntry({settings,entries,onAdd,entryTime,setEntryTime,refreshTime,T}){
   const[et,setEt]=useState("");const[sub,setSub]=useState("");const[dist,setDist]=useState("");const[min,setMin]=useState("");const[cnt,setCnt]=useState("");const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
   const exTypes=settings.exerciseTypes||FD.exerciseTypes;
   const exCounts=useMemo(()=>usageCounts(entries,e=>e.type==="exercise",e=>e.exType),[entries]);
@@ -1825,7 +1890,7 @@ function ExerciseEntry({settings,entries,onAdd,entryTime,setEntryTime,T}){
     const obj=exTypes?.find(e=>e.name===t);
     return combineNotes(obj?.note||"",subNote(findSub(obj?.subTypes,sv)));
   };
-  const onTypeChange=t=>{setEt(t);setSub("");setNotes(noteFor(t,""));};
+  const onTypeChange=t=>{refreshTime&&refreshTime();setEt(t);setSub("");setNotes(noteFor(t,""));};
   const onSubChange=sv=>{setSub(sv);setNotes(noteFor(et,sv));};
   // Re-sync when Firebase settings arrive — ensures metrics/notes are current
   useEffect(()=>{if(et)setNotes(noteFor(et,sub));},[settings]);
@@ -1833,7 +1898,7 @@ function ExerciseEntry({settings,entries,onAdd,entryTime,setEntryTime,T}){
   return(<div className="card"><div className="slabel">🏃 Exercise</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={et} onChange={e=>onTypeChange(e.target.value)} style={{flex:"1 1 100px",minWidth:0}}><option value="">Type…</option>{rankedExTypes.map(e=><option key={e.name} value={e.name}>{pickIcon(e.name,"exercise",e.icon||"")} {e.name}</option>)}</select>{hasSub&&<select value={sub} onChange={e=>onSubChange(e.target.value)} style={{flex:"1 1 110px",minWidth:0}}><option value="">Sub-type…</option>{rankedExSubs.map(s=><option key={s}>{s}</option>)}</select>}{hasDist&&<input type="number" placeholder="km" value={dist} onChange={e=>setDist(e.target.value)} style={{flex:"0 0 52px"}}/>}{(hasDist||hasTime)&&<input type="number" placeholder="min" value={min} onChange={e=>setMin(e.target.value)} style={{flex:"0 0 52px"}}/>}{hasCnt&&<input type="number" placeholder="count" value={cnt} onChange={e=>setCnt(e.target.value)} style={{flex:"0 0 68px"}}/>}</div><div style={{display:"flex",gap:6,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
 }
 
-function MedicalEntry({settings,entries,onAdd,entryTime,setEntryTime,T}){
+function MedicalEntry({settings,entries,onAdd,entryTime,setEntryTime,refreshTime,T}){
   const[rt,setRt]=useState("");const[val,setVal]=useState("");const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
   const presets=settings.medicalPresets||FD.medicalPresets||[];
   const rtCounts=useMemo(()=>usageCounts(entries,e=>e.type==="medical",e=>e.readingType),[entries]);
@@ -1842,7 +1907,7 @@ function MedicalEntry({settings,entries,onAdd,entryTime,setEntryTime,T}){
   const save=()=>{if(!rt||!val)return;onAdd({type:"medical",readingType:rt,value:val,unit,notes});setVal("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
   return(<div className="card"><div className="slabel">🩺 Medical Reading</div>
     <div style={{display:"flex",gap:5,marginBottom:6}}>
-      <select value={rt} onChange={e=>{setRt(e.target.value);setVal("");}} style={{flex:"1 1 118px",minWidth:0}}><option value="">Type...</option>{rankedPresets.map(p=>{const n=p.name||p;const ic=typeof p==="object"?p.icon||"":"";return<option key={n} value={n}>{pickIcon(n,"medical",ic)} {n}</option>;})}</select>
+      <select value={rt} onChange={e=>{refreshTime&&refreshTime();setRt(e.target.value);setVal("");}} style={{flex:"1 1 118px",minWidth:0}}><option value="">Type...</option>{rankedPresets.map(p=>{const n=p.name||p;const ic=typeof p==="object"?p.icon||"":"";return<option key={n} value={n}>{pickIcon(n,"medical",ic)} {n}</option>;})}</select>
       <div style={{flex:1,position:"relative"}}>
         <input value={val} onChange={e=>setVal(e.target.value)} placeholder={unit||"Value"} style={{width:"100%",paddingRight:unit&&!val?(unit.length*8+12)+"px":"9px"}}/>
         {unit&&!val&&<span style={{position:"absolute",right:9,top:"50%",transform:"translateY(-50%)",fontSize:"0.74rem",color:T.textMuted,pointerEvents:"none",fontFamily:"'DM Mono',monospace"}}>{unit}</span>}
@@ -1864,7 +1929,7 @@ function autoMedTiming(timeStr){
   if(mins<22*60+30)return"After dinner";
   return"Bedtime";
 }
-function MedEntry({settings,entries,onAdd,entryTime,setEntryTime,T}){
+function MedEntry({settings,entries,onAdd,entryTime,setEntryTime,refreshTime,T}){
   const[med,setMed]=useState("");const[timing,setTiming]=useState(()=>autoMedTiming(entryTime));const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
   const medIcons=settings.medicationIcons||{};
   // Medications: usage-ranked. Timing (below) stays in fixed clinical/clock order — it's
@@ -1875,7 +1940,7 @@ function MedEntry({settings,entries,onAdd,entryTime,setEntryTime,T}){
   const save=()=>{if(!med)return;onAdd({type:"medication",med,timing,notes});setMed("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
   return(<div className="card"><div className="slabel">💊 Medication</div>
     <div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6}}>
-      <select value={med} onChange={e=>setMed(e.target.value)} style={{flex:"1 1 140px",minWidth:0}}><option value="">Medication…</option>{rankedMeds.map(m=><option key={m} value={m}>{pickIcon(m,"medication",medIcons[m]||"")} {m}</option>)}</select>
+      <select value={med} onChange={e=>{refreshTime&&refreshTime();setMed(e.target.value);}} style={{flex:"1 1 140px",minWidth:0}}><option value="">Medication…</option>{rankedMeds.map(m=><option key={m} value={m}>{pickIcon(m,"medication",medIcons[m]||"")} {m}</option>)}</select>
       <select value={timing} onChange={e=>setTiming(e.target.value)} style={{flex:"1 1 120px",minWidth:0}}>{MED_TIMES.map(t=><option key={t}>{t}</option>)}</select>
     </div>
     <div style={{display:"flex",gap:6}}>
@@ -1933,7 +1998,7 @@ function ManagePage({entries,settings,onAddDirect,onUpdate,onDelete,isOnline,T})
         onChange={e=>{if(e.target.value){setSel(e.target.value);setEid(null);}}}
         style={{flex:1,padding:"8px 10px",borderRadius:8,border:`2px solid ${T.accent}`,
           background:T.cardBg,color:T.text,fontWeight:600,fontSize:"0.92rem",
-          fontFamily:"inherit",textAlign:"center",colorScheme:T.bg==="#0a1628"?"dark":"light"}}/>
+          fontFamily:"inherit",textAlign:"center",colorScheme:T.isDark?"dark":"light"}}/>
       <button onClick={goNext} disabled={idx<=0}
         style={{flexShrink:0,width:36,height:36,borderRadius:8,border:`1px solid ${T.border}`,
           background:T.cardBg,color:idx<=0?T.textMuted:T.text,
@@ -2179,8 +2244,12 @@ function TrendsPanel({entries,settings,T}){
       return;
     }
 
-    const isDark=document.documentElement.getAttribute("data-theme")==="dark"||
-      (document.documentElement.getAttribute("data-theme")==="system"&&window.matchMedia("(prefers-color-scheme:dark)").matches);
+    // B6: this read a `data-theme` DOM attribute that is set nowhere in the app
+    // (0 occurrences outside this line) — always null, so isDark was always
+    // false and the chart used light-mode grid/text colours regardless of the
+    // app's actual theme. T (the resolved theme object) is already in scope
+    // and already correctly accounts for Dark/Light/System — use it directly.
+    const isDark=T.isDark;
 
     const gridColor=isDark?"rgba(255,255,255,0.1)":"rgba(0,0,0,0.08)";
     const textColor=isDark?"#aaa":"#555";
@@ -2296,7 +2365,7 @@ function TrendsPanel({entries,settings,T}){
   </div>);
 }
 
-function ReportsPage({entries,settings,isOnline,T}){
+function ReportsPage({entries,deletedEntries,settings,isOnline,T}){
   // B1: every hook must run on every render. The offline early-return used to sit
   // ABOVE these useState calls, so flipping isOnline changed the hook count between
   // renders and React unmounted the whole tree ("Rendered fewer hooks than expected").
@@ -2304,6 +2373,11 @@ function ReportsPage({entries,settings,isOnline,T}){
   const[tab,setTab]=useState("view");const mostRecentDate=(()=>{const ds=entries.map(e=>e.date).filter(Boolean).sort();return ds.length?ds[ds.length-1]:today();})();
   const[vd,setVd]=useState(mostRecentDate);
   const[cd,setCd]=useState([today()]);const[ad,setAd]=useState(today());const[qr,setQr]=useState("");
+  // N5: date-range scoped export, separate from the quick "Export view" button.
+  const[showRangeExport,setShowRangeExport]=useState(false);
+  const[rFrom,setRFrom]=useState(today());
+  const[rTo,setRTo]=useState(today());
+  const[rMode,setRMode]=useState("summary"); // summary | full
   // Build date list from all entries + today, so imported historical data appears
   const allDates=(()=>{
     const s=new Set(entries.map(e=>e.date).filter(Boolean));
@@ -2313,6 +2387,31 @@ function ReportsPage({entries,settings,isOnline,T}){
   const d30=allDates;
   const medPresets=settings.medicalPresets||FD.medicalPresets;
   const medNames=medPresets.map(p=>typeof p==="string"?p:p.name);
+  // E7: out-of-range highlighting for Sugar/BP. Deliberately a rough VISUAL cue,
+  // not a clinical judgement — generic adult reference bands, matched by name
+  // substring (like pickIcon) so a rename via N6 doesn't silently break it.
+  // Purely additive to rendering: dayReport()/rpt()/CSV export are untouched,
+  // so this cannot affect O2's memoization or any exported file.
+  const isOutOfRange=(presetName,value)=>{
+    const nm=(presetName||"").toLowerCase();
+    if(nm.includes("sugar")){
+      const n=parseFloat(value);
+      return !isNaN(n)&&(n<70||n>140);
+    }
+    if(nm==="bp"||nm.includes("blood pressure")||nm.includes("pressure")){
+      const m=String(value).match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/);
+      if(!m)return false;
+      const sys=parseFloat(m[1]),dia=parseFloat(m[2]);
+      return sys<90||sys>130||dia<60||dia>85;
+    }
+    return false;
+  };
+  // Splits a joined medical-row string ("115/75 Sys/Dia, 95 mg/dL") back into
+  // its individual readings for per-reading highlighting, without touching the
+  // joined string dayReport()/CSV rely on.
+  const medicalParts=(date,presetName)=>(entriesByDate.get(date)||[])
+    .filter(e=>e.type==="medical"&&e.readingType===presetName)
+    .map(e=>({text:`${e.value}${e.unit?" "+e.unit:""}`,flagged:isOutOfRange(presetName,e.value)}));
   // O2: `rpt(date)` used to re-filter the ENTIRE entries array and rebuild the
   // whole dayReport object once per row, per date — measured at 130 calls per
   // render on real data (13 rows x 10 dates in Compare), repeating every
@@ -2333,17 +2432,107 @@ function ReportsPage({entries,settings,isOnline,T}){
   };
   const allRows=[{key:"water",label:"Water"},{key:"drinks",label:"Drinks"},{key:"medication",label:"Medications"},{key:"exercise",label:"Exercise"},{key:"Breakfast",label:"Breakfast"},{key:"Lunch",label:"Lunch"},{key:"Snack",label:"Snack"},{key:"Dinner",label:"Dinner"},...medNames.map(n=>({key:n,label:n}))];
   const doExport=(csv,fn)=>downloadCSV(csv,fn);
-  const applyQr=v=>{setQr(v);if(!v)return;const n=parseInt(v);setCd(Array.from({length:n},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);}));};
+  // B5: previously built dates with toISOString().slice(0,10) — the exact UTC
+  // bug fixed for today() in v4.61, still present here. At 04:30 IST that
+  // silently dropped today from the range. localDateOffset() reuses today()'s
+  // local-date + rollover logic so quick-range agrees with the rest of the app.
+  const localDateOffset=n=>{const d=new Date();d.setMinutes(d.getMinutes()-DAY_ROLLOVER_MIN);d.setDate(d.getDate()-n);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;};
+  const applyQr=v=>{setQr(v);if(!v)return;const n=parseInt(v);setCd(Array.from({length:n},(_,i)=>localDateOffset(i)));};
   // C6/E1: Reports used to hard-block with a full-screen "requires internet"
   // message whenever isOnline was false. `entries` is already hydrated from
   // the local mirror regardless of connection (same as Manage), so there was
   // never a real dependency on the network here — only a leftover assumption.
   // A small note replaces the block; nothing below it is disabled.
-  return(<div>{!isOnline&&<div style={{fontSize:"0.73rem",color:T.waterBtnText,background:T.waterBtn,borderRadius:8,padding:"6px 10px",marginBottom:8,textAlign:"center"}}>📵 Showing entries saved on this device.</div>}<div style={{display:"flex",alignItems:"center",gap:4,marginBottom:10,flexWrap:"wrap"}}><span style={{fontWeight:700,fontSize:"0.92rem",marginRight:4}}>📊 Reports</span><button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} onClick={()=>doExport(buildViewCSV(entries,tab==="view"?[vd]:cd,medPresets),`jivanlog-view-${today()}.csv`)}>⬇️ Export view</button></div><div style={{display:"flex",gap:5,marginBottom:9,alignItems:"center"}}><button className={`tbtn${tab==="view"?" on":""}`} onClick={()=>setTab("view")}>View</button><button className={`tbtn${tab==="compare"?" on":""}`} onClick={()=>setTab("compare")}>Compare</button><button className={`tbtn${tab==="trends"?" on":""}`} onClick={()=>setTab("trends")}>📈 Trends</button>{tab==="view"&&<input type="date" value={vd} onChange={e=>{if(e.target.value)setVd(e.target.value);}}
+  return(<div>
+    {!isOnline&&<div style={{fontSize:"0.73rem",color:T.waterBtnText,background:T.waterBtn,borderRadius:8,padding:"6px 10px",marginBottom:8,textAlign:"center"}}>📵 Showing entries saved on this device.</div>}
+    <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:10,flexWrap:"wrap"}}>
+      <span style={{fontWeight:700,fontSize:"0.92rem",marginRight:4}}>📊 Reports</span>
+      <button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} onClick={()=>doExport(buildViewCSV(entries,tab==="view"?[vd]:cd,medPresets),`jivanlog-view-${today()}.csv`)}>⬇️ Export view</button>
+      <button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} onClick={()=>setShowRangeExport(v=>!v)}>{showRangeExport?"✖ Close":"📤 Export range…"}</button>
+    </div>
+
+    {/* N5: date-range scoped export, independent of what's currently displayed
+        in View/Compare. Summary keeps today's dayReport grid (one column per
+        date — impractical past a handful of dates); Full detail emits every
+        entry row in the range, live + trash, matching the Data tab's export. */}
+    {showRangeExport&&<div className="card" style={{marginBottom:10}}>
+      <div className="slabel">📤 Export by date range</div>
+      <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap",alignItems:"center"}}>
+        <input type="date" value={rFrom} max={rTo} onChange={e=>{if(e.target.value)setRFrom(e.target.value);}} style={{flex:"1 1 130px",padding:"5px 7px",fontSize:"0.8rem",colorScheme:T.isDark?"dark":"light"}}/>
+        <span style={{color:T.textMuted,fontSize:"0.78rem"}}>to</span>
+        <input type="date" value={rTo} min={rFrom} onChange={e=>{if(e.target.value)setRTo(e.target.value);}} style={{flex:"1 1 130px",padding:"5px 7px",fontSize:"0.8rem",colorScheme:T.isDark?"dark":"light"}}/>
+      </div>
+      <div style={{display:"flex",gap:5,marginBottom:9}}>
+        <button className={`tbtn${rMode==="summary"?" on":""}`} onClick={()=>setRMode("summary")} style={{flex:1}}>Summary</button>
+        <button className={`tbtn${rMode==="full"?" on":""}`} onClick={()=>setRMode("full")} style={{flex:1}}>Full detail</button>
+      </div>
+      <div style={{fontSize:"0.68rem",color:T.textMuted,lineHeight:1.5,marginBottom:9}}>
+        {rMode==="summary"
+          ? "One column per date, same layout as View/Compare. Best for a handful of dates."
+          : "Every logged entry in the range as its own row (like a Data export, but scoped to these dates). Includes Trash."}
+      </div>
+      <button onClick={()=>{
+        if(rFrom>rTo){alert("The 'from' date must be on or before the 'to' date.");return;}
+        const dates=[];for(let d=rFrom;d<=rTo;){dates.push(d);const nd=new Date(d+"T00:00:00");nd.setDate(nd.getDate()+1);d=`${nd.getFullYear()}-${String(nd.getMonth()+1).padStart(2,"0")}-${String(nd.getDate()).padStart(2,"0")}`;}
+        if(rMode==="summary"){
+          doExport(buildViewCSV(entries,dates,medPresets),`jivanlog-summary-${rFrom}_to_${rTo}.csv`);
+        }else{
+          const inRange=[...entries,...(deletedEntries||[])].filter(e=>e.date>=rFrom&&e.date<=rTo);
+          doExport(buildAllCSV(inRange),`jivanlog-detail-${rFrom}_to_${rTo}.csv`);
+        }
+      }} style={{width:"100%",padding:"9px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:600,fontSize:"0.82rem",cursor:"pointer"}}>⬇️ Export {rMode==="summary"?"summary":"full detail"}</button>
+    </div>}
+
+    <div style={{display:"flex",gap:5,marginBottom:9,alignItems:"center"}}>
+      <button className={`tbtn${tab==="view"?" on":""}`} onClick={()=>setTab("view")}>View</button>
+      <button className={`tbtn${tab==="compare"?" on":""}`} onClick={()=>setTab("compare")}>Compare</button>
+      <button className={`tbtn${tab==="trends"?" on":""}`} onClick={()=>setTab("trends")}>📈 Trends</button>
+      {tab==="view"&&<input type="date" value={vd} onChange={e=>{if(e.target.value)setVd(e.target.value);}}
         style={{flex:1,padding:"5px 7px",borderRadius:8,border:`2px solid ${T.accent}`,
-          background:T.cardBg,color:T.text,fontWeight:600,fontSize:"0.82rem",fontFamily:"inherit",colorScheme:T.bg==="#0a1628"?"dark":"light"}}/>}{tab==="compare"&&<><select value={qr} onChange={e=>applyQr(e.target.value)} style={{flex:"0 0 auto",fontSize:"0.79rem",padding:"5px 6px",width:110}}><option value="">Quick…</option>{[2,3,4,5,6,7,8,9,10].map(n=><option key={n} value={n}>Last {n} days</option>)}</select><input type="date" value={ad} onChange={e=>{if(e.target.value)setAd(e.target.value);}}
+          background:T.cardBg,color:T.text,fontWeight:600,fontSize:"0.82rem",fontFamily:"inherit",colorScheme:T.isDark?"dark":"light"}}/>}
+      {tab==="compare"&&<><select value={qr} onChange={e=>applyQr(e.target.value)} style={{flex:"0 0 auto",fontSize:"0.79rem",padding:"5px 6px",width:110}}><option value="">Quick…</option>{[2,3,4,5,6,7,8,9,10].map(n=><option key={n} value={n}>Last {n} days</option>)}</select><input type="date" value={ad} onChange={e=>{if(e.target.value)setAd(e.target.value);}}
         style={{flex:1,padding:"5px 6px",borderRadius:8,border:`2px solid ${T.accent}`,
-          background:T.cardBg,color:T.text,fontWeight:600,fontSize:"0.82rem",fontFamily:"inherit",colorScheme:T.bg==="#0a1628"?"dark":"light"}}/><button onClick={()=>{setQr("");if(!cd.includes(ad)&&cd.length<10)setCd(p=>[...p,ad].sort().reverse());}} style={{flexShrink:0,padding:"5px 11px",fontSize:"1.1rem",fontWeight:700,lineHeight:1,border:"none",borderRadius:8,background:T.accentBtn,color:"#fff",cursor:"pointer"}}>＋</button></>}</div>{tab==="compare"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8,alignItems:"center"}}>{cd.map(d=>(<div key={d} style={{display:"flex",alignItems:"center",gap:3,background:T.border,borderRadius:20,padding:"2px 9px",fontSize:"0.73rem"}}><span>{fmtShort(d)}</span>{cd.length>1&&<button onClick={()=>{setQr("");setCd(p=>p.filter(x=>x!==d));}} style={{background:"none",border:"none",color:T.textMuted,cursor:"pointer",fontSize:"0.85rem",padding:"0 0 0 3px"}}>×</button>}</div>))}<button className="tbtn" style={{padding:"2px 9px",fontSize:"0.72rem"}} onClick={()=>{setQr("");setCd([today()]);}} >Clear</button></div>}{tab==="view"&&<div className="card"><div style={{fontWeight:600,fontSize:"0.82rem",marginBottom:8,color:T.accent}}>{fmtDate(vd)}</div>{allRows.map(({label,key})=>{const v=rpt(vd)[key]||"-";return(<div key={key} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}><span style={{color:T.textMuted,fontSize:"0.76rem",minWidth:100,flexShrink:0}}>{label}</span><span style={{textAlign:"right",flex:1,paddingLeft:6,color:v==="-"?T.border:T.text}}>{v}</span></div>);})}</div>}{tab==="compare"&&<div style={{overflowX:"auto"}}><table className="ctbl"><thead><tr><th style={{minWidth:90}}>Category</th>{cd.map(d=><th key={d}>{fmtShort(d)}</th>)}</tr></thead><tbody>{allRows.map(({label,key})=>{const vals=cd.map(d=>rpt(d)[key]||"-");return(<tr key={key}><td style={{color:T.textMuted,fontWeight:600}}>{label}</td>{vals.map((v,i)=><td key={i} style={{color:v==="-"?T.border:T.text}}>{v}</td>)}</tr>);})}</tbody></table></div>}
+          background:T.cardBg,color:T.text,fontWeight:600,fontSize:"0.82rem",fontFamily:"inherit",colorScheme:T.isDark?"dark":"light"}}/><button onClick={()=>{setQr("");if(!cd.includes(ad)&&cd.length<10)setCd(p=>[...p,ad].sort().reverse());}} style={{flexShrink:0,padding:"5px 11px",fontSize:"1.1rem",fontWeight:700,lineHeight:1,border:"none",borderRadius:8,background:T.accentBtn,color:"#fff",cursor:"pointer"}}>＋</button></>}
+    </div>
+
+    {tab==="compare"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:8,alignItems:"center"}}>{cd.map(d=>(<div key={d} style={{display:"flex",alignItems:"center",gap:3,background:T.border,borderRadius:20,padding:"2px 9px",fontSize:"0.73rem"}}><span>{fmtShort(d)}</span>{cd.length>1&&<button onClick={()=>{setQr("");setCd(p=>p.filter(x=>x!==d));}} style={{background:"none",border:"none",color:T.textMuted,cursor:"pointer",fontSize:"0.85rem",padding:"0 0 0 3px"}}>×</button>}</div>))}<button className="tbtn" style={{padding:"2px 9px",fontSize:"0.72rem"}} onClick={()=>{setQr("");setCd([today()]);}} >Clear</button></div>}
+
+    {tab==="view"&&<div className="card">
+      <div style={{fontWeight:600,fontSize:"0.82rem",marginBottom:8,color:T.accent}}>{fmtDate(vd)}</div>
+      {allRows.map(({label,key})=>{
+        const isMed=medNames.includes(key);
+        const parts=isMed?medicalParts(vd,key):null;
+        const v=rpt(vd)[key]||"-";
+        return(<div key={key} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",padding:"5px 0",borderBottom:`1px solid ${T.border}`,fontSize:"0.82rem"}}>
+          <span style={{color:T.textMuted,fontSize:"0.76rem",minWidth:100,flexShrink:0}}>{label}</span>
+          <span style={{textAlign:"right",flex:1,paddingLeft:6,color:v==="-"?T.border:T.text}}>
+            {parts&&parts.length
+              ? parts.map((p,i)=><React.Fragment key={i}>{i>0&&", "}<span style={p.flagged?{color:T.danger,fontWeight:700}:undefined} title={p.flagged?"Outside a rough reference range — not a diagnosis":undefined}>{p.text}{p.flagged?" ⚠️":""}</span></React.Fragment>)
+              : v}
+          </span>
+        </div>);
+      })}
+    </div>}
+
+    {tab==="compare"&&<div style={{overflowX:"auto"}}>
+      <table className="ctbl"><thead><tr><th style={{minWidth:90}}>Category</th>{cd.map(d=><th key={d}>{fmtShort(d)}</th>)}</tr></thead>
+        <tbody>{allRows.map(({label,key})=>{
+          const isMed=medNames.includes(key);
+          return(<tr key={key}><td style={{color:T.textMuted,fontWeight:600}}>{label}</td>
+            {cd.map((d,i)=>{
+              const v=rpt(d)[key]||"-";
+              const parts=isMed?medicalParts(d,key):null;
+              return(<td key={i} style={{color:v==="-"?T.border:T.text}}>
+                {parts&&parts.length
+                  ? parts.map((p,j)=><React.Fragment key={j}>{j>0&&", "}<span style={p.flagged?{color:T.danger,fontWeight:700}:undefined}>{p.text}{p.flagged?" ⚠️":""}</span></React.Fragment>)
+                  : v}
+              </td>);
+            })}
+          </tr>);
+        })}</tbody>
+      </table>
+    </div>}
+
     {tab==="trends"&&<TrendsPanel entries={entries} settings={settings} T={T}/>}
   </div>);
 }
@@ -2365,8 +2554,14 @@ const CTABS=[["food","🍽️ Food"],["drinks","☕ Drinks"],["exercise","🏃 E
 // Sentinel: #JivanLog-Config-<section>-<version>
 
 function csvCell(v){
-  const s=String(v==null?"":v);
-  return s.includes(",")||s.includes('"')||s.includes("\n")?`"${s.replace(/"/g,'""')}"`  :s;
+  let s=String(v==null?"":v);
+  // S8: a cell beginning with = + - @ is interpreted as a formula by Excel/
+  // Sheets on open. Food names, notes, or medication names are free text a
+  // person can type — "=1+1" as a food name would execute as a formula for
+  // anyone who opens the export. Prefixing with a straight quote is the
+  // standard mitigation; spreadsheet apps display it but don't store it.
+  if(/^[=+\-@]/.test(s))s="'"+s;
+  return s.includes(",")||s.includes('"')||s.includes("\n")||s.startsWith("'")?`"${s.replace(/"/g,'""')}"`:s;
 }
 function csvRow(arr){return arr.map(csvCell).join(",");}
 
@@ -2474,7 +2669,11 @@ function importConfigCSV(csvText){
     // Header row (first non-sentinel, non-empty row after sentinel)
     if(!headers.length){headers=parseCells(line).map(h=>h.toLowerCase());continue;}
     const cells=parseCells(line);
-    const get=h=>cells[headers.indexOf(h)]||"";
+    const get=h=>{
+      const v=cells[headers.indexOf(h)]||"";
+      // Symmetric with csvCell()'s export-time guard — see buildAllCSV's cell().
+      return /^'[=+\-@]/.test(v)?v.slice(1):v;
+    };
     const spl=v=>v?v.split(";").map(s=>s.trim()).filter(Boolean):[];
 
     if(section==="food"){
@@ -2594,7 +2793,7 @@ function SettingsPage({settings,theme,setSettings,setTheme,dayRolloverMin,setDay
       {ctab==="exercise"&&<ExerciseSetting entries={entries} onRename={onRename} types={active.exerciseTypes||FD.exerciseTypes} onChange={v=>updateActive(p=>({...p,exerciseTypes:v}))} T={T}/>}
       {ctab==="medical"&&<MedicalPresetSetting entries={entries} onRename={onRename} presets={active.medicalPresets||FD.medicalPresets} onAdd={addMedPreset} onRemove={removeMedPreset} onReorder={arr=>updateActive(p=>({...p,medicalPresets:arr}))} onUpdate={arr=>updateActive(p=>({...p,medicalPresets:arr}))} T={T}/>}
       {ctab==="meds"&&<EList entries={entries} onRename={onRename} items={active.medications||FD.medications} onRemove={item=>removeItem("medications",item)} onReorder={arr=>updateActive(p=>({...p,medications:arr}))} icons={active.medicationIcons||{}} onIconUpdate={(name,ic)=>updateActive(p=>({...p,medicationIcons:{...(p.medicationIcons||{}),[name]:ic}}))} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("medications")} T={T}/>}
-      <ConfigTools ctab={ctab} settings={settings} entries={entries} onRepairEmoji={onRepairEmoji} onImportConfig={onImportConfig} onClearConfig={onClearConfig} onFactorySection={sec=>{
+      <ConfigTools ctab={ctab} settings={settings} onImportConfig={onImportConfig} onClearConfig={onClearConfig} onFactorySection={sec=>{
         const map={food:["foodCategories"],drinks:["liquidTypes","liquidNotes","liquidSubTypes","liquidIcons"],exercise:["exerciseTypes"],medical:["medicalPresets"],meds:["medications","medicationIcons"]};
         const keys=map[sec]||[];
         const patch={};keys.forEach(k=>{if(FD[k]!==undefined)patch[k]=deepClone(FD[k]);});
@@ -2602,7 +2801,7 @@ function SettingsPage({settings,theme,setSettings,setTheme,dayRolloverMin,setDay
       }} onFactoryAll={()=>updateActive(()=>deepClone(FD))} T={T}/>
     </>}
 
-    {stab==="data"&&<DataPanel entries={entries} deletedEntries={deletedEntries} onImport={onImport} onClearEntries={onClearEntries} onClearAll={onClearAll} onRestoreEntry={onRestoreEntry} onExportJSON={onExportJSON} onImportJSON={onImportJSON} onRestore={onRestore} offlineAuth={offlineAuth} T={T}/>}
+    {stab==="data"&&<DataPanel entries={entries} deletedEntries={deletedEntries} settings={settings} onRepairEmoji={onRepairEmoji} onImport={onImport} onClearEntries={onClearEntries} onClearAll={onClearAll} onRestoreEntry={onRestoreEntry} onExportJSON={onExportJSON} onImportJSON={onImportJSON} onRestore={onRestore} offlineAuth={offlineAuth} T={T}/>}
   </div>);
 }
 
@@ -2683,7 +2882,7 @@ function AdminPanel({pendingRequests,adminsMap,allowlistMap,approvedUsersMap,onA
 // N8: config export / import / clear / factory-reset used to live under the
 // Backup tab, separated from the config editing they act on. They now sit
 // directly beneath the list being edited, scoped to the section in view.
-function ConfigTools({ctab,settings,entries,onRepairEmoji,onImportConfig,onClearConfig,onFactorySection,onFactoryAll,T}){
+function ConfigTools({ctab,settings,onImportConfig,onClearConfig,onFactorySection,onFactoryAll,T}){
   const cfgRef=useRef();
   const[open,setOpen]=useState(false);
   const LABEL={food:"Food",drinks:"Drinks",exercise:"Exercise",medical:"Medical",meds:"Meds"};
@@ -2695,8 +2894,6 @@ function ConfigTools({ctab,settings,entries,onRepairEmoji,onImportConfig,onClear
     r.readAsText(f);e.target.value="";
   };
   const btn={width:"100%",padding:"8px",borderRadius:8,border:`1px solid ${T.border}`,background:T.inputBg,color:T.text,fontFamily:"inherit",fontWeight:600,fontSize:"0.78rem",cursor:"pointer",marginBottom:6};
-  // Only surfaced when there is actually something to fix.
-  const repairCount=useMemo(()=>findEmojiRepairs(entries,settings).length,[entries,settings]);
   return(<div className="card" style={{marginTop:10}}>
     {!open
       ?<button onClick={()=>setOpen(true)} style={{width:"100%",padding:"8px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontFamily:"inherit",fontWeight:600,fontSize:"0.78rem",cursor:"pointer"}}>🛠️ {label} tools — export, import, reset…</button>
@@ -2718,18 +2915,15 @@ function ConfigTools({ctab,settings,entries,onRepairEmoji,onImportConfig,onClear
         <button onClick={()=>{if(!confirm(`Reset ${label} to factory defaults?\n\nThis restores the built-in ${label} list. Your logged entries are unaffected.`))return;onFactorySection(ctab);}} style={btn}>↺ Reset {label} to factory</button>
         <button onClick={()=>{if(!confirm(`Empty the ${label} list?\n\nThe list becomes blank until you re-add or re-import. Your logged entries are unaffected.`))return;onClearConfig(ctab);}} style={{...btn,color:T.danger,borderColor:T.danger}}>⚠️ Clear {label} list</button>
         <div style={{borderTop:`1px solid ${T.border}`,marginTop:6,paddingTop:8}}>
-          <button onClick={()=>{if(!confirm("Reset ALL config sections to factory defaults?\n\nEvery list is restored to its built-in version. Your logged entries are unaffected."))return;onFactoryAll();}} style={{...btn,color:T.textMuted}}>↺ Reset ALL config to factory</button>
-          {repairCount>0&&<>
-            <button onClick={onRepairEmoji} style={{...btn,marginBottom:2,borderColor:T.accentBtn,color:T.accent}}>🩹 Repair {repairCount} mis-saved {repairCount===1?"entry":"entries"}</button>
-            <div style={{fontSize:"0.68rem",color:T.textMuted,lineHeight:1.5}}>These were saved with the icon stuck to the name (e.g. "🩸 Sugar"), so they don't match your config and are missing from Reports and Trends.</div>
-          </>}
+          <button onClick={()=>{if(!confirm("Reset ALL config sections to factory defaults?\n\nEvery list is restored to its built-in version. Your logged entries are unaffected."))return;onFactoryAll();}} style={{...btn,marginBottom:0,color:T.textMuted}}>↺ Reset ALL config to factory</button>
+
         </div>
         <input ref={cfgRef} type="file" accept=".csv" onChange={handleCfgFile} style={{display:"none"}}/>
       </>}
   </div>);
 }
 
-function DataPanel({entries,deletedEntries,onImport,onClearEntries,onClearAll,onRestoreEntry,onExportJSON,onImportJSON,onRestore,offlineAuth,T}){
+function DataPanel({entries,deletedEntries,settings,onRepairEmoji,onImport,onClearEntries,onClearAll,onRestoreEntry,onExportJSON,onImportJSON,onRestore,offlineAuth,T}){
   const dataRef=useRef();
   const jsonRef=useRef();
   // N8: the "config" section moved out to ConfigTools, beside the config it
@@ -2803,6 +2997,11 @@ function DataPanel({entries,deletedEntries,onImport,onClearEntries,onClearAll,on
 
   const liveCount=entries.length;
   const deadCount=(deletedEntries||[]).length;
+  // Repairs ENTRIES, so it belongs here rather than under Config tools where it
+  // was first placed — and it is shown as a plain card, not behind a collapse,
+  // because it is a one-time fix for data that is currently missing from
+  // Reports and Trends. Renders only when there is something to fix.
+  const repairPlan=useMemo(()=>findEmojiRepairs([...(entries||[]),...(deletedEntries||[])],settings||{}),[entries,deletedEntries,settings]);
 
   return(<div>
     {/* ── Section tabs ── */}
@@ -2810,6 +3009,14 @@ function DataPanel({entries,deletedEntries,onImport,onClearEntries,onClearAll,on
       <SecBtn val="data"    label="📊 Entries"/>
       <SecBtn val="restore" label="🛟 Restore"/>
     </div>
+
+    {repairPlan.length>0&&<div className="card" style={{marginBottom:10,border:`1px solid ${T.accentBtn}`}}>
+      <div className="slabel" style={{color:T.accent}}>🩹 {repairPlan.length} {repairPlan.length===1?"entry needs":"entries need"} repair</div>
+      <div style={{fontSize:"0.74rem",color:T.textSub,lineHeight:1.6,marginBottom:8}}>
+        These were saved with the icon stuck to the name (for example <b>{repairPlan[0].from}</b> instead of <b>{repairPlan[0].to}</b>), so they don't match your config and are <b>missing from Reports and Trends</b>. A backup is downloaded before anything changes.
+      </div>
+      <button onClick={onRepairEmoji} style={{width:"100%",padding:"9px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:600,fontSize:"0.82rem",cursor:"pointer"}}>🩹 Repair {repairPlan.length} {repairPlan.length===1?"entry":"entries"}</button>
+    </div>}
 
     {/* ══════════════ DATA BACKUP ══════════════ */}
     {section==="data"&&<>
@@ -3194,12 +3401,25 @@ function FoodSetting({items,onRemove,onUpdate,newItem,setNew,onAdd,entries,onRen
           <ReorderBtns i={i} total={fi.length} onMove={move} T={T}/>
           <IconBtn name={item.name} category="food" stored={item.icon||""} onSet={ic=>upd(item.name,{icon:ic})} T={T}/>
           <span style={{fontWeight:600,fontSize:"0.85rem",flex:1,marginLeft:5}}>{item.name}</span>
+          {item.diet&&<span title="Diet classification" style={{fontSize:"0.68rem",padding:"1px 6px",borderRadius:10,marginRight:4,background:item.diet==="nonveg"?T.dangerBg||T.accentBg:T.accentBg,color:item.diet==="nonveg"?T.danger:T.accent}}>{item.diet==="nonveg"?"Non-Veg":"Veg"}</span>}
           <button className="ibtn" onClick={()=>setEi(ei===item.name?null:item.name)}>{ei===item.name?"✖️":"✏️"}</button>
           <button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(item.name)}>🗑️</button>
         </div>
         <input placeholder="Default note (optional)" value={item.note||""} onChange={e=>upd(item.name,{note:e.target.value})} style={{width:"100%",fontSize:"0.76rem",padding:"4px 7px",marginBottom:ei===item.name?6:0,color:T.textSub}}/>
         {ei===item.name&&<div style={{marginTop:5}}>
           <RenameBox current={item.name} hits={countRenameHits(entries,"food",null,item.name)} onRename={nn=>onRename&&onRename("food",null,item.name,nn)} T={T}/>
+          {/* R8: Veg/Non-Veg is used by the filter chips on Home. Items added
+              here without a diet tag stay "unclassified" so the filter never
+              silently guesses — they still show under All. */}
+          <div className="slabel" style={{marginTop:8}}>Diet</div>
+          <div style={{display:"flex",gap:5}}>
+            {[["veg","Veg"],["nonveg","Non-Veg"],["","Unclassified"]].map(([v,l])=>(
+              <button key={l} onClick={()=>upd(item.name,{diet:v})}
+                style={{flex:1,padding:"5px 0",borderRadius:7,border:`1px solid ${(item.diet||"")===v?T.accentBtn:T.border}`,
+                  background:(item.diet||"")===v?T.accentBg:"transparent",
+                  color:(item.diet||"")===v?T.accent:T.textMuted,cursor:"pointer",fontSize:"0.74rem",fontFamily:"inherit",fontWeight:600}}>{l}</button>
+            ))}
+          </div>
           <div className="slabel" style={{marginTop:8}}>Sub-types</div>
           {subItems(item.subTypes).map((s,si)=>(<div key={s.name} style={{padding:"3px 0",borderBottom:`1px solid ${T.border}`}}>
             <div style={{display:"flex",alignItems:"center",fontSize:"0.8rem"}}>
