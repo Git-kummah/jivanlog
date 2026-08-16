@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.76";
+const APP_VERSION="v4.77";
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -98,6 +98,11 @@ const foodItems=arr=>(arr||[]).map(f=>typeof f==="string"?{name:f,note:"",subTyp
 // To find your UID: Firebase Console → Authentication → Users tab → copy the
 // "User UID" value for your row. Paste it below, replacing the placeholder.
 const SUPERADMIN_UID="JVrBRWCGlUhlHrWO3U5rjC3E9GH3";
+// C1 (v4.77): marks that users/{uid}/settings has become the single source of
+// truth for config, replacing the old settings+defaults draft/active pair.
+// Absent = pre-v4.77 data that still needs the one-time merge migration.
+const CONFIG_MODEL_KEY="configModel";
+const CONFIG_MODEL_V2="v2";
 const isSuperAdmin=uid=>!!uid&&SUPERADMIN_UID!=="REPLACE_WITH_YOUR_FIREBASE_UID"&&uid===SUPERADMIN_UID;
 // Sanitize an email into a safe Firebase key (keys can't contain . # $ [ ] /).
 const emailKey=email=>(email||"").trim().toLowerCase().replace(/[.#$\[\]/]/g,"_");
@@ -502,7 +507,6 @@ function App(){
   const[entries,setEntries]=useState([]);
   const[deletedEntries,setDeletedEntries]=useState([]);
   const[settings,setSettings]=useState(deepClone(FD));
-  const[defaults,setDefaults]=useState(deepClone(FD));
   const[theme,setTheme]=useState("system");
   const[dayRolloverMin,setDayRolloverMinR]=useState(DAY_ROLLOVER_MIN);
   const[dataLoaded,setDataLoaded]=useState(false);
@@ -588,8 +592,6 @@ function App(){
     try{
       const cs=localStorage.getItem(`jivanlog-settingsCache-${uid}`);
       if(cs){const s=JSON.parse(cs);setSettings(s);}
-      const cd=localStorage.getItem(`jivanlog-defaultsCache-${uid}`);
-      if(cd){const d=JSON.parse(cd);setDefaults(d);}
     }catch(e){}
     let cancelled=false;
     (async()=>{
@@ -896,11 +898,12 @@ function App(){
     if(!user)return;
     (async()=>{
       try{
-        const[sett,defs,th,dr]=await Promise.all([
+        const[sett,defs,th,dr,model]=await Promise.all([
           fbDb.ref(`users/${user.uid}/settings`).get(),
           fbDb.ref(`users/${user.uid}/defaults`).get(),
           fbDb.ref(`users/${user.uid}/theme`).get(),
           fbDb.ref(`users/${user.uid}/dayRolloverMin`).get(),
+          fbDb.ref(`users/${user.uid}/${CONFIG_MODEL_KEY}`).get(),
         ]);
         // Helper: normalise a settings/defaults object
           const norm=o=>{
@@ -926,30 +929,56 @@ function App(){
           };
           const s=sett.exists()?norm(sett.val()):null;
           const d=defs.exists()?norm(defs.val()):null;
-          if(d)setDefaults(d);
-          let settingsToCache=null;
-          if(s){
-            const merged=d?{...s,
-              foodCategories:d.foodCategories||s.foodCategories,
-              liquidTypes:d.liquidTypes||s.liquidTypes,
-              liquidNotes:{...( s.liquidNotes||{}), ...(d.liquidNotes||{})},
-              liquidSubTypes:{...(s.liquidSubTypes||{}),...(d.liquidSubTypes||{})},
-              liquidIcons:{...(s.liquidIcons||{}),...(d.liquidIcons||{})},
-              exerciseTypes:d.exerciseTypes||s.exerciseTypes,
-              medicalPresets:d.medicalPresets||s.medicalPresets,
-              medications:d.medications||s.medications,
-              medicationIcons:{...(s.medicationIcons||{}),...(d.medicationIcons||{})},
-            }:s;
-            setSettings(merged);
-            settingsToCache=merged;
-          } else if(d){
-            setSettings(deepClone(d));
-            settingsToCache=deepClone(d);
+          // ── C1 (v4.77): collapse the two-node draft/active config model ──
+          // Until now `defaults` was the node the Settings UI edited and
+          // `settings` was what entry forms read, with `Apply ▶` copying one to
+          // the other. But this loader merged `defaults` OVER `settings` for
+          // every list field on every sign-in, so edits went live on the next
+          // app open whether or not Apply was pressed — the two-stage model
+          // delivered nothing while costing an entire layer of UI.
+          //
+          // `settings` is now the single source of truth. The migration below
+          // matters for correctness: the user's EFFECTIVE config today is the
+          // merge, not `settings` alone, so seeding `settings` from `settings`
+          // would silently revert live config to a stale copy. We therefore
+          // compute the legacy merge exactly as before and persist THAT, which
+          // guarantees zero visible change. `defaults` is left untouched in
+          // Firebase rather than deleted — it costs nothing and keeps the
+          // migration reversible.
+          const legacyMerge=(sv,dv)=>({...sv,
+            foodCategories:dv.foodCategories||sv.foodCategories,
+            liquidTypes:dv.liquidTypes||sv.liquidTypes,
+            liquidNotes:{...( sv.liquidNotes||{}), ...(dv.liquidNotes||{})},
+            liquidSubTypes:{...(sv.liquidSubTypes||{}),...(dv.liquidSubTypes||{})},
+            liquidIcons:{...(sv.liquidIcons||{}),...(dv.liquidIcons||{})},
+            exerciseTypes:dv.exerciseTypes||sv.exerciseTypes,
+            medicalPresets:dv.medicalPresets||sv.medicalPresets,
+            medications:dv.medications||sv.medications,
+            medicationIcons:{...(sv.medicationIcons||{}),...(dv.medicationIcons||{})},
+          });
+          const alreadyMigrated=model.exists()&&model.val()===CONFIG_MODEL_V2;
+          let effective=null;
+          if(alreadyMigrated){
+            effective=s||deepClone(FD);
+          }else{
+            // Reproduce the pre-v4.77 effective config bit-for-bit.
+            if(s)      effective=d?legacyMerge(s,d):s;
+            else if(d) effective=deepClone(d);
+            else       effective=deepClone(FD);
+            // Persist the migration. If this write fails (offline, denied), we
+            // simply migrate again next load — the computation is idempotent.
+            try{
+              await Promise.all([
+                fbDb.ref(`users/${user.uid}/settings`).set(effective),
+                fbDb.ref(`users/${user.uid}/${CONFIG_MODEL_KEY}`).set(CONFIG_MODEL_V2),
+              ]);
+            }catch(e){console.warn("Config model migration deferred:",e);}
           }
+          setSettings(effective);
+          const settingsToCache=effective;
           // Cache for offline boot
           const uid=user.uid;
           if(settingsToCache)try{localStorage.setItem(`jivanlog-settingsCache-${uid}`,JSON.stringify(settingsToCache));}catch(e){}
-          if(d)try{localStorage.setItem(`jivanlog-defaultsCache-${uid}`,JSON.stringify(d));}catch(e){}
           if(th.exists())setTheme(th.val());
           if(dr.exists()){setDayRolloverMinR(dr.val());setDayRolloverCache(dr.val());}
       }catch(e){console.error("Settings load:",e);}
@@ -1108,7 +1137,6 @@ function App(){
     }catch(e){console.error("persistImport error:",e);throw e;}
   },[user]);
   const saveSettings =useCallback(n=>{setSettings(n);persistKey("settings",n);},[persistKey]);
-  const saveDefaults =useCallback(n=>{setDefaults(n);persistKey("defaults",n);},[persistKey]);
   const saveTheme    =useCallback(m=>{setTheme(m);   persistKey("theme",m);},[persistKey]);
   const saveDayRollover=useCallback(min=>{setDayRolloverMinR(min);setDayRolloverCache(min);persistKey("dayRolloverMin",min);},[persistKey]);
 
@@ -1239,9 +1267,10 @@ function App(){
     // Entries → Trash (reversible). Config is reset (factory-restorable).
     tombstoneAll();
     if(user){try{
-      await Promise.all([dbSet(user.uid,"settings",{foodCategories:[],liquidTypes:[],liquidNotes:{},liquidSubTypes:{},exerciseTypes:[],medicalPresets:[],medications:[]}),dbSet(user.uid,"defaults",{foodCategories:[],liquidTypes:[],liquidNotes:{},liquidSubTypes:{},exerciseTypes:[],medicalPresets:[],medications:[]}),dbSet(user.uid,"theme","system")]);
+      const emptyCfg={foodCategories:[],liquidTypes:[],liquidNotes:{},liquidSubTypes:{},exerciseTypes:[],medicalPresets:[],medications:[]};
+      await Promise.all([dbSet(user.uid,"settings",emptyCfg),dbSet(user.uid,CONFIG_MODEL_KEY,CONFIG_MODEL_V2),dbSet(user.uid,"theme","system")]);
       const empty={foodCategories:[],liquidTypes:[],liquidNotes:{},liquidSubTypes:{},exerciseTypes:[],medicalPresets:[],medications:[]};
-      setSettings({...empty});setDefaults({...empty});setTheme("system");setDayRolloverMinR(90);setDayRolloverCache(90);
+      setSettings({...empty});setTheme("system");setDayRolloverMinR(90);setDayRolloverCache(90);
     }catch(e){console.error(e);}}
   },[entries,deletedEntries,user,tombstoneAll]);
 
@@ -1259,17 +1288,17 @@ function App(){
       meds:{medications:[]},
     };
     const patch=emptyMap[section]||{};
-    const newDef={...defaults,...patch};const newSet={...settings,...patch};
-    setDefaults(newDef);setSettings(newSet);
-    if(user){try{await Promise.all([dbSet(user.uid,"defaults",newDef),dbSet(user.uid,"settings",newSet)]);}catch(e){}}
-  },[defaults,settings,user]);
+    const newSet={...settings,...patch};
+    setSettings(newSet);
+    if(user){try{await Promise.all([dbSet(user.uid,"settings",newSet),dbSet(user.uid,CONFIG_MODEL_KEY,CONFIG_MODEL_V2)]);}catch(e){}}
+  },[settings,user]);
 
   const onImportConfig=useCallback(async cfg=>{
-    const newDef={...defaults,...cfg};const newSet={...settings,...cfg};
-    setDefaults(newDef);setSettings(newSet);
-    if(user){try{await Promise.all([dbSet(user.uid,"defaults",newDef),dbSet(user.uid,"settings",newSet)]);}catch(e){}}
+    const newSet={...settings,...cfg};
+    setSettings(newSet);
+    if(user){try{await Promise.all([dbSet(user.uid,"settings",newSet),dbSet(user.uid,CONFIG_MODEL_KEY,CONFIG_MODEL_V2)]);}catch(e){}}
     alert("✓ Config imported successfully.");
-  },[defaults,settings,user]);
+  },[settings,user]);
 
   const handleImport=useCallback(async csvText=>{
     try{
@@ -1382,7 +1411,7 @@ function App(){
         {page==="home"    &&<HomePage entries={entries} settings={settings} onAdd={addEntry} entryTime={entryTime} setEntryTime={setEntryTime} isOnline={isOnline} T={T}/>}
         {page==="manage"  &&<ManagePage entries={entries} settings={settings} onAddDirect={addEntryDirect} onUpdate={updateEntry} onDelete={deleteEntry} isOnline={isOnline} T={T}/>}
         {page==="reports" &&<ReportsPage entries={entries} settings={settings} isOnline={isOnline} T={T}/>}
-        {page==="settings"&&<SettingsPage settings={settings} defaults={defaults} theme={theme} setSettings={saveSettings} setDefaults={saveDefaults} setTheme={saveTheme} dayRolloverMin={dayRolloverMin} setDayRolloverMin={saveDayRollover} user={user} entries={entries} deletedEntries={deletedEntries} onRestoreEntry={restoreEntry} onExportJSON={exportFullBackup} onImportJSON={importFullBackup} onImport={handleImport} clearAll={clearAll} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} onRestore={restoreFromBackup} offlineAuth={offlineAuth}
+        {page==="settings"&&<SettingsPage settings={settings} theme={theme} setSettings={saveSettings} setTheme={saveTheme} dayRolloverMin={dayRolloverMin} setDayRolloverMin={saveDayRollover} user={user} entries={entries} deletedEntries={deletedEntries} onRestoreEntry={restoreEntry} onExportJSON={exportFullBackup} onImportJSON={importFullBackup} onImport={handleImport} clearAll={clearAll} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} onRestore={restoreFromBackup} offlineAuth={offlineAuth}
           isAdminUser={isAdminUser} pendingRequests={pendingRequests} adminsMap={adminsMap} allowlistMap={allowlistMap} approvedUsersMap={approvedUsersMap}
           onApproveRequest={approveRequest} onDenyRequest={denyRequest} onPromoteAdmin={promoteToAdmin} onDemoteAdmin={demoteAdmin} onAddAllowlist={addAllowlistEntry} onRemoveAllowlist={removeAllowlistEntry}
           T={T}/>}
@@ -2092,7 +2121,12 @@ function ReportsPage({entries,settings,isOnline,T}){
 // ═══════════════════════════════════════════════════════════════════════════════
 // SETTINGS
 // ═══════════════════════════════════════════════════════════════════════════════
-const STABS=[["general","⚙️ General"],["config","🗂️ Config"],["backup","💾 Backup & Restore"]];
+// N8: actions now sit with the object they act on. Config editing AND config
+// export/import/clear live together under Config; everything to do with logged
+// entries lives under Data. Previously config was split across two tabs
+// (editing under Config, its export/import/clear under Backup), which is what
+// made the menus feel jumbled.
+const STABS=[["general","⚙️ General"],["config","🗂️ Config"],["data","💾 Data"]];
 const CTABS=[["food","🍽️ Food"],["drinks","☕ Drinks"],["exercise","🏃 Exercise"],["medical","🩺 Medical"],["meds","💊 Meds"]];
 
 
@@ -2250,11 +2284,13 @@ function DataSafetyCard({entries,deletedEntries,onRestoreEntry,onExportJSON,onIm
   );
 }
 
-function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,dayRolloverMin,setDayRolloverMin,user,entries,deletedEntries,onRestoreEntry,onExportJSON,onImportJSON,onImport,onImportConfig,onClearEntries,onClearConfig,onClearAll,onRestore,offlineAuth,isAdminUser,pendingRequests,adminsMap,allowlistMap,approvedUsersMap,onApproveRequest,onDenyRequest,onPromoteAdmin,onDemoteAdmin,onAddAllowlist,onRemoveAllowlist,T}){
-  const[stab,setStab]=useState("general");const[ctab,setCtab]=useState("food");const[newItem,setNewItem]=useState("");const[applyFlash,setApplyFlash]=useState(false);
-  const active=defaults;
-  const updateActive=updater=>setDefaults(typeof updater==="function"?updater(defaults):updater);
-  const applyToSettings=()=>{if(!confirm("Apply Default config to active settings?\n\nEntry forms will immediately use this config."))return;setSettings(deepClone(defaults));setApplyFlash(true);setTimeout(()=>setApplyFlash(false),1800);};
+function SettingsPage({settings,theme,setSettings,setTheme,dayRolloverMin,setDayRolloverMin,user,entries,deletedEntries,onRestoreEntry,onExportJSON,onImportJSON,onImport,onImportConfig,onClearEntries,onClearConfig,onClearAll,onRestore,offlineAuth,isAdminUser,pendingRequests,adminsMap,allowlistMap,approvedUsersMap,onApproveRequest,onDenyRequest,onPromoteAdmin,onDemoteAdmin,onAddAllowlist,onRemoveAllowlist,T}){
+  const[stab,setStab]=useState("general");const[ctab,setCtab]=useState("food");const[newItem,setNewItem]=useState("");
+  // C1: `active` was the `defaults` draft node and edits only reached entry
+  // forms via Apply ▶. There is no draft any more — edits are the live config,
+  // saved immediately, exactly like Theme and Day Rollover already behaved.
+  const active=settings;
+  const updateActive=updater=>setSettings(typeof updater==="function"?updater(settings):updater);
   const addItem=key=>{if(!newItem.trim())return;const val=key==="foodCategories"?{name:newItem.trim(),note:"",subTypes:[]}:newItem.trim();updateActive(p=>({...p,[key]:[...(p[key]||[]),val]}));setNewItem("");};
   const removeItem=(key,item)=>updateActive(p=>({...p,[key]:(p[key]||[]).filter(x=>key==="foodCategories"?foodName(x)!==foodName(item):x!==item)}));
   const updateFood=newArr=>updateActive(p=>({...p,foodCategories:newArr}));
@@ -2283,10 +2319,7 @@ function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,
     {stab==="config"&&<>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"4px 0 8px"}}>
         <div className="slabel" style={{marginBottom:0}}>🗂️ Config Lists</div>
-        <div style={{display:"flex",gap:6}}>
-          <button onClick={()=>{if(!confirm("Reset all config to factory defaults?\n\nThis restores all original built-in lists."))return;updateActive(()=>deepClone(FD));}} style={{padding:"5px 12px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontFamily:"inherit",fontWeight:600,fontSize:"0.79rem",cursor:"pointer"}}>↺ Factory</button>
-          <button onClick={applyToSettings} style={{padding:"5px 14px",borderRadius:8,border:"none",background:applyFlash?T.ok:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:600,fontSize:"0.79rem",cursor:"pointer",transition:"background 0.3s"}}>{applyFlash?"✔ Applied!":"Apply ▶"}</button>
-        </div>
+        <div style={{fontSize:"0.68rem",color:T.textMuted}}>Changes save automatically</div>
       </div>
       <div style={{display:"flex",gap:4,marginBottom:9,overflowX:"auto"}}>
         {CTABS.map(([k,l])=><button key={k} onClick={()=>{setCtab(k);setNewItem("");}} className={`tbtn${ctab===k?" on":""}`} style={{flexShrink:0,fontSize:"0.75rem"}}>{l}</button>)}
@@ -2296,9 +2329,15 @@ function SettingsPage({settings,defaults,theme,setSettings,setDefaults,setTheme,
       {ctab==="exercise"&&<ExerciseSetting types={active.exerciseTypes||FD.exerciseTypes} onChange={v=>updateActive(p=>({...p,exerciseTypes:v}))} T={T}/>}
       {ctab==="medical"&&<MedicalPresetSetting presets={active.medicalPresets||FD.medicalPresets} onAdd={addMedPreset} onRemove={removeMedPreset} onReorder={arr=>updateActive(p=>({...p,medicalPresets:arr}))} onUpdate={arr=>updateActive(p=>({...p,medicalPresets:arr}))} T={T}/>}
       {ctab==="meds"&&<EList items={active.medications||FD.medications} onRemove={item=>removeItem("medications",item)} onReorder={arr=>updateActive(p=>({...p,medications:arr}))} icons={active.medicationIcons||{}} onIconUpdate={(name,ic)=>updateActive(p=>({...p,medicationIcons:{...(p.medicationIcons||{}),[name]:ic}}))} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("medications")} T={T}/>}
+      <ConfigTools ctab={ctab} settings={settings} onImportConfig={onImportConfig} onClearConfig={onClearConfig} onFactorySection={sec=>{
+        const map={food:["foodCategories"],drinks:["liquidTypes","liquidNotes","liquidSubTypes","liquidIcons"],exercise:["exerciseTypes"],medical:["medicalPresets"],meds:["medications","medicationIcons"]};
+        const keys=map[sec]||[];
+        const patch={};keys.forEach(k=>{if(FD[k]!==undefined)patch[k]=deepClone(FD[k]);});
+        updateActive(p=>({...p,...patch}));
+      }} onFactoryAll={()=>updateActive(()=>deepClone(FD))} T={T}/>
     </>}
 
-    {stab==="backup"&&<BackupPanel entries={entries} deletedEntries={deletedEntries} settings={settings} defaults={defaults} onImport={onImport} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} onRestoreEntry={onRestoreEntry} onExportJSON={onExportJSON} onImportJSON={onImportJSON} onRestore={onRestore} offlineAuth={offlineAuth} T={T}/>}
+    {stab==="data"&&<DataPanel entries={entries} deletedEntries={deletedEntries} onImport={onImport} onClearEntries={onClearEntries} onClearAll={onClearAll} onRestoreEntry={onRestoreEntry} onExportJSON={onExportJSON} onImportJSON={onImportJSON} onRestore={onRestore} offlineAuth={offlineAuth} T={T}/>}
   </div>);
 }
 
@@ -2376,12 +2415,49 @@ function AdminPanel({pendingRequests,adminsMap,allowlistMap,approvedUsersMap,onA
   </>);
 }
 
-function BackupPanel({entries,deletedEntries,settings,defaults,onImport,onImportConfig,onClearEntries,onClearConfig,onClearAll,onRestoreEntry,onExportJSON,onImportJSON,onRestore,offlineAuth,T}){
-  const dataRef=useRef();
+// N8: config export / import / clear / factory-reset used to live under the
+// Backup tab, separated from the config editing they act on. They now sit
+// directly beneath the list being edited, scoped to the section in view.
+function ConfigTools({ctab,settings,onImportConfig,onClearConfig,onFactorySection,onFactoryAll,T}){
   const cfgRef=useRef();
+  const[open,setOpen]=useState(false);
+  const LABEL={food:"Food",drinks:"Drinks",exercise:"Exercise",medical:"Medical",meds:"Meds"};
+  const label=LABEL[ctab]||ctab;
+  const handleCfgFile=e=>{
+    const f=e.target.files[0];if(!f)return;
+    const r=new FileReader();
+    r.onload=ev=>{try{const cfg=importConfigCSV(ev.target.result);onImportConfig(cfg);}catch(err){alert("Config import failed: "+err.message);}};
+    r.readAsText(f);e.target.value="";
+  };
+  const btn={width:"100%",padding:"8px",borderRadius:8,border:`1px solid ${T.border}`,background:T.inputBg,color:T.text,fontFamily:"inherit",fontWeight:600,fontSize:"0.78rem",cursor:"pointer",marginBottom:6};
+  return(<div className="card" style={{marginTop:10}}>
+    {!open
+      ?<button onClick={()=>setOpen(true)} style={{width:"100%",padding:"8px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontFamily:"inherit",fontWeight:600,fontSize:"0.78rem",cursor:"pointer"}}>🛠️ {label} tools — export, import, reset…</button>
+      :<>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+          <div className="slabel" style={{marginBottom:0}}>🛠️ {label} tools</div>
+          <button onClick={()=>setOpen(false)} style={{background:"none",border:"none",color:T.textMuted,cursor:"pointer",fontSize:"0.9rem",padding:0}}>×</button>
+        </div>
+        <button onClick={()=>downloadCSV(exportConfigCSV(settings,ctab),`jivanlog-config-${ctab}-${today()}.csv`)} style={{...btn,background:T.accentBtn,color:"#fff",border:"none"}}>⬇️ Export {label} CSV</button>
+        <button onClick={()=>downloadCSV(exportConfigCSV(settings,"all"),`jivanlog-config-all-${today()}.csv`)} style={btn}>⬇️ Export ALL config CSV</button>
+        <button onClick={()=>cfgRef.current&&cfgRef.current.click()} style={btn}>⬆️ Import config CSV…</button>
+        <div style={{fontSize:"0.68rem",color:T.textMuted,margin:"2px 0 8px",lineHeight:1.5}}>Import replaces whichever sections the file contains. Other sections are untouched.</div>
+        <button onClick={()=>{if(!confirm(`Reset ${label} to factory defaults?\n\nThis restores the built-in ${label} list. Your logged entries are unaffected.`))return;onFactorySection(ctab);}} style={btn}>↺ Reset {label} to factory</button>
+        <button onClick={()=>{if(!confirm(`Empty the ${label} list?\n\nThe list becomes blank until you re-add or re-import. Your logged entries are unaffected.`))return;onClearConfig(ctab);}} style={{...btn,color:T.danger,borderColor:T.danger}}>⚠️ Clear {label} list</button>
+        <div style={{borderTop:`1px solid ${T.border}`,marginTop:6,paddingTop:8}}>
+          <button onClick={()=>{if(!confirm("Reset ALL config sections to factory defaults?\n\nEvery list is restored to its built-in version. Your logged entries are unaffected."))return;onFactoryAll();}} style={{...btn,marginBottom:0,color:T.textMuted}}>↺ Reset ALL config to factory</button>
+        </div>
+        <input ref={cfgRef} type="file" accept=".csv" onChange={handleCfgFile} style={{display:"none"}}/>
+      </>}
+  </div>);
+}
+
+function DataPanel({entries,deletedEntries,onImport,onClearEntries,onClearAll,onRestoreEntry,onExportJSON,onImportJSON,onRestore,offlineAuth,T}){
+  const dataRef=useRef();
   const jsonRef=useRef();
-  const[section,setSection]=useState("data");  // data | config | restore
-  const[cfgSub,setCfgSub]=useState("all");
+  // N8: the "config" section moved out to ConfigTools, beside the config it
+  // acts on. What's left here is purely about logged entries.
+  const[section,setSection]=useState("data");  // data | restore
   const[entrySub,setEntrySub]=useState("all");
   const[showClear,setShowClear]=useState(false);
 
@@ -2403,34 +2479,22 @@ function BackupPanel({entries,deletedEntries,settings,defaults,onImport,onImport
   },[]);
 
   const ENTRY_SUBS=[["all","All"],["meal","🍽️ Meals"],["liquid","💧 Drinks"],["exercise","🏃 Exercise"],["medical","🩺 Medical"],["medication","💊 Meds"]];
-  const CFG_SUBS=[["all","All"],["food","🍽️ Food"],["drinks","💧 Drinks"],["exercise","🏃 Exercise"],["medical","🩺 Medical"],["meds","💊 Meds"]];
   const CLEAR_OPTS=[
     {key:"all",   label:"⚠️ Clear EVERYTHING",  desc:"All entries moved to Trash + all config reset to factory.",danger:true},
     {key:"entries",label:"🗑️ Clear all entries", desc:"All entries moved to Trash. Config is kept."},
-    {key:"food",   label:"🍽️ Clear Food config",    desc:"Food list emptied. Entries unaffected."},
-    {key:"drinks", label:"💧 Clear Drinks config",  desc:"Drinks list emptied. Entries unaffected."},
-    {key:"exercise",label:"🏃 Clear Exercise config",desc:"Exercise types emptied. Entries unaffected."},
-    {key:"medical",label:"🩺 Clear Medical config",  desc:"Medical presets emptied. Entries unaffected."},
-    {key:"meds",   label:"💊 Clear Meds config",     desc:"Medications list emptied. Entries unaffected."},
   ];
+
 
   const doExportCSV=()=>{
     const all=[...entries,...(deletedEntries||[])];
     const filtered=entrySub==="all"?all:all.filter(e=>e.type===entrySub);
     downloadCSV(buildAllCSV(filtered),`jivanlog-data-${entrySub}-${today()}.csv`);
   };
-  const doExportCfgCSV=()=>downloadCSV(exportConfigCSV(settings,cfgSub),`jivanlog-config-${cfgSub}-${today()}.csv`);
 
   const handleDataFile=e=>{
     const f=e.target.files[0];if(!f)return;
     const r=new FileReader();
     r.onload=ev=>onImport(ev.target.result);
-    r.readAsText(f);e.target.value="";
-  };
-  const handleCfgFile=e=>{
-    const f=e.target.files[0];if(!f)return;
-    const r=new FileReader();
-    r.onload=ev=>{try{const cfg=importConfigCSV(ev.target.result);onImportConfig(cfg);}catch(err){alert("Config import failed: "+err.message);}};
     r.readAsText(f);e.target.value="";
   };
   const handleJSONFile=e=>{
@@ -2444,7 +2508,6 @@ function BackupPanel({entries,deletedEntries,settings,defaults,onImport,onImport
     if(!confirm(opt.label+"\n\n"+opt.desc+"\n\nPress OK to confirm."))return;
     if(key==="all"){if(!confirm("FINAL CONFIRMATION — press OK to clear everything."))return;onClearAll();}
     else if(key==="entries"){if(!confirm("FINAL CONFIRMATION — move all entries to Trash?"))return;onClearEntries();}
-    else onClearConfig(key);
     setShowClear(false);
   };
 
@@ -2467,8 +2530,7 @@ function BackupPanel({entries,deletedEntries,settings,defaults,onImport,onImport
   return(<div>
     {/* ── Section tabs ── */}
     <div style={{display:"flex",gap:4,marginBottom:12}}>
-      <SecBtn val="data"    label="📊 Data"/>
-      <SecBtn val="config"  label="⚙️ Config"/>
+      <SecBtn val="data"    label="📊 Entries"/>
       <SecBtn val="restore" label="🛟 Restore"/>
     </div>
 
@@ -2533,52 +2595,6 @@ function BackupPanel({entries,deletedEntries,settings,defaults,onImport,onImport
             :<div style={{display:"flex",flexDirection:"column",gap:6}}>
               {CLEAR_OPTS.filter(o=>o.key==="entries"||o.key==="all").map(o=>(
                 <button key={o.key} onClick={()=>doClear(o.key)} style={{width:"100%",padding:"8px",borderRadius:8,border:`1px solid ${o.danger?"#ef4444":T.border}`,background:"transparent",color:o.danger?"#ef4444":T.text,fontFamily:"inherit",fontWeight:600,fontSize:"0.78rem",cursor:"pointer",textAlign:"left"}}>
-                  {o.label}<div style={{fontSize:"0.66rem",fontWeight:400,color:T.textMuted,marginTop:2}}>{o.desc}</div>
-                </button>
-              ))}
-              <button onClick={()=>setShowClear(false)} style={{padding:"6px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontFamily:"inherit",fontSize:"0.78rem",cursor:"pointer"}}>Cancel</button>
-            </div>
-          }
-        </div>
-      </Row>
-    </>}
-
-    {/* ══════════════ CONFIG BACKUP ══════════════ */}
-    {section==="config"&&<>
-      <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}}>
-        {CFG_SUBS.map(([k,l])=><Pill key={k} val={k} label={l} cur={cfgSub} set={setCfgSub}/>)}
-      </div>
-
-      <Row label="⬇️ Export config">
-        <div className="card">
-          <div style={{fontSize:"0.73rem",color:T.textMuted,marginBottom:8,lineHeight:1.5}}>
-            Download your {cfgSub==="all"?"complete config":(cfgSub+" config")} as CSV. Keep a copy before making changes.
-          </div>
-          <button onClick={doExportCfgCSV} style={{width:"100%",padding:"9px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:600,fontSize:"0.82rem",cursor:"pointer"}}>
-            ⬇️ Download config CSV
-          </button>
-        </div>
-      </Row>
-
-      <Row label="⬆️ Import config">
-        <div className="card">
-          <div style={{fontSize:"0.73rem",color:T.textMuted,marginBottom:8,lineHeight:1.5}}>
-            Import a previously exported config CSV. Matching sections will be replaced.
-          </div>
-          <button onClick={()=>cfgRef.current&&cfgRef.current.click()} style={{width:"100%",padding:"9px",borderRadius:8,border:`1px solid ${T.border}`,background:T.inputBg,color:T.text,fontFamily:"inherit",fontWeight:600,fontSize:"0.82rem",cursor:"pointer"}}>
-            ⬆️ Select config CSV…
-          </button>
-          <input ref={cfgRef} type="file" accept=".csv" onChange={handleCfgFile} style={{display:"none"}}/>
-        </div>
-      </Row>
-
-      <Row label="⚠️ Clear config">
-        <div className="card">
-          {!showClear
-            ?<button onClick={()=>setShowClear(true)} style={{width:"100%",padding:"9px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontFamily:"inherit",fontWeight:600,fontSize:"0.82rem",cursor:"pointer"}}>Show clear options…</button>
-            :<div style={{display:"flex",flexDirection:"column",gap:6}}>
-              {CLEAR_OPTS.filter(o=>!["all","entries"].includes(o.key)).map(o=>(
-                <button key={o.key} onClick={()=>doClear(o.key)} style={{width:"100%",padding:"8px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.text,fontFamily:"inherit",fontWeight:600,fontSize:"0.78rem",cursor:"pointer",textAlign:"left"}}>
                   {o.label}<div style={{fontSize:"0.66rem",fontWeight:400,color:T.textMuted,marginTop:2}}>{o.desc}</div>
                 </button>
               ))}
