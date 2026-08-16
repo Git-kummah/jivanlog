@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.75";
+const APP_VERSION="v4.76";
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -518,6 +518,14 @@ function App(){
   // socket hasn't confirmed yet" — the exact scenario the v4.70 watchdog
   // exists for. Previously both looked identical: a bare 📵.
   const[browserOnline,setBrowserOnline]=useState(navigator.onLine);
+  // E3: oldest still-unsynced write. Was previously declared further down,
+  // after App's authState/accessState early-return guards — meaning this hook
+  // ran on some renders (signed in) and not others (checking/pending/denied/
+  // signed out), a Rules-of-Hooks violation that crashed the app the moment a
+  // render crossed that boundary (React error #310, hit live during sign-in).
+  // Every hook in a component must run unconditionally on every render, so it
+  // now sits here with the rest of App's unconditional state.
+  const[queueOldestAt,setQueueOldestAt]=useState(null);
   useEffect(()=>{
     const on=()=>setBrowserOnline(true);
     const off=()=>setBrowserOnline(false);
@@ -526,6 +534,12 @@ function App(){
     return()=>{window.removeEventListener("online",on);window.removeEventListener("offline",off);};
   },[]);
   const[queueSize,setQueueSize]=useState(0);
+  // Recomputed whenever the queue changes. Feeds QueueAgeBadge's 1h warning.
+  useEffect(()=>{
+    if(!user){setQueueOldestAt(null);return;}
+    const q=getOfflineQ(user.uid);
+    setQueueOldestAt(q.length?Math.min(...q.map(e=>e._queuedAt||Date.now())):null);
+  },[queueSize,user]);
   const[offlineAuth,setOfflineAuth]=useState(false);
   const[storageWarn,setStorageWarn]=useState(null);
   const deliberateClearRef=useRef(false);
@@ -1300,17 +1314,6 @@ function App(){
   const displaySync=!browserOnline?"offline":!isOnline?"reconnecting":queueSize>0?"pending":syncStatus;
   const syncIcon=displaySync==="offline"?"📵":displaySync==="reconnecting"?"🔄":displaySync==="pending"?"⏳":displaySync==="saving"?"💾":displaySync==="synced"?"✓":"☁";
   const syncColor=displaySync==="offline"?T.danger:displaySync==="reconnecting"?T.waterBtnText:displaySync==="pending"?T.waterBtnText:displaySync==="saving"?T.textMuted:displaySync==="synced"?"#4ade80":T.border;
-
-  // E3: oldest still-unsynced write, recomputed whenever the queue changes.
-  // A silent long-lived queue was flagged as the one remaining real data-loss
-  // path — this is what QueueAgeBadge (below) turns into a visible warning
-  // once something has been pending over an hour.
-  const[queueOldestAt,setQueueOldestAt]=useState(null);
-  useEffect(()=>{
-    if(!user){setQueueOldestAt(null);return;}
-    const q=getOfflineQ(user.uid);
-    setQueueOldestAt(q.length?Math.min(...q.map(e=>e._queuedAt||Date.now())):null);
-  },[queueSize,user]);
 
   const dayStr=new Date().toLocaleDateString("en-IN",{weekday:"short",day:"numeric",month:"short"});
   const pendingCount=isAdminUser?Object.keys(pendingRequests||{}).length:0;
