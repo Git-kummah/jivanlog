@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.74";
+const APP_VERSION="v4.75";
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -163,6 +163,21 @@ const saveOfflineQ =(uid,arr)=>{
 const clearOfflineQ=uid=>{try{localStorage.removeItem(`jivanlog-offlineQ-${uid}`);}catch{}};
 // Remove ONLY the specified ids from the queue (entries added meanwhile survive).
 const removeFromQueue=(uid,ids)=>{const set=new Set(ids);const left=getOfflineQ(uid).filter(e=>!set.has(e.id));saveOfflineQ(uid,left);return left;};
+// E3: upsert one item into the offline queue, stamping _queuedAt so the UI can
+// warn about long-pending writes. If the same id is already queued (e.g. an
+// offline edit of an entry that was itself added offline), the ORIGINAL
+// _queuedAt is kept — the oldest still-unsynced moment for that id is the
+// honest "how long has this been pending" answer, not the latest edit time.
+// _queuedAt is stripped before anything is written to Firebase (see flushOfflineQueue).
+const queueUpsert=(uid,item)=>{
+  const q=getOfflineQ(uid);
+  const idx=q.findIndex(e=>e.id===item.id);
+  const queuedAt=idx>=0?(q[idx]._queuedAt||Date.now()):Date.now();
+  const stamped={...item,_queuedAt:queuedAt};
+  const next=idx>=0?[...q.slice(0,idx),stamped,...q.slice(idx+1)]:[...q,stamped];
+  saveOfflineQ(uid,next);
+  return next;
+};
 
 // ── FULL LOCAL MIRROR ─ durable copy of ALL entries (offline view + recovery) ─
 //
@@ -498,6 +513,18 @@ function App(){
   const[showUserMenu,setShowUserMenu]=useState(false);
   const[isOnline,setIsOnline]=useState(navigator.onLine);
   const isOnlineRef=useRef(navigator.onLine);
+  // E2: tracked live (not just read once) so the header can distinguish
+  // "device has no network at all" from "device has network but Firebase's
+  // socket hasn't confirmed yet" — the exact scenario the v4.70 watchdog
+  // exists for. Previously both looked identical: a bare 📵.
+  const[browserOnline,setBrowserOnline]=useState(navigator.onLine);
+  useEffect(()=>{
+    const on=()=>setBrowserOnline(true);
+    const off=()=>setBrowserOnline(false);
+    window.addEventListener("online",on);
+    window.addEventListener("offline",off);
+    return()=>{window.removeEventListener("online",on);window.removeEventListener("offline",off);};
+  },[]);
   const[queueSize,setQueueSize]=useState(0);
   const[offlineAuth,setOfflineAuth]=useState(false);
   const[storageWarn,setStorageWarn]=useState(null);
@@ -563,7 +590,7 @@ function App(){
         const dead=mirror.filter(e=>e.deleted);
         const queued=getOfflineQ(uid);
         const lIds=new Set(live.map(e=>e.id));
-        const merged=[...live,...queued.filter(e=>!lIds.has(e.id)&&!e.deleted).map(e=>({...e,date:normDate(e.date)}))];
+        const merged=[...live,...queued.filter(e=>!lIds.has(e.id)&&!e.deleted).map(e=>{const{_queuedAt,...clean}=e;return{...clean,date:normDate(clean.date)};})];
         setEntries(merged);
         setDeletedEntries(dead);
         setDataLoaded(true);
@@ -602,43 +629,62 @@ function App(){
     return()=>clearTimeout(t);
   },[user,isOnline]);
 
-  // Auth listener — with OFFLINE LOGIN fallback.
-  // Firebase Auth needs the network to restore/refresh a session when something
-  // (e.g. App Check enforcement) forces a token round-trip. If we're offline but
-  // the user has signed in before, we let them into the app using a cached
-  // identity: they see their mirrored data and can keep logging (queued locally).
-  // When connectivity + real auth return, the real user replaces the offline one
-  // and the queue flushes automatically.
+  // Auth listener — N2: OPTIMISTIC BOOT.
+  // Previously the app waited for fbAuth.onAuthStateChanged (or a 4s timeout)
+  // before showing anything, and only fell back to a cached identity when
+  // navigator.onLine was false. Two problems: (1) that made every login as
+  // slow as the auth round-trip, even on a fine connection, because Firebase
+  // Auth's token refresh can itself be slow — v4.70's own watchdog exists
+  // because navigator.onLine already turned out not to reliably reflect
+  // whether Firebase can actually be reached; the login path had the same
+  // blind spot. (2) it meant a slow-but-fine connection could flash to a
+  // "signed out" screen while waiting.
+  //
+  // Now: if we have a cached identity from a previous sign-in, render the app
+  // immediately from it — the local mirror already has the data, so there is
+  // nothing to wait for. The real onAuthStateChanged listener still runs in
+  // the background and replaces the optimistic user the moment it resolves,
+  // which also flips offlineAuth off and lets the offline queue flush. Only a
+  // genuine "no session, anywhere" result (a real remote sign-out or an
+  // invalidated token) clears the cache and shows the sign-in screen.
   useEffect(()=>{
     let resolved=false;
-    const goOfflineSession=()=>{
-      if(resolved)return;
-      const cu=getCachedAuthUser();
-      if(cu&&!navigator.onLine){
-        resolved=true;
-        setUser({uid:cu.uid,displayName:cu.displayName,email:cu.email,photoURL:cu.photoURL,_offline:true});
-        setOfflineAuth(true);
-        setAuthState("in");
-      }else{
-        setAuthState(prev=>prev==="checking"?"out":prev);
-      }
-    };
+    const cached=getCachedAuthUser();
+    if(cached){
+      setUser({uid:cached.uid,displayName:cached.displayName,email:cached.email,photoURL:cached.photoURL,_offline:true});
+      setOfflineAuth(true);
+      setAuthState("in");
+    }
     const unsub=fbAuth.onAuthStateChanged(u=>{
+      resolved=true;
       if(u){
-        resolved=true;
         setOfflineAuth(false);
         saveCachedAuthUser(u);
         setUser(u);setAuthState("in");
       }else{
-        // No real session. Offline + previously signed in → offline session.
-        // Otherwise it's a genuine signed-out state.
-        if(!navigator.onLine&&getCachedAuthUser()){goOfflineSession();}
-        else{resolved=true;setOfflineAuth(false);setUser(null);setAuthState("out");setDataLoaded(false);setEntries([]);}
+        // A null callback while genuinely offline is exactly the ambiguous case:
+        // it can mean "no session" OR "couldn't verify one without a network".
+        // Only trust it as authoritative sign-out when we have a way to have
+        // actually checked — i.e. we're online, or there was nothing cached to
+        // begin with. Otherwise keep the optimistic cached session as-is rather
+        // than bouncing a legitimately-signed-in offline user out.
+        if(cached&&!navigator.onLine)return;
+        clearCachedAuthUser();
+        setOfflineAuth(false);setUser(null);setAuthState("out");setDataLoaded(false);setEntries([]);
       }
-    },e=>{setAuthError(e.message);if(!navigator.onLine&&getCachedAuthUser())goOfflineSession();else setAuthState("out");});
-    // Fallback: if auth never resolves at all (stalled offline), open offline session after 4s.
-    const t=setTimeout(goOfflineSession,4000);
-    return()=>{unsub();clearTimeout(t);};
+    },e=>{
+      resolved=true;
+      setAuthError(e.message);
+      // Errored rather than resolved. If we already booted from cache, stay in —
+      // there's a working session shown to the user and nothing to undo. If we
+      // had nothing cached, there's genuinely nothing to show but sign-in.
+      if(!cached)setAuthState("out");
+    });
+    // Only the no-cache path can hang indefinitely (waiting on a first-ever
+    // sign-in check with no fallback to show). The cached path is already
+    // showing the app, so it needs no timeout.
+    const t=cached?null:setTimeout(()=>{if(!resolved)setAuthState(prev=>prev==="checking"?"out":prev);},4000);
+    return()=>{unsub();if(t)clearTimeout(t);};
   },[]);
 
   // ── Resolve access state ──────────────────────────────────────────────────
@@ -821,7 +867,7 @@ function App(){
       const live=all.filter(e=>!e.deleted);
       const dead=all.filter(e=>e.deleted);
       const liveIds=new Set(live.map(e=>e.id));
-      const pendingLive=queued.filter(e=>!liveIds.has(e.id)&&!e.deleted).map(e=>({...e,date:normDate(e.date)}));
+      const pendingLive=queued.filter(e=>!liveIds.has(e.id)&&!e.deleted).map(e=>{const{_queuedAt,...clean}=e;return{...clean,date:normDate(clean.date)};});
       setEntries([...live,...pendingLive]);
       setDeletedEntries(dead);
       setDataLoaded(true);
@@ -975,7 +1021,7 @@ function App(){
     setSyncStatus("saving");
     try{
       const updates={};const ids=[];
-      queued.forEach(e=>{const k=e.id.replace(/[\s.#$\[\]/]/g,"_");updates[k]={...e,id:k};ids.push(e.id);});
+      queued.forEach(e=>{const k=e.id.replace(/[\s.#$\[\]/]/g,"_");const{_queuedAt,...clean}=e;updates[k]={...clean,id:k};ids.push(e.id);});
       // Race the write against a timeout so a mid-flush disconnect can't hang it.
       await Promise.race([
         fbDb.ref(`users/${uid}/entries`).update(updates),
@@ -1065,7 +1111,7 @@ function App(){
       saveTodayCache(uid,next);
       saveDailyBackupLocal(uid,next);
       // 2. Push to offline queue — the authoritative pending-write store
-      const q=getOfflineQ(uid);q.push(newEntry);saveOfflineQ(uid,q);setQueueSize(q.length);
+      const q=queueUpsert(uid,newEntry);setQueueSize(q.length);
       // 3. If online, flush queue via .update() (safe, additive, not .set())
       //    flushOfflineQueue is a no-op if offline — queue persists for later
       if(isOnlineRef.current)flushOfflineQueue();
@@ -1078,7 +1124,7 @@ function App(){
     if(user){
       const uid=user.uid;
       mirrorPut(uid,[entry]);saveTodayCache(uid,next);saveDailyBackupLocal(uid,next);
-      const q=getOfflineQ(uid);if(!q.find(e=>e.id===entry.id)){q.push(entry);saveOfflineQ(uid,q);setQueueSize(q.length);}
+      const q=queueUpsert(uid,entry);setQueueSize(q.length);
       if(isOnlineRef.current)flushOfflineQueue();
     }
   },[entries,flushOfflineQueue,user]);
@@ -1092,12 +1138,12 @@ function App(){
       mirrorPut(uid,changed?[changed]:[]);saveTodayCache(uid,next);saveDailyBackupLocal(uid,next);
       if(user._offline){
         // Offline session: queue the edited entry so it flushes on reconnect.
-        const q=getOfflineQ(uid).filter(e=>e.id!==id);q.push(changed);saveOfflineQ(uid,q);setQueueSize(q.length);
+        const q=queueUpsert(uid,changed);setQueueSize(q.length);
       }else if(isOnlineRef.current){
         const k=id.replace(/[\s.#$\[\]/]/g,"_");
         fbDb.ref(`users/${uid}/entries/${k}`).update({...changed,id:k}).catch(e=>console.warn("updateEntry remote:",e));
       }else{
-        const q=getOfflineQ(uid).filter(e=>e.id!==id);q.push(changed);saveOfflineQ(uid,q);setQueueSize(q.length);
+        const q=queueUpsert(uid,changed);setQueueSize(q.length);
       }
     }
   },[entries,user]);
@@ -1122,7 +1168,7 @@ function App(){
       fbDb.ref(`users/${uid}/entries/${k}`).update({deleted:true,deletedAt:tomb.deletedAt}).catch(e=>console.warn("deleteEntry tombstone:",e));
     }else{
       // Offline: queue the tombstone write so it syncs on reconnect.
-      const q=getOfflineQ(uid).filter(e=>e.id!==id);q.push(tomb);saveOfflineQ(uid,q);setQueueSize(q.length);
+      const q=queueUpsert(uid,tomb);setQueueSize(q.length);
     }
   },[entries,user]);
 
@@ -1140,7 +1186,7 @@ function App(){
     if(!user._offline){
       fbDb.ref(`users/${uid}/entries/${k}`).update({deleted:false,deletedAt:null,restoredAt:revived.restoredAt}).catch(e=>console.warn("restoreEntry:",e));
     }else{
-      const q=getOfflineQ(uid).filter(e=>e.id!==id);q.push(revived);saveOfflineQ(uid,q);setQueueSize(q.length);
+      const q=queueUpsert(uid,revived);setQueueSize(q.length);
     }
   },[deletedEntries,user]);
 
@@ -1163,7 +1209,7 @@ function App(){
       tombs.forEach(t=>{const k=t.id.replace(/[\s.#$\[\]/]/g,"_");updates[k]={deleted:true,deletedAt:now};});
       fbDb.ref(`users/${uid}/entries`).update(updates).catch(e=>console.warn("tombstoneAll:",e));
     }else{
-      const q=getOfflineQ(uid);tombs.forEach(t=>q.push(t));saveOfflineQ(uid,q);setQueueSize(q.length);
+      let q=getOfflineQ(uid);tombs.forEach(t=>{q=queueUpsert(uid,t);});setQueueSize(q.length);
     }
   },[entries,user]);
 
@@ -1244,10 +1290,27 @@ function App(){
     if(accessState==="denied")return<WaitingScreen denied user={user} onSignOut={signOut} onRequestAgain={requestAccessAgain}/>;
   }
 
-  // Derive sync display state
-  const displaySync=!isOnline?"offline":queueSize>0?"pending":syncStatus;
-  const syncIcon=displaySync==="offline"?"📵":displaySync==="pending"?"⏳":displaySync==="saving"?"💾":displaySync==="synced"?"✓":"☁";
-  const syncColor=displaySync==="offline"?T.danger:displaySync==="pending"?T.waterBtnText:displaySync==="saving"?T.textMuted:displaySync==="synced"?"#4ade80":T.border;
+  // Derive sync display state.
+  // E2: previously `!isOnline` alone meant "offline" — but isOnline only ever
+  // reflects Firebase's own socket, so a device with a perfectly good network
+  // waiting on that socket to (re)confirm looked identical to a device with no
+  // network at all. Now: browserOnline false = genuinely offline; browserOnline
+  // true but isOnline false = reconnecting (network exists, Firebase hasn't
+  // confirmed yet — the watchdog is actively working on this).
+  const displaySync=!browserOnline?"offline":!isOnline?"reconnecting":queueSize>0?"pending":syncStatus;
+  const syncIcon=displaySync==="offline"?"📵":displaySync==="reconnecting"?"🔄":displaySync==="pending"?"⏳":displaySync==="saving"?"💾":displaySync==="synced"?"✓":"☁";
+  const syncColor=displaySync==="offline"?T.danger:displaySync==="reconnecting"?T.waterBtnText:displaySync==="pending"?T.waterBtnText:displaySync==="saving"?T.textMuted:displaySync==="synced"?"#4ade80":T.border;
+
+  // E3: oldest still-unsynced write, recomputed whenever the queue changes.
+  // A silent long-lived queue was flagged as the one remaining real data-loss
+  // path — this is what QueueAgeBadge (below) turns into a visible warning
+  // once something has been pending over an hour.
+  const[queueOldestAt,setQueueOldestAt]=useState(null);
+  useEffect(()=>{
+    if(!user){setQueueOldestAt(null);return;}
+    const q=getOfflineQ(user.uid);
+    setQueueOldestAt(q.length?Math.min(...q.map(e=>e._queuedAt||Date.now())):null);
+  },[queueSize,user]);
 
   const dayStr=new Date().toLocaleDateString("en-IN",{weekday:"short",day:"numeric",month:"short"});
   const pendingCount=isAdminUser?Object.keys(pendingRequests||{}).length:0;
@@ -1293,11 +1356,12 @@ function App(){
           <div style={{fontSize:"0.68rem",color:T.textMuted,fontFamily:"'DM Mono',monospace"}}>{dayStr}<span style={{opacity:0.45,marginLeft:5}}>{APP_VERSION}</span></div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
-          <span title={displaySync==="offline"?"Offline — entries saved locally":displaySync==="pending"?`${queueSize} pending — tap to sync`:displaySync==="saving"?"Syncing…":displaySync==="synced"?"Synced ✓":"Synced"} style={{fontSize:"1rem",color:syncColor,transition:"color 0.3s",cursor:queueSize>0?"pointer":"default"}} onClick={queueSize>0?flushOfflineQueue:undefined}>{syncIcon}</span>
+          <span title={displaySync==="offline"?"Offline — entries saved locally":displaySync==="reconnecting"?"Reconnecting… entries saved locally, will sync automatically":displaySync==="pending"?`${queueSize} pending — tap to sync`:displaySync==="saving"?"Syncing…":displaySync==="synced"?"Synced ✓":"Synced"} style={{fontSize:"1rem",color:syncColor,transition:"color 0.3s",cursor:queueSize>0?"pointer":"default"}} onClick={queueSize>0?flushOfflineQueue:undefined}>{syncIcon}</span>
           {queueSize>0&&<button onClick={flushOfflineQueue} title="Sync pending entries now" style={{fontSize:"0.62rem",padding:"2px 5px",borderRadius:5,border:`1px solid ${T.border}`,background:T.cardBg,color:T.waterBtnText,cursor:"pointer",fontFamily:"inherit",fontWeight:600,flexShrink:0}}>Sync {queueSize}</button>}
           <Clock T={T}/>
         </div>
       </div>
+      <QueueAgeBadge queueOldestAt={queueOldestAt} onSyncNow={flushOfflineQueue} T={T}/>
 
       {storageWarn&&<div style={{display:"flex",alignItems:"flex-start",gap:7,padding:"7px 13px",background:T.dangerBg||T.accentBg,borderBottom:`1px solid ${T.danger}`,fontSize:"0.72rem",color:T.danger,flexShrink:0}}>
         <span style={{flex:1,lineHeight:1.5}}>
@@ -1393,6 +1457,31 @@ function Clock({T}){
   const[clock,setClock]=useState(nowTime());
   useEffect(()=>{const t=setInterval(()=>setClock(nowTime()),1000);return()=>clearInterval(t);},[]);
   return <div style={{fontFamily:"'DM Mono',monospace",fontSize:"0.88rem",color:T.waterBtnText}}>{clock}</div>;
+}
+
+// E3: warns when something has been sitting in the offline queue for over an
+// hour — a silent long-lived queue was the one remaining genuine data-loss
+// path (an entry can live on-device-only for hours with nothing visible
+// saying so). Ticks its own state every 60s to recompute the age text, kept
+// as an isolated leaf component so that tick doesn't re-render the app (same
+// reasoning as Clock, O1).
+function QueueAgeBadge({queueOldestAt,onSyncNow,T}){
+  const[,forceTick]=useState(0);
+  useEffect(()=>{
+    if(!queueOldestAt)return;
+    const t=setInterval(()=>forceTick(x=>x+1),60000);
+    return()=>clearInterval(t);
+  },[queueOldestAt]);
+  if(!queueOldestAt)return null;
+  const ageMin=Math.floor((Date.now()-queueOldestAt)/60000);
+  if(ageMin<60)return null; // only surface once something is genuinely stuck
+  const ageH=(ageMin/60).toFixed(1);
+  return(
+    <div style={{display:"flex",alignItems:"center",gap:8,padding:"7px 13px",background:T.dangerBg||T.accentBg,borderBottom:`1px solid ${T.danger}`,fontSize:"0.72rem",color:T.danger,flexShrink:0}}>
+      <span style={{flex:1,lineHeight:1.5}}>⚠️ Some entries have been waiting to sync for <b>{ageH}h</b>. They're safe on this device, but check your connection.</span>
+      <button onClick={onSyncNow} style={{flexShrink:0,padding:"4px 9px",fontSize:"0.72rem",borderRadius:6,border:`1px solid ${T.danger}`,background:"none",color:T.danger,cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Retry sync</button>
+    </div>
+  );
 }
 const normTime=setter=>e=>{
   const v=e.target.value;
@@ -1560,33 +1649,37 @@ function ManagePage({entries,settings,onAddDirect,onUpdate,onDelete,isOnline,T})
   const[sel,setSel]=useState(today);
   const[eid,setEid]=useState(null);
   const[dupEid,setDupEid]=useState(null);
-  // When offline, restrict navigation to today
-  const effectiveSel=isOnline?sel:today();
+  // C6/E1: previously navigation was locked to today whenever isOnline was
+  // false. That was never actually necessary — `entries` here is already
+  // hydrated from the local mirror (all history, incl. tombstones) regardless
+  // of connection, so browsing past dates has always worked offline. The old
+  // restriction just prevented using a feature the data already supported.
+  const effectiveSel=sel;
   const handleDuplicate=e=>{const newId=genId();const ts=new Date(new Date(e.timestamp).getTime()+1000).toISOString();onAddDirect({...deepClone(e),id:newId,timestamp:ts,date:e.date});setEid(newId);setDupEid(newId);};
   const dayE=entries.filter(e=>e.date===effectiveSel).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
   const idx=allDates.indexOf(effectiveSel);
-  const goPrev=()=>{if(isOnline&&idx<allDates.length-1){setSel(allDates[idx+1]);setEid(null);}};
-  const goNext=()=>{if(isOnline&&idx>0){setSel(allDates[idx-1]);setEid(null);}};
+  const goPrev=()=>{if(idx<allDates.length-1){setSel(allDates[idx+1]);setEid(null);}};
+  const goNext=()=>{if(idx>0){setSel(allDates[idx-1]);setEid(null);}};
   return(<div>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
       <div style={{fontWeight:600,fontSize:"0.92rem"}}>📋 Manage Records</div>
       <div style={{fontSize:"0.72rem",color:T.textMuted}}>{entries.length} entries · {allDates.length} dates</div>
     </div>
-    {!isOnline&&<div style={{fontSize:"0.73rem",color:T.waterBtnText,background:T.waterBtn,borderRadius:8,padding:"6px 10px",marginBottom:8,textAlign:"center"}}>📵 Offline — showing today. Connect to browse past entries.</div>}
+    {!isOnline&&<div style={{fontSize:"0.73rem",color:T.waterBtnText,background:T.waterBtn,borderRadius:8,padding:"6px 10px",marginBottom:8,textAlign:"center"}}>📵 Showing entries saved on this device. Edits will sync once you're back online.</div>}
     <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
-      <button onClick={goPrev} disabled={!isOnline||idx>=allDates.length-1}
+      <button onClick={goPrev} disabled={idx>=allDates.length-1}
         style={{flexShrink:0,width:36,height:36,borderRadius:8,border:`1px solid ${T.border}`,
-          background:T.cardBg,color:(!isOnline||idx>=allDates.length-1)?T.textMuted:T.text,
-          fontSize:"1.1rem",cursor:isOnline?"pointer":"not-allowed",display:"flex",alignItems:"center",justifyContent:"center",opacity:!isOnline?0.4:1}}>◀</button>
-      <input type="date" value={effectiveSel} disabled={!isOnline}
-        onChange={e=>{if(isOnline&&e.target.value){setSel(e.target.value);setEid(null);}}}
-        style={{flex:1,padding:"8px 10px",borderRadius:8,border:`2px solid ${isOnline?T.accent:T.border}`,
+          background:T.cardBg,color:idx>=allDates.length-1?T.textMuted:T.text,
+          fontSize:"1.1rem",cursor:idx>=allDates.length-1?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:idx>=allDates.length-1?0.4:1}}>◀</button>
+      <input type="date" value={effectiveSel}
+        onChange={e=>{if(e.target.value){setSel(e.target.value);setEid(null);}}}
+        style={{flex:1,padding:"8px 10px",borderRadius:8,border:`2px solid ${T.accent}`,
           background:T.cardBg,color:T.text,fontWeight:600,fontSize:"0.92rem",
-          fontFamily:"inherit",textAlign:"center",colorScheme:T.bg==="#0a1628"?"dark":"light",opacity:!isOnline?0.6:1}}/>
-      <button onClick={goNext} disabled={!isOnline||idx<=0}
+          fontFamily:"inherit",textAlign:"center",colorScheme:T.bg==="#0a1628"?"dark":"light"}}/>
+      <button onClick={goNext} disabled={idx<=0}
         style={{flexShrink:0,width:36,height:36,borderRadius:8,border:`1px solid ${T.border}`,
-          background:T.cardBg,color:(!isOnline||idx<=0)?T.textMuted:T.text,
-          fontSize:"1.1rem",cursor:isOnline?"pointer":"not-allowed",display:"flex",alignItems:"center",justifyContent:"center",opacity:!isOnline?0.4:1}}>▶</button>
+          background:T.cardBg,color:idx<=0?T.textMuted:T.text,
+          fontSize:"1.1rem",cursor:idx<=0?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:idx<=0?0.4:1}}>▶</button>
     </div>
     {dayE.length===0
       ?<div style={{color:T.textMuted,fontSize:"0.82rem",textAlign:"center",padding:22}}>No entries for this date</div>
@@ -1979,9 +2072,12 @@ function ReportsPage({entries,settings,isOnline,T}){
   const allRows=[{key:"water",label:"Water"},{key:"drinks",label:"Drinks"},{key:"medication",label:"Medications"},{key:"exercise",label:"Exercise"},{key:"Breakfast",label:"Breakfast"},{key:"Lunch",label:"Lunch"},{key:"Snack",label:"Snack"},{key:"Dinner",label:"Dinner"},...medNames.map(n=>({key:n,label:n}))];
   const doExport=(csv,fn)=>downloadCSV(csv,fn);
   const applyQr=v=>{setQr(v);if(!v)return;const n=parseInt(v);setCd(Array.from({length:n},(_,i)=>{const d=new Date();d.setDate(d.getDate()-i);return d.toISOString().slice(0,10);}));};
-  // Safe to return early from here on — every hook above has already been called.
-  if(!isOnline)return(<div style={{textAlign:"center",padding:"50px 20px",color:T.textMuted}}><div style={{fontSize:"2.5rem",marginBottom:14}}>📵</div><div style={{fontWeight:600,fontSize:"0.9rem",marginBottom:8,color:T.text}}>Reports require an internet connection.</div><div style={{fontSize:"0.78rem",lineHeight:1.6}}>Your entries are safe and stored locally.<br/>Connect to view trends and reports.</div></div>);
-  return(<div><div style={{display:"flex",alignItems:"center",gap:4,marginBottom:10,flexWrap:"wrap"}}><span style={{fontWeight:700,fontSize:"0.92rem",marginRight:4}}>📊 Reports</span><button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} onClick={()=>doExport(buildViewCSV(entries,tab==="view"?[vd]:cd,medPresets),`jivanlog-view-${today()}.csv`)}>⬇️ Export view</button></div><div style={{display:"flex",gap:5,marginBottom:9,alignItems:"center"}}><button className={`tbtn${tab==="view"?" on":""}`} onClick={()=>setTab("view")}>View</button><button className={`tbtn${tab==="compare"?" on":""}`} onClick={()=>setTab("compare")}>Compare</button><button className={`tbtn${tab==="trends"?" on":""}`} onClick={()=>setTab("trends")}>📈 Trends</button>{tab==="view"&&<input type="date" value={vd} onChange={e=>{if(e.target.value)setVd(e.target.value);}}
+  // C6/E1: Reports used to hard-block with a full-screen "requires internet"
+  // message whenever isOnline was false. `entries` is already hydrated from
+  // the local mirror regardless of connection (same as Manage), so there was
+  // never a real dependency on the network here — only a leftover assumption.
+  // A small note replaces the block; nothing below it is disabled.
+  return(<div>{!isOnline&&<div style={{fontSize:"0.73rem",color:T.waterBtnText,background:T.waterBtn,borderRadius:8,padding:"6px 10px",marginBottom:8,textAlign:"center"}}>📵 Showing entries saved on this device.</div>}<div style={{display:"flex",alignItems:"center",gap:4,marginBottom:10,flexWrap:"wrap"}}><span style={{fontWeight:700,fontSize:"0.92rem",marginRight:4}}>📊 Reports</span><button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} onClick={()=>doExport(buildViewCSV(entries,tab==="view"?[vd]:cd,medPresets),`jivanlog-view-${today()}.csv`)}>⬇️ Export view</button></div><div style={{display:"flex",gap:5,marginBottom:9,alignItems:"center"}}><button className={`tbtn${tab==="view"?" on":""}`} onClick={()=>setTab("view")}>View</button><button className={`tbtn${tab==="compare"?" on":""}`} onClick={()=>setTab("compare")}>Compare</button><button className={`tbtn${tab==="trends"?" on":""}`} onClick={()=>setTab("trends")}>📈 Trends</button>{tab==="view"&&<input type="date" value={vd} onChange={e=>{if(e.target.value)setVd(e.target.value);}}
         style={{flex:1,padding:"5px 7px",borderRadius:8,border:`2px solid ${T.accent}`,
           background:T.cardBg,color:T.text,fontWeight:600,fontSize:"0.82rem",fontFamily:"inherit",colorScheme:T.bg==="#0a1628"?"dark":"light"}}/>}{tab==="compare"&&<><select value={qr} onChange={e=>applyQr(e.target.value)} style={{flex:"0 0 auto",fontSize:"0.79rem",padding:"5px 6px",width:110}}><option value="">Quick…</option>{[2,3,4,5,6,7,8,9,10].map(n=><option key={n} value={n}>Last {n} days</option>)}</select><input type="date" value={ad} onChange={e=>{if(e.target.value)setAd(e.target.value);}}
         style={{flex:1,padding:"5px 6px",borderRadius:8,border:`2px solid ${T.accent}`,
