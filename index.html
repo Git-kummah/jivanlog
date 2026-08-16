@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v4.77";
+const APP_VERSION="v4.78";
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -91,6 +91,31 @@ const sysDark =()=>window.matchMedia?.("(prefers-color-scheme:dark)").matches;
 const foodName=f=>typeof f==="string"?f:(f?.name||"");
 const foodNote=f=>typeof f==="string"?"":( f?.note||"");
 const foodItems=arr=>(arr||[]).map(f=>typeof f==="string"?{name:f,note:"",subTypes:[]}:{subTypes:[],...f});
+
+// ── N1a: sub-types gain optional notes ────────────────────────────────────────
+// A sub-type used to be a bare string. It can now also be {name, note}, using
+// the same string-or-object back-compat pattern foodItems() already uses, so
+// existing config (and any CSV exported before v4.78) keeps working untouched.
+// Every read goes through these accessors; nothing assumes the object form.
+const subName=s=>typeof s==="string"?s:((s&&s.name)||"");
+const subNote=s=>typeof s==="string"?"":((s&&s.note)||"");
+const subItems=arr=>(arr||[]).map(s=>typeof s==="string"?{name:s,note:""}:{name:"",note:"",...s});
+const subNames=arr=>(arr||[]).map(subName);
+const findSub=(arr,name)=>(arr||[]).find(s=>subName(s)===name);
+
+// Combines an item's default note with the selected sub-type's note.
+// Both present  -> joined with " + " (the requested "combine them smartly")
+// One present   -> that one
+// Either already contains the other -> the longer one, so re-selecting a
+//                  sub-type can't produce "note + note" duplication.
+const combineNotes=(itemNote,subTypeNote)=>{
+  const a=(itemNote||"").trim(), b=(subTypeNote||"").trim();
+  if(!a)return b;
+  if(!b)return a;
+  if(a.includes(b))return a;
+  if(b.includes(a))return b;
+  return a+" + "+b;
+};
 
 // ── Access control (admin-gated signup) ────────────────────────────────────
 // The superadmin UID is hardcoded here, not only in the database, so admin
@@ -908,8 +933,25 @@ function App(){
         // Helper: normalise a settings/defaults object
           const norm=o=>{
             if(!o)return o;
+            // N1a: sub-type lists may be strings or {name,note}, and Firebase
+            // can hand an array back as an object ({0:..,1:..}) when keys look
+            // numeric — coerce both shapes here so every downstream reader gets
+            // a real array. Entries with no note stay bare strings.
+            const normSubs=v=>{
+              let a=v;
+              if(a&&!Array.isArray(a))a=Object.values(a);
+              return (a||[]).map(x=>{
+                if(typeof x==="string")return x;
+                const n=(x&&x.name)||"";const nt=(x&&x.note)||"";
+                return nt?{name:n,note:nt}:n;
+              }).filter(x=>typeof x==="string"?x:x.name);
+            };
             if(o.foodCategories)
-              o.foodCategories=o.foodCategories.map(f=>typeof f==="string"?{name:f,note:"",subTypes:[],icon:""}:{note:"",icon:"",...f});
+              o.foodCategories=o.foodCategories.map(f=>typeof f==="string"?{name:f,note:"",subTypes:[],icon:""}:{note:"",icon:"",...f,subTypes:normSubs(f.subTypes)});
+            if(o.liquidSubTypes){
+              const ls={};Object.keys(o.liquidSubTypes).forEach(k=>{ls[k]=normSubs(o.liquidSubTypes[k]);});
+              o.liquidSubTypes=ls;
+            }
             if(o.exerciseTypes)
               o.exerciseTypes=o.exerciseTypes.map(e=>{
                 if(typeof e==="string")return{name:e,metrics:["time"],note:"",subTypes:[],icon:""};
@@ -921,7 +963,7 @@ function App(){
                   const fd=(FD.exerciseTypes||[]).find(f=>f.name===e.name);
                   m=fd?fd.metrics:["time"];
                 }
-                return{...e,metrics:m,note:e.note||"",icon:e.icon||""};
+                return{...e,metrics:m,note:e.note||"",icon:e.icon||"",subTypes:normSubs(e.subTypes)};
               });
             if(o.medicalPresets)
               o.medicalPresets=o.medicalPresets.map(p=>typeof p==="string"?{name:p,unit:"",icon:""}:{icon:"",...p});
@@ -1540,11 +1582,17 @@ function MealEntry({settings,entries,onAdd,entryTime,setEntryTime,T}){
   const foodObj=foods.find(f=>f.name===food);
   const hasFoodSub=foodObj?.subTypes?.length>0;
   const subCounts=useMemo(()=>usageCounts(entries,e=>e.type==="meal"&&e.food===food,e=>e.foodSubType),[entries,food]);
-  const rankedSubs=hasFoodSub?byUsage(foodObj.subTypes,subCounts,s=>s):[];
-  const onFoodChange=name=>{setFood(name);setFoodSub("");const fi=foods.find(f=>f.name===name);setNotes(fi?.note||"");};
-  useEffect(()=>{if(food){const fi=foods.find(f=>f.name===food);setNotes(fi?.note||"");}},[settings]);
+  // N1a: sub-types may be strings or {name,note}; rank on the NAME either way.
+  const rankedSubs=hasFoodSub?byUsage(subNames(foodObj.subTypes),subCounts,s=>s):[];
+  const noteFor=(itemName,subTypeName)=>{
+    const fi=foods.find(f=>f.name===itemName);
+    return combineNotes(fi?.note||"",subNote(findSub(fi?.subTypes,subTypeName)));
+  };
+  const onFoodChange=name=>{setFood(name);setFoodSub("");setNotes(noteFor(name,""));};
+  const onSubChange=sv=>{setFoodSub(sv);setNotes(noteFor(food,sv));};
+  useEffect(()=>{if(food)setNotes(noteFor(food,foodSub));},[settings]);
   const save=()=>{if(!food||!qty)return;onAdd({type:"meal",mealType:mt,food,foodSubType:foodSub,qty,unit,notes});setFood("");setFoodSub("");setQty("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
-  return(<div className="card"><div className="slabel">🍽️ Meal</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={mt} onChange={e=>setMt(e.target.value)} style={{flex:"0 0 95px"}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select><select value={food} onChange={e=>onFoodChange(e.target.value)} style={{flex:"2 1 80px",minWidth:0}}><option value="">Food item…</option>{rankedFoods.map(f=><option key={f.name} value={f.name}>{pickIcon(f.name,"food",f.icon||"")} {f.name}</option>)}</select>{hasFoodSub&&<select value={foodSub} onChange={e=>setFoodSub(e.target.value)} style={{flex:"1 1 90px",minWidth:0}}><option value="">Sub-type…</option>{rankedSubs.map(s=><option key={s}>{s}</option>)}</select>}<input type="number" placeholder="Qty" value={qty} onChange={e=>setQty(e.target.value)} style={{flex:"0 0 54px",width:54}}/><select value={unit} onChange={e=>setUnit(e.target.value)} style={{flex:"0 0 60px",width:60}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select></div><div style={{display:"flex",gap:6,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
+  return(<div className="card"><div className="slabel">🍽️ Meal</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={mt} onChange={e=>setMt(e.target.value)} style={{flex:"0 0 95px"}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select><select value={food} onChange={e=>onFoodChange(e.target.value)} style={{flex:"2 1 80px",minWidth:0}}><option value="">Food item…</option>{rankedFoods.map(f=><option key={f.name} value={f.name}>{pickIcon(f.name,"food",f.icon||"")} {f.name}</option>)}</select>{hasFoodSub&&<select value={foodSub} onChange={e=>onSubChange(e.target.value)} style={{flex:"1 1 90px",minWidth:0}}><option value="">Sub-type…</option>{rankedSubs.map(s=><option key={s}>{s}</option>)}</select>}<input type="number" placeholder="Qty" value={qty} onChange={e=>setQty(e.target.value)} style={{flex:"0 0 54px",width:54}}/><select value={unit} onChange={e=>setUnit(e.target.value)} style={{flex:"0 0 60px",width:60}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select></div><div style={{display:"flex",gap:6,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
 }
 function LiquidEntry({settings,entries,onAdd,entryTime,setEntryTime,T}){
   const allTypes=(settings.liquidTypes||FD.liquidTypes||[]);
@@ -1565,18 +1613,20 @@ function LiquidEntry({settings,entries,onAdd,entryTime,setEntryTime,T}){
   const curSubTypes=liqSubTypes[liqType]||[];
   const hasLiqSub=curSubTypes.length>0;
   const subCounts=useMemo(()=>usageCounts(entries,e=>(e.type==="liquid"||e.type==="water")&&(e.liquidType===liqType),e=>e.liquidSubType),[entries,liqType]);
-  const rankedSubs=hasLiqSub?byUsage(curSubTypes,subCounts,s=>s):[];
-  const onTypeChange=t=>{setLiqType(t);setLiqSub("");setNotes(liqNotes[t]||"");};
+  const rankedSubs=hasLiqSub?byUsage(subNames(curSubTypes),subCounts,s=>s):[];
+  const noteFor=(t,sv)=>combineNotes(liqNotes[t]||"",subNote(findSub(liqSubTypes[t],sv)));
+  const onTypeChange=t=>{setLiqType(t);setLiqSub("");setNotes(noteFor(t,""));};
+  const onSubChange=sv=>{setLiqSub(sv);setNotes(noteFor(liqType,sv));};
   // Re-seed notes when Firebase settings arrive (async load)
-  useEffect(()=>{setNotes(liqNotes[liqType]||"");},[settings,liqType]);
-  const save=()=>{if(!ml||+ml<=0)return;onAdd({type:"liquid",liquidType:liqType,liquidSubType:liqSub,ml:+ml,notes});setMl("");setLiqSub("");setNotes(liqNotes[liqType]||"");setFl(true);setTimeout(()=>setFl(false),1200);};
+  useEffect(()=>{setNotes(noteFor(liqType,liqSub));},[settings,liqType]);
+  const save=()=>{if(!ml||+ml<=0)return;onAdd({type:"liquid",liquidType:liqType,liquidSubType:liqSub,ml:+ml,notes});setMl("");setLiqSub("");setNotes(noteFor(liqType,""));setFl(true);setTimeout(()=>setFl(false),1200);};
   return(<div className="card"><div className="slabel">💧 Liquids</div>
     {/* Row 1: dropdown | quick-add buttons | qty */}
     <div style={{display:"flex",gap:5,marginBottom:7,alignItems:"center",flexWrap:"wrap"}}>
       <select value={liqType} onChange={e=>onTypeChange(e.target.value)} style={{flex:"2 1 110px",minWidth:0}}>
         {displayTypes.map((t,i)=>t==="--------"?<option key={i} disabled>── Drinks ──</option>:<option key={t} value={t}>{pickIcon(t,"drink",liqIcons[t]||"")} {t}</option>)}
       </select>
-      {hasLiqSub&&<select value={liqSub} onChange={e=>setLiqSub(e.target.value)} style={{flex:"1 1 90px",minWidth:0}}><option value="">Sub-type…</option>{rankedSubs.map(s=><option key={s}>{s}</option>)}</select>}
+      {hasLiqSub&&<select value={liqSub} onChange={e=>onSubChange(e.target.value)} style={{flex:"1 1 90px",minWidth:0}}><option value="">Sub-type…</option>{rankedSubs.map(s=><option key={s}>{s}</option>)}</select>}
       {[500,250,100,50].map(amt=><button key={amt} className="wbtn" onClick={()=>add(amt)} style={{padding:"5px 7px",fontSize:"0.78rem",flex:"0 0 auto"}}>{"+"+amt}</button>)}
       <input type="number" placeholder="ml" value={ml} onChange={e=>setMl(e.target.value)} style={{flex:"0 0 58px",textAlign:"center"}}/>
     </div>
@@ -1597,14 +1647,17 @@ function ExerciseEntry({settings,entries,onAdd,entryTime,setEntryTime,T}){
   const etMetrics=validMetrics?storedMetrics:fdEx?.metrics||["time"];
   const hasSub=etObj?.subTypes?.length>0;const hasDist=etMetrics.includes("distance");const hasTime=etMetrics.includes("time");const hasCnt=etMetrics.includes("count");
   const exSubCounts=useMemo(()=>usageCounts(entries,e=>e.type==="exercise"&&e.exType===et,e=>e.subType),[entries,et]);
-  const rankedExSubs=hasSub?byUsage(etObj.subTypes,exSubCounts,s=>s):[];
-  const onTypeChange=t=>{setEt(t);setSub("");const obj=exTypes?.find(e=>e.name===t);setNotes(obj?.note||"");};
+  const rankedExSubs=hasSub?byUsage(subNames(etObj.subTypes),exSubCounts,s=>s):[];
+  const noteFor=(t,sv)=>{
+    const obj=exTypes?.find(e=>e.name===t);
+    return combineNotes(obj?.note||"",subNote(findSub(obj?.subTypes,sv)));
+  };
+  const onTypeChange=t=>{setEt(t);setSub("");setNotes(noteFor(t,""));};
+  const onSubChange=sv=>{setSub(sv);setNotes(noteFor(et,sv));};
   // Re-sync when Firebase settings arrive — ensures metrics/notes are current
-  useEffect(()=>{
-    if(et){const obj=exTypes?.find(e=>e.name===et);if(obj)setNotes(obj.note||"");}
-  },[settings]);
+  useEffect(()=>{if(et)setNotes(noteFor(et,sub));},[settings]);
   const save=()=>{if(!et||(hasSub&&!sub))return;onAdd({type:"exercise",exType:et,subType:sub,dist,time:min,count:cnt,notes});setSub("");setDist("");setMin("");setCnt("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
-  return(<div className="card"><div className="slabel">🏃 Exercise</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={et} onChange={e=>onTypeChange(e.target.value)} style={{flex:"1 1 100px",minWidth:0}}><option value="">Type…</option>{rankedExTypes.map(e=><option key={e.name} value={e.name}>{pickIcon(e.name,"exercise",e.icon||"")} {e.name}</option>)}</select>{hasSub&&<select value={sub} onChange={e=>setSub(e.target.value)} style={{flex:"1 1 110px",minWidth:0}}><option value="">Sub-type…</option>{rankedExSubs.map(s=><option key={s}>{s}</option>)}</select>}{hasDist&&<input type="number" placeholder="km" value={dist} onChange={e=>setDist(e.target.value)} style={{flex:"0 0 52px"}}/>}{(hasDist||hasTime)&&<input type="number" placeholder="min" value={min} onChange={e=>setMin(e.target.value)} style={{flex:"0 0 52px"}}/>}{hasCnt&&<input type="number" placeholder="count" value={cnt} onChange={e=>setCnt(e.target.value)} style={{flex:"0 0 68px"}}/>}</div><div style={{display:"flex",gap:6,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
+  return(<div className="card"><div className="slabel">🏃 Exercise</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={et} onChange={e=>onTypeChange(e.target.value)} style={{flex:"1 1 100px",minWidth:0}}><option value="">Type…</option>{rankedExTypes.map(e=><option key={e.name} value={e.name}>{pickIcon(e.name,"exercise",e.icon||"")} {e.name}</option>)}</select>{hasSub&&<select value={sub} onChange={e=>onSubChange(e.target.value)} style={{flex:"1 1 110px",minWidth:0}}><option value="">Sub-type…</option>{rankedExSubs.map(s=><option key={s}>{s}</option>)}</select>}{hasDist&&<input type="number" placeholder="km" value={dist} onChange={e=>setDist(e.target.value)} style={{flex:"0 0 52px"}}/>}{(hasDist||hasTime)&&<input type="number" placeholder="min" value={min} onChange={e=>setMin(e.target.value)} style={{flex:"0 0 52px"}}/>}{hasCnt&&<input type="number" placeholder="count" value={cnt} onChange={e=>setCnt(e.target.value)} style={{flex:"0 0 68px"}}/>}</div><div style={{display:"flex",gap:6,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
 }
 
 function MedicalEntry({settings,entries,onAdd,entryTime,setEntryTime,T}){
@@ -1760,7 +1813,7 @@ function EditEntry({entry,settings,onSave,onCancel,label,T}){
         {(()=>{const foods=foodItems(settings.foodCategories||FD.foodCategories);const fo=foods.find(f=>f.name===d.food);return(<>
         <select value={d.mealType} onChange={e=>set("mealType",e.target.value)} style={{width:95}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select>
         <select value={d.food} onChange={e=>{set("food",e.target.value);set("foodSubType","");}} style={{flex:"2 1 80px"}}><option value="">Food…</option>{[...foods].sort((a,b)=>a.name.localeCompare(b.name)).map(f=><option key={f.name} value={f.name}>{pickIcon(f.name,"food",f.icon||"")} {f.name}</option>)}</select>
-        {fo?.subTypes?.length>0&&<select value={d.foodSubType||""} onChange={e=>set("foodSubType",e.target.value)} style={{flex:"1 1 90px"}}><option value="">Sub-type…</option>{fo.subTypes.map(s=><option key={s}>{s}</option>)}</select>}
+        {fo?.subTypes?.length>0&&<select value={d.foodSubType||""} onChange={e=>set("foodSubType",e.target.value)} style={{flex:"1 1 90px"}}><option value="">Sub-type…</option>{subNames(fo.subTypes).map(s=><option key={s}>{s}</option>)}</select>}
         <input type="number" value={d.qty} onChange={e=>set("qty",e.target.value)} style={{width:58}}/>
         <select value={d.unit} onChange={e=>set("unit",e.target.value)} style={{width:66}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select>
         <input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100%"}}/>
@@ -1769,13 +1822,17 @@ function EditEntry({entry,settings,onSave,onCancel,label,T}){
       {d.type==="liquid"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}>
         {(()=>{const liqSubs=(settings.liquidSubTypes||FD.liquidSubTypes||{})[d.liquidType]||[];return(<>
         <select value={d.liquidType||""} onChange={e=>{set("liquidType",e.target.value);set("liquidSubType","");}} style={{flex:"2 1 130px"}}>{liqTypes.map(t=><option key={t} value={t}>{pickIcon(t,"drink",liqIcons[t]||"")} {t}</option>)}</select>
-        {liqSubs.length>0&&<select value={d.liquidSubType||""} onChange={e=>set("liquidSubType",e.target.value)} style={{flex:"1 1 90px"}}><option value="">Sub-type…</option>{liqSubs.map(s=><option key={s}>{s}</option>)}</select>}
+        {liqSubs.length>0&&<select value={d.liquidSubType||""} onChange={e=>set("liquidSubType",e.target.value)} style={{flex:"1 1 90px"}}><option value="">Sub-type…</option>{subNames(liqSubs).map(s=><option key={s}>{s}</option>)}</select>}
         <input type="number" placeholder="ml" value={d.ml||""} onChange={e=>set("ml",e.target.value)} style={{width:72}}/>
         <input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100%"}}/>
         </>);})()}
       </div>}
       {d.type==="exercise"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}>
-        <select value={d.exType} onChange={e=>set("exType",e.target.value)} style={{flex:"1 1 130px"}}>{(settings.exerciseTypes||FD.exerciseTypes).map(e=><option key={e.name} value={e.name}>{e.name}</option>)}</select>
+        <select value={d.exType} onChange={e=>{set("exType",e.target.value);set("subType","");}} style={{flex:"1 1 130px"}}>{(settings.exerciseTypes||FD.exerciseTypes).map(e=><option key={e.name} value={e.name}>{pickIcon(e.name,"exercise",e.icon||"")} {e.name}</option>)}</select>
+        {/* C2: exercise sub-type is documented as editable in Manage (manual §3.3)
+            but had no control here, so a sub-type set on Home could never be
+            corrected afterwards. */}
+        {eo?.subTypes?.length>0&&<select value={d.subType||""} onChange={e=>set("subType",e.target.value)} style={{flex:"1 1 110px"}}><option value="">Sub-type…</option>{subNames(eo.subTypes).map(s=><option key={s}>{s}</option>)}</select>}
         {hasDist&&<input type="number" placeholder="km" value={d.dist||""} onChange={e=>set("dist",e.target.value)} style={{width:52}}/>}
         {(hasDist||hasTime)&&<input type="number" placeholder="min" value={d.time||""} onChange={e=>set("time",e.target.value)} style={{width:52}}/>}
         {hasCnt&&<input type="number" placeholder="count" value={d.count||""} onChange={e=>set("count",e.target.value)} style={{width:68}}/>}
@@ -2140,32 +2197,67 @@ function csvCell(v){
 }
 function csvRow(arr){return arr.map(csvCell).join(",");}
 
+// N1a: sub-type notes in config CSV.
+// Names go in the existing SubTypes column; notes go in a new, positionally
+// matched SubTypeNotes column. A note can legitimately contain the ";"
+// separator ("400g curd; no salt"), so both are escaped rather than naively
+// joined. Files exported before v4.78 simply lack the notes column, which
+// parses as "no notes" — old exports keep importing unchanged.
+const joinEsc=arr=>(arr||[]).map(v=>String(v==null?"":v).replace(/\\/g,"\\\\").replace(/;/g,"\\;")).join(";");
+const splitEsc=str=>{
+  if(!str)return[];
+  const out=[];let cur="";let i=0;
+  while(i<str.length){
+    const c=str[i];
+    if(c==="\\"&&i+1<str.length){cur+=str[i+1];i+=2;continue;}
+    if(c===";"){out.push(cur);cur="";i++;continue;}
+    cur+=c;i++;
+  }
+  out.push(cur);
+  return out;
+};
+// Serialise a sub-type list to the two CSV cells.
+const subsToCSV=arr=>[joinEsc(subNames(arr)),joinEsc(subItems(arr).map(x=>x.note||""))];
+// Rebuild a sub-type list from those two cells, pairing by position. Emits a
+// bare string when a sub-type has no note, keeping stored config tidy.
+const subsFromCSV=(namesStr,notesStr)=>{
+  const names=splitEsc(namesStr).map(x=>x.trim());
+  const notes=splitEsc(notesStr);
+  const out=[];
+  names.forEach((n,i)=>{
+    if(!n)return;
+    const note=(notes[i]||"").trim();
+    out.push(note?{name:n,note}:n);
+  });
+  return out;
+};
+
 function exportConfigCSV(settings,section){
   const lines=[];
   if(section==="all"||section==="food"){
     lines.push(`#JivanLog-Config-food-${APP_VERSION}`);
-    lines.push(csvRow(["Name","Note","SubTypes"]));
+    lines.push(csvRow(["Name","Note","SubTypes","SubTypeNotes"]));
     foodItems(settings.foodCategories||FD.foodCategories).forEach(f=>{
-      lines.push(csvRow([f.name,f.note||"",(f.subTypes||[]).join(";")]));
+      lines.push(csvRow([f.name,f.note||"",...subsToCSV(f.subTypes)]));
     });
     if(section==="all")lines.push("");
   }
   if(section==="all"||section==="drinks"){
     lines.push(`#JivanLog-Config-drinks-${APP_VERSION}`);
-    lines.push(csvRow(["Name","Note","SubTypes"]));
+    lines.push(csvRow(["Name","Note","SubTypes","SubTypeNotes"]));
     const types=(settings.liquidTypes||FD.liquidTypes).filter(t=>t!=="--------");
     const notes=settings.liquidNotes||FD.liquidNotes||{};
     const subs=settings.liquidSubTypes||FD.liquidSubTypes||{};
     types.forEach(t=>{
-      lines.push(csvRow([t,notes[t]||"",(subs[t]||[]).join(";")]));
+      lines.push(csvRow([t,notes[t]||"",...subsToCSV(subs[t])]));
     });
     if(section==="all")lines.push("");
   }
   if(section==="all"||section==="exercise"){
     lines.push(`#JivanLog-Config-exercise-${APP_VERSION}`);
-    lines.push(csvRow(["Name","Metrics","Note","SubTypes"]));
+    lines.push(csvRow(["Name","Metrics","Note","SubTypes","SubTypeNotes"]));
     (settings.exerciseTypes||FD.exerciseTypes).forEach(e=>{
-      lines.push(csvRow([e.name,(e.metrics||[]).join(";"),e.note||"",(e.subTypes||[]).join(";")]));
+      lines.push(csvRow([e.name,(e.metrics||[]).join(";"),e.note||"",...subsToCSV(e.subTypes)]));
     });
     if(section==="all")lines.push("");
   }
@@ -2214,7 +2306,7 @@ function importConfigCSV(csvText){
 
     if(section==="food"){
       if(!result.foodCategories)result.foodCategories=[];
-      result.foodCategories.push({name:get("name"),note:get("note"),subTypes:spl(get("subtypes"))});
+      result.foodCategories.push({name:get("name"),note:get("note"),subTypes:subsFromCSV(get("subtypes"),get("subtypenotes"))});
     }
     if(section==="drinks"){
       if(!result.liquidTypes)result.liquidTypes=[];
@@ -2223,11 +2315,11 @@ function importConfigCSV(csvText){
       const name=get("name");if(!name)continue;
       result.liquidTypes.push(name);
       if(get("note"))result.liquidNotes[name]=get("note");
-      const subs=spl(get("subtypes"));if(subs.length)result.liquidSubTypes[name]=subs;
+      const subs=subsFromCSV(get("subtypes"),get("subtypenotes"));if(subs.length)result.liquidSubTypes[name]=subs;
     }
     if(section==="exercise"){
       if(!result.exerciseTypes)result.exerciseTypes=[];
-      result.exerciseTypes.push({name:get("name"),metrics:spl(get("metrics")),note:get("note"),subTypes:spl(get("subtypes"))});
+      result.exerciseTypes.push({name:get("name"),metrics:spl(get("metrics")),note:get("note"),subTypes:subsFromCSV(get("subtypes"),get("subtypenotes"))});
     }
     if(section==="medical"){
       if(!result.medicalPresets)result.medicalPresets=[];
@@ -2892,9 +2984,12 @@ function FoodSetting({items,onRemove,onUpdate,newItem,setNew,onAdd,T}){
   const fi=foodItems(items);
   const upd=(name,patch)=>onUpdate(fi.map(f=>f.name===name?{...f,...patch}:f));
   const move=(i,dir)=>onUpdate(moveItem(fi,i,dir));
-  const addSub=(name,s)=>{if(!s.trim())return;const f=fi.find(x=>x.name===name);upd(name,{subTypes:[...(f.subTypes||[]),s.trim()]});};
-  const remSub=(name,s)=>{const f=fi.find(x=>x.name===name);upd(name,{subTypes:(f.subTypes||[]).filter(v=>v!==s)});};
+  // N1a: sub-types may be strings (legacy) or {name,note}. All mutations go
+  // through subName()/subItems() so mixed-format lists behave correctly.
+  const addSub=(name,s)=>{if(!s.trim())return;const f=fi.find(x=>x.name===name);upd(name,{subTypes:[...(f.subTypes||[]),{name:s.trim(),note:""}]});};
+  const remSub=(name,s)=>{const f=fi.find(x=>x.name===name);upd(name,{subTypes:(f.subTypes||[]).filter(v=>subName(v)!==s)});};
   const moveSub=(name,i,dir)=>{const f=fi.find(x=>x.name===name);upd(name,{subTypes:moveItem(f.subTypes||[],i,dir)});};
+  const updSubNote=(name,sName,note)=>{const f=fi.find(x=>x.name===name);upd(name,{subTypes:(f.subTypes||[]).map(v=>subName(v)===sName?{name:sName,note}:v)});};
   return(<div>
     <div className="card" style={{marginBottom:7}}>
       <div style={{display:"flex",gap:7}}>
@@ -2919,10 +3014,13 @@ function FoodSetting({items,onRemove,onUpdate,newItem,setNew,onAdd,T}){
         <input placeholder="Default note (optional)" value={item.note||""} onChange={e=>upd(item.name,{note:e.target.value})} style={{width:"100%",fontSize:"0.76rem",padding:"4px 7px",marginBottom:ei===item.name?6:0,color:T.textSub}}/>
         {ei===item.name&&<div style={{marginTop:5}}>
           <div className="slabel">Sub-types</div>
-          {(item.subTypes||[]).map((s,si)=>(<div key={s} style={{display:"flex",alignItems:"center",fontSize:"0.8rem",padding:"3px 0",borderBottom:`1px solid ${T.border}`}}>
-            <ReorderBtns i={si} total={(item.subTypes||[]).length} onMove={(idx,dir)=>moveSub(item.name,idx,dir)} T={T}/>
-            <span style={{flex:1}}>{s}</span>
-            <button className="ibtn" style={{color:T.danger}} onClick={()=>remSub(item.name,s)}>🗑️</button>
+          {subItems(item.subTypes).map((s,si)=>(<div key={s.name} style={{padding:"3px 0",borderBottom:`1px solid ${T.border}`}}>
+            <div style={{display:"flex",alignItems:"center",fontSize:"0.8rem"}}>
+              <ReorderBtns i={si} total={(item.subTypes||[]).length} onMove={(idx,dir)=>moveSub(item.name,idx,dir)} T={T}/>
+              <span style={{flex:1}}>{s.name}</span>
+              <button className="ibtn" style={{color:T.danger}} onClick={()=>remSub(item.name,s.name)}>🗑️</button>
+            </div>
+            <input placeholder="Sub-type note (optional)" value={s.note||""} onChange={e=>updSubNote(item.name,s.name,e.target.value)} style={{width:"100%",fontSize:"0.72rem",padding:"3px 6px",margin:"2px 0 3px",color:T.textSub}}/>
           </div>))}
           <AddInline placeholder="Add sub-type..." onAdd={s=>addSub(item.name,s)} T={T}/>
         </div>}
@@ -2937,9 +3035,10 @@ function DrinkSetting({types,notes,subTypes,icons,onRemove,onUpdate,onIconUpdate
   const updNote=(name,note)=>onUpdate("notes",{...notes,[name]:note});
   const updSubs=(name,subs)=>onUpdate("subTypes",{...subTypes,[name]:subs});
   const move=(i,dir)=>{const moved=moveItem(drinks,i,dir);onUpdate("types",[...moved]);};
-  const addSub=(name,s)=>{if(!s.trim())return;updSubs(name,[...((subTypes||{})[name]||[]),s.trim()]);};
-  const remSub=(name,s)=>updSubs(name,((subTypes||{})[name]||[]).filter(v=>v!==s));
+  const addSub=(name,s)=>{if(!s.trim())return;updSubs(name,[...((subTypes||{})[name]||[]),{name:s.trim(),note:""}]);};
+  const remSub=(name,s)=>updSubs(name,((subTypes||{})[name]||[]).filter(v=>subName(v)!==s));
   const moveSub=(name,i,dir)=>updSubs(name,moveItem((subTypes||{})[name]||[],i,dir));
+  const updSubNote=(name,sName,note)=>updSubs(name,((subTypes||{})[name]||[]).map(v=>subName(v)===sName?{name:sName,note}:v));
   return(<div>
     <div className="card" style={{marginBottom:7}}>
       <div style={{display:"flex",gap:7}}>
@@ -2964,10 +3063,13 @@ function DrinkSetting({types,notes,subTypes,icons,onRemove,onUpdate,onIconUpdate
         <input placeholder="Default note (optional)" value={(notes||{})[name]||""} onChange={e=>updNote(name,e.target.value)} style={{width:"100%",fontSize:"0.76rem",padding:"4px 7px",marginBottom:ei===name?6:0,color:T.textSub}}/>
         {ei===name&&<div style={{marginTop:5}}>
           <div className="slabel">Sub-types</div>
-          {((subTypes||{})[name]||[]).map((s,si)=>(<div key={s} style={{display:"flex",alignItems:"center",fontSize:"0.8rem",padding:"3px 0",borderBottom:`1px solid ${T.border}`}}>
-            <ReorderBtns i={si} total={((subTypes||{})[name]||[]).length} onMove={(idx,dir)=>moveSub(name,idx,dir)} T={T}/>
-            <span style={{flex:1}}>{s}</span>
-            <button className="ibtn" style={{color:T.danger}} onClick={()=>remSub(name,s)}>🗑️</button>
+          {subItems((subTypes||{})[name]).map((s,si)=>(<div key={s.name} style={{padding:"3px 0",borderBottom:`1px solid ${T.border}`}}>
+            <div style={{display:"flex",alignItems:"center",fontSize:"0.8rem"}}>
+              <ReorderBtns i={si} total={((subTypes||{})[name]||[]).length} onMove={(idx,dir)=>moveSub(name,idx,dir)} T={T}/>
+              <span style={{flex:1}}>{s.name}</span>
+              <button className="ibtn" style={{color:T.danger}} onClick={()=>remSub(name,s.name)}>🗑️</button>
+            </div>
+            <input placeholder="Sub-type note (optional)" value={s.note||""} onChange={e=>updSubNote(name,s.name,e.target.value)} style={{width:"100%",fontSize:"0.72rem",padding:"3px 6px",margin:"2px 0 3px",color:T.textSub}}/>
           </div>))}
           <AddInline placeholder="Add sub-type..." onAdd={s=>addSub(name,s)} T={T}/>
         </div>}
@@ -2996,9 +3098,10 @@ function ExerciseSetting({types,onChange,T}){
   const add=()=>{if(!nn.trim())return;onChange([...types,{name:nn.trim(),subTypes:[],metrics:["time"],note:"",icon:""}]);setNn("");};
   const rem=i=>onChange(types.filter((_,x)=>x!==i));
   const move=(i,dir)=>onChange(moveItem(types,i,dir));
-  const addSub=(i,s)=>{if(!s.trim())return;onChange(types.map((t,x)=>x===i?{...t,subTypes:[...(t.subTypes||[]),s.trim()]}:t));};
-  const remSub=(i,s)=>onChange(types.map((t,x)=>x===i?{...t,subTypes:t.subTypes.filter(v=>v!==s)}:t));
+  const addSub=(i,s)=>{if(!s.trim())return;onChange(types.map((t,x)=>x===i?{...t,subTypes:[...(t.subTypes||[]),{name:s.trim(),note:""}]}:t));};
+  const remSub=(i,s)=>onChange(types.map((t,x)=>x===i?{...t,subTypes:(t.subTypes||[]).filter(v=>subName(v)!==s)}:t));
   const moveSub=(i,si,dir)=>onChange(types.map((t,x)=>x===i?{...t,subTypes:moveItem(t.subTypes||[],si,dir)}:t));
+  const updSubNote=(i,sName,note)=>onChange(types.map((t,x)=>x===i?{...t,subTypes:(t.subTypes||[]).map(v=>subName(v)===sName?{name:sName,note}:v)}:t));
   const togM=(i,m)=>onChange(types.map((t,x)=>{if(x!==i)return t;const h=t.metrics.includes(m);return{...t,metrics:h?t.metrics.filter(v=>v!==m):[...t.metrics,m]};}));
   return(<div><div className="card" style={{marginBottom:7}}><div style={{display:"flex",gap:7}}><input placeholder="New exercise type…" value={nn} onChange={e=>setNn(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button onClick={add} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div><div style={{fontSize:"0.7rem",color:T.textMuted,marginTop:5}}>New types default to time metric. Toggle below to change.</div></div>
   <div style={{display:"flex",gap:5,marginBottom:6,alignItems:"center"}}>
@@ -3016,10 +3119,13 @@ function ExerciseSetting({types,onChange,T}){
     <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:3}}>{["distance","time","count"].map(m=>(<button key={m} onClick={()=>togM(i,m)} style={{padding:"2px 9px",borderRadius:20,fontSize:"0.72rem",border:"1px solid",cursor:"pointer",borderColor:t.metrics.includes(m)?T.accentBtn:T.border,background:t.metrics.includes(m)?T.accentBg:"transparent",color:t.metrics.includes(m)?T.accent:T.textMuted}}>{m}</button>))}</div>
     <input placeholder="Default note (optional, e.g. 30 min brisk)" value={t.note||""} onChange={e=>onChange(types.map((x,j)=>j===i?{...x,note:e.target.value}:x))} style={{width:"100%",fontSize:"0.76rem",padding:"4px 7px",marginBottom:3,color:T.textSub}}/>
     {ei===i&&<div style={{marginTop:7}}><div className="slabel">Sub-types</div>
-      {(t.subTypes||[]).map((s,si)=>(<div key={s} style={{display:"flex",alignItems:"center",fontSize:"0.8rem",padding:"3px 0",borderBottom:`1px solid ${T.border}`}}>
-        <ReorderBtns i={si} total={(t.subTypes||[]).length} onMove={(idx,dir)=>moveSub(i,idx,dir)} T={T}/>
-        <span style={{flex:1}}>{s}</span>
-        <button className="ibtn" style={{color:T.danger}} onClick={()=>remSub(i,s)}>🗑️</button>
+      {subItems(t.subTypes).map((s,si)=>(<div key={s.name} style={{padding:"3px 0",borderBottom:`1px solid ${T.border}`}}>
+        <div style={{display:"flex",alignItems:"center",fontSize:"0.8rem"}}>
+          <ReorderBtns i={si} total={(t.subTypes||[]).length} onMove={(idx,dir)=>moveSub(i,idx,dir)} T={T}/>
+          <span style={{flex:1}}>{s.name}</span>
+          <button className="ibtn" style={{color:T.danger}} onClick={()=>remSub(i,s.name)}>🗑️</button>
+        </div>
+        <input placeholder="Sub-type note (optional)" value={s.note||""} onChange={e=>updSubNote(i,s.name,e.target.value)} style={{width:"100%",fontSize:"0.72rem",padding:"3px 6px",margin:"2px 0 3px",color:T.textSub}}/>
       </div>))}
       <AddInline placeholder="Add sub-type…" onAdd={s=>addSub(i,s)} T={T}/>
     </div>}
