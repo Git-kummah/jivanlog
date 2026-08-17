@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v5.1";
+const APP_VERSION="v5.2";
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -1646,7 +1646,7 @@ function App(){
       {offlineAuth&&<div style={{display:"flex",alignItems:"center",gap:7,padding:"6px 13px",background:T.accentBg,borderBottom:`1px solid ${T.border}`,fontSize:"0.72rem",color:T.accent,flexShrink:0}}>📵 Offline mode — you're signed in from saved data. New entries are stored on this device and will sync automatically when you're back online.</div>}
 
       <div style={{flex:1,overflowY:"auto",padding:"12px 13px"}} onClick={()=>showUserMenu&&setShowUserMenu(false)}>
-        {page==="home"    &&<HomePage entries={entries} settings={settings} onAdd={addEntry} entryTime={entryTime} setEntryTime={setEntryTime} isOnline={isOnline} T={T}/>}
+        {page==="home"    &&<HomePage entries={entries} settings={settings} onAdd={addEntry} onUpdate={updateEntry} onDelete={deleteEntry} entryTime={entryTime} setEntryTime={setEntryTime} isOnline={isOnline} T={T}/>}
         {page==="manage"  &&<ManagePage entries={entries} settings={settings} onAddDirect={addEntryDirect} onUpdate={updateEntry} onDelete={deleteEntry} isOnline={isOnline} T={T}/>}
         {page==="reports" &&<ReportsPage entries={entries} deletedEntries={deletedEntries} settings={settings} isOnline={isOnline} T={T}/>}
         {page==="settings"&&<SettingsPage settings={settings} theme={theme} setSettings={saveSettings} setTheme={saveTheme} dayRolloverMin={dayRolloverMin} setDayRolloverMin={saveDayRollover} user={user} entries={entries} deletedEntries={deletedEntries} onRestoreEntry={restoreEntry} onExportJSON={exportFullBackup} onImportJSON={importFullBackup} onImport={handleImport} clearAll={clearAll} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} onRestore={restoreFromBackup} onRename={renameConfigItem} onRepairEmoji={repairEmojiNames} offlineAuth={offlineAuth}
@@ -1688,7 +1688,7 @@ function App(){
 // ═══════════════════════════════════════════════════════════════════════════════
 // HOME
 // ═══════════════════════════════════════════════════════════════════════════════
-function HomePage({entries,settings,onAdd,entryTime,setEntryTime,isOnline,T}){
+function HomePage({entries,settings,onAdd,onUpdate,onDelete,entryTime,setEntryTime,isOnline,T}){
   const[active,setActive]=useState("meal");
   const todayE=entries.filter(e=>e.date===today()).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
   // N: entry time previously refreshed to "now" only on switching the top-level
@@ -1704,6 +1704,11 @@ function HomePage({entries,settings,onAdd,entryTime,setEntryTime,isOnline,T}){
   const refreshTime=()=>{if(!timeTouched)setEntryTime(nowHHMM());};
   const switchModule=m=>{setActive(m);setEntryTime(nowHHMM());setTimeTouched(false);};
   const MODULE_ITEMS=[["meal","Meal","🍽️"],["liquid","Liquids","💧"],["exercise","Exercise","🏃"],["medical","Medical","🩺"],["medication","Medication","💊"]];
+  // N4: long-press (mobile) or double-click (desktop) an entry in Today's Log
+  // to edit it inline, reusing the same EditEntry component Manage uses.
+  // Long-press alone is undiscoverable, so every row also gets an explicit
+  // ✏️/🗑️ affordance — three ways in, not one hidden gesture.
+  const[editingId,setEditingId]=useState(null);
   return(
     <div>
       <div style={{display:"flex",gap:5,marginBottom:10,alignItems:"center"}}>
@@ -1721,7 +1726,12 @@ function HomePage({entries,settings,onAdd,entryTime,setEntryTime,isOnline,T}){
       {active==="medication"&&<MedEntry settings={settings} entries={entries} onAdd={onAdd} entryTime={entryTime} setEntryTime={onTimeEdit} refreshTime={refreshTime} T={T}/>}
       <div style={{marginTop:14}}>
         <div className="slabel">Today's Log</div>
-        {todayE.length===0?<div style={{color:T.textMuted,fontSize:"0.8rem",textAlign:"center",padding:"18px 0"}}>No entries yet today</div>:<div className="card" style={{padding:"8px 11px"}}>{todayE.map(e=><TLE key={e.id} e={e} settings={settings} T={T}/>)}</div>}
+        {todayE.length===0?<div style={{color:T.textMuted,fontSize:"0.8rem",textAlign:"center",padding:"18px 0"}}>No entries yet today</div>:<div className="card" style={{padding:"8px 11px"}}>
+          {todayE.map(e=>editingId===e.id
+            ?<EditEntry key={e.id} entry={e} settings={settings} T={T} label="✏️ Editing" onSave={d=>{onUpdate&&onUpdate(e.id,d);setEditingId(null);}} onCancel={()=>setEditingId(null)}/>
+            :<TLE key={e.id} e={e} settings={settings} onEdit={()=>setEditingId(e.id)} onDelete={()=>{if(confirm("Delete this entry?"))onDelete&&onDelete(e.id);}} T={T}/>
+          )}
+        </div>}
       </div>
     </div>
   );
@@ -1924,7 +1934,7 @@ function MedEntry({settings,entries,onAdd,entryTime,setEntryTime,refreshTime,T})
     </div>
   </div>);
 }
-function TLE({e,settings,T}){
+function TLE({e,settings,onEdit,onDelete,T}){
   const ic={meal:"🍽️",liquid:"💧",drinks:"☕",exercise:"🏃",water:"💧",medical:"🩺",medication:"💊"};
   // Enrich medical unit from presets if not saved on entry (handles old Firebase entries)
   const resolvedUnit=e.unit||(e.type==="medical"&&settings?((settings.medicalPresets||FD.medicalPresets||[]).find(p=>(p.name||p)===e.readingType)||{}).unit||"":"");
@@ -1936,7 +1946,30 @@ function TLE({e,settings,T}){
   // water is handled by the liquid branch above (shows "Warm Water · 600ml")
   if(e.type==="medical")    {const _mp=(settings?.medicalPresets||FD.medicalPresets||[]).find(p=>(p.name||p)===e.readingType)||{};m=`${pickIcon(e.readingType,"medical",_mp.icon||"")} ${e.readingType} · ${e.value}${resolvedUnit?" "+resolvedUnit:""}`;};
   if(e.type==="medication") {const _mi=(settings?.medicationIcons||{})[e.med]||"";m=`${pickIcon(e.med,"medication",_mi)} ${e.med} · ${e.timing}`;};
-  return(<div className="tle"><span style={{fontSize:"0.68rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:40,flexShrink:0}}>{fmt24(e.timestamp)}</span><span style={{flexShrink:0}}>{ic[e.type]||"•"}</span><div style={{flex:1,fontSize:"0.83rem",lineHeight:1.45}}>{m}{e.notes&&<span style={{fontSize:"0.74rem",color:T.textSub,fontStyle:"italic"}}> ({e.notes})</span>}</div></div>);
+  // N4: long-press (touch, ~550ms hold) or double-click (mouse) opens inline
+  // edit — same gesture pattern as most mobile list apps. Passive: touchmove
+  // past a small threshold cancels the timer so a scroll can't be mistaken
+  // for a hold, and a normal fast tap never fires it. Kept alongside explicit
+  // ✏️/🗑️ icons since a hidden-only gesture is not discoverable.
+  const pressTimer=useRef(null);
+  const pressStart=useRef(null);
+  const clearPress=()=>{if(pressTimer.current){clearTimeout(pressTimer.current);pressTimer.current=null;}};
+  const onTouchStart=t=>{
+    if(t.touches.length!==1)return;
+    pressStart.current={x:t.touches[0].clientX,y:t.touches[0].clientY};
+    clearPress();
+    pressTimer.current=setTimeout(()=>{
+      pressTimer.current=null;
+      try{navigator.vibrate&&navigator.vibrate(12);}catch(err){}
+      onEdit&&onEdit();
+    },550);
+  };
+  const onTouchMove=t=>{
+    if(!pressStart.current||!t.touches[0])return;
+    const dx=t.touches[0].clientX-pressStart.current.x,dy=t.touches[0].clientY-pressStart.current.y;
+    if(Math.hypot(dx,dy)>10)clearPress(); // moved -> scrolling, not holding
+  };
+  return(<div className="tle" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={clearPress} onTouchCancel={clearPress} onDoubleClick={()=>onEdit&&onEdit()}><span style={{fontSize:"0.68rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:40,flexShrink:0}}>{fmt24(e.timestamp)}</span><span style={{flexShrink:0}}>{ic[e.type]||"•"}</span><div style={{flex:1,fontSize:"0.83rem",lineHeight:1.45}}>{m}{e.notes&&<span style={{fontSize:"0.74rem",color:T.textSub,fontStyle:"italic"}}> ({e.notes})</span>}</div><div style={{display:"flex",gap:2,flexShrink:0}}><button className="ibtn" title="Edit" onClick={ev=>{ev.stopPropagation();onEdit&&onEdit();}}>✏️</button><button className="ibtn" title="Delete" style={{color:T.danger}} onClick={ev=>{ev.stopPropagation();onDelete&&onDelete();}}>🗑️</button></div></div>);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -1958,7 +1991,27 @@ function ManagePage({entries,settings,onAddDirect,onUpdate,onDelete,isOnline,T})
   const idx=allDates.indexOf(effectiveSel);
   const goPrev=()=>{if(idx<allDates.length-1){setSel(allDates[idx+1]);setEid(null);}};
   const goNext=()=>{if(idx>0){setSel(allDates[idx-1]);setEid(null);}};
-  return(<div>
+  // N3: swipe to change date. Passive by design — only touchstart/touchend are
+  // read, touchmove is never intercepted or preventDefault'd, so normal
+  // vertical scrolling of the entry list is completely untouched. The
+  // direction only fires once the gesture is already over and clearly
+  // horizontal, matching the roadmap's own spec: ~50px threshold, ignored
+  // when vertical movement dominates, and disabled while an edit form is open
+  // (eid!==null) so a swipe mid-edit can't unexpectedly discard the date
+  // context underneath an open form. Swipe left = forward/newer (▶), swipe
+  // right = back/older (◀) — the same left-is-past/right-is-future reading
+  // direction the ◀▶ buttons already use.
+  const touchRef=useRef(null);
+  const onTouchStart=e=>{if(eid!==null||e.touches.length!==1)return;const t=e.touches[0];touchRef.current={x:t.clientX,y:t.clientY};};
+  const onTouchEnd=e=>{
+    const start=touchRef.current;touchRef.current=null;
+    if(!start||eid!==null)return;
+    const t=e.changedTouches[0];
+    const dx=t.clientX-start.x,dy=t.clientY-start.y;
+    if(Math.abs(dx)<50||Math.abs(dx)<=Math.abs(dy))return; // too short, or vertical scroll
+    if(dx<0)goNext();else goPrev();
+  };
+  return(<div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
       <div style={{fontWeight:600,fontSize:"0.92rem"}}>📋 Manage Records</div>
       <div style={{fontSize:"0.72rem",color:T.textMuted}}>{entries.length} entries · {allDates.length} dates</div>
@@ -1995,7 +2048,7 @@ function ManageRow({e,settings,onEdit,onDuplicate,onDelete,T}){
   if(e.type==="exercise")   {const _e=(settings?.exerciseTypes||FD.exerciseTypes||[]).find(x=>x.name===e.exType)||{};m=`${pickIcon(e.exType,"exercise",_e.icon||"")} ${e.exType}`;if(e.subType)m+=` · ${e.subType}`;if(e.dist)m+=` · ${e.dist}km`;if(e.time)m+=` · ${e.time}min`;if(e.count)m+=` · x${e.count}`;}
 
   if(e.type==="water")     {const _wt=e.waterTemp||e.liquidType||"Water";const _wi=(settings?.liquidIcons||{})[_wt]||"";m=`${pickIcon(_wt,"drink",_wi)} ${_wt}${e.ml?" · "+e.ml+"ml":""}`;};
-  if(e.type==="medical")    m=`${e.readingType} · ${e.value}${e.unit?" "+e.unit:""}`;
+  if(e.type==="medical")    {const _mp=(settings?.medicalPresets||FD.medicalPresets||[]).find(p=>(p.name||p)===e.readingType)||{};m=`${pickIcon(e.readingType,"medical",_mp.icon||"")} ${e.readingType} · ${e.value}${e.unit?" "+e.unit:""}`;};
   if(e.type==="medication") {const _mi=(settings?.medicationIcons||{})[e.med]||"";m=`${pickIcon(e.med,"medication",_mi)} ${e.med} · ${e.timing}`;};
   return(<div className="card" style={{display:"flex",alignItems:"flex-start",gap:8,padding:"9px 11px",marginBottom:6}}><span style={{fontSize:"0.66rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:40,paddingTop:2,flexShrink:0}}>{fmt24(e.timestamp)}</span><span style={{flexShrink:0}}>{ic[e.type]||"•"}</span><div style={{flex:1,fontSize:"0.82rem",lineHeight:1.4}}>{m}{e.notes&&<span style={{fontSize:"0.74rem",color:T.textSub,fontStyle:"italic"}}> ({e.notes})</span>}</div><div style={{display:"flex",gap:3,flexShrink:0}}><button className="ibtn" onClick={onEdit} title="Edit">✏️</button><button className="ibtn" onClick={onDuplicate} title="Duplicate">📋</button><button className="ibtn" style={{color:T.danger}} onClick={onDelete} title="Delete">🗑️</button></div></div>);
 }
