@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v5.0";
+const APP_VERSION="v5.1";
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -1780,21 +1780,12 @@ const TimeInput=({value,onChange,T})=>(
 
 function MealEntry({settings,entries,onAdd,entryTime,setEntryTime,refreshTime,T}){
   const[mt,setMt]=useState(autoMeal);const[food,setFood]=useState("");const[foodSub,setFoodSub]=useState("");const[qty,setQty]=useState("");const[unit,setUnit]=useState("g");const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
-  // R8: All/Veg/Non-Veg filter, chips rather than <optgroup> so usage-ranking
-  // still works correctly WITHIN whichever set is currently shown. Items with
-  // no diet tag (never classified) always show under All, and are excluded
-  // from the Veg/Non-Veg views rather than being guessed into one — a missing
-  // classification should never silently misrepresent a food as veg or not.
-  const[dietFilter,setDietFilter]=useState("all");
   const foods=foodItems(settings.foodCategories||FD.foodCategories);
   // O3: usageCounts was an O(all entries) scan run on every render of this form —
   // including every keystroke in Qty/Notes, which don't change the ranking at
   // all. Memoized on the values that actually affect the result.
   const foodCounts=useMemo(()=>usageCounts(entries,e=>e.type==="meal",e=>e.food),[entries]);
   const rankedFoods=byUsage(foods,foodCounts,f=>f.name);
-  // Filter AFTER ranking (not before) — usage counts stay computed over the
-  // full list regardless of which chip is active, only visibility narrows.
-  const visibleFoods=dietFilter==="all"?rankedFoods:rankedFoods.filter(f=>f.diet===dietFilter);
   const foodObj=foods.find(f=>f.name===food);
   const hasFoodSub=foodObj?.subTypes?.length>0;
   const subCounts=useMemo(()=>usageCounts(entries,e=>e.type==="meal"&&e.food===food,e=>e.foodSubType),[entries,food]);
@@ -1805,14 +1796,6 @@ function MealEntry({settings,entries,onAdd,entryTime,setEntryTime,refreshTime,T}
     return combineNotes(fi?.note||"",subNote(findSub(fi?.subTypes,subTypeName)));
   };
   const onFoodChange=name=>{refreshTime&&refreshTime();setFood(name);setFoodSub("");setNotes(noteFor(name,""));};
-  const setDietFilterSafe=f=>{
-    setDietFilter(f);
-    if(food){
-      const obj=foods.find(x=>x.name===food);
-      const stillVisible=f==="all"||(obj&&obj.diet===f);
-      if(!stillVisible){setFood("");setFoodSub("");setNotes("");}
-    }
-  };
   // N: meal type (B/L/S/D) auto-derives from entryTime, same pattern MedEntry
   // already used for medication timing. Re-fires only when entryTime itself
   // changes value, so a manual override of mt (after time is set) survives
@@ -1822,15 +1805,7 @@ function MealEntry({settings,entries,onAdd,entryTime,setEntryTime,refreshTime,T}
   useEffect(()=>{if(food)setNotes(noteFor(food,foodSub));},[settings]);
   const save=()=>{if(!food||!qty)return;onAdd({type:"meal",mealType:mt,food,foodSubType:foodSub,qty,unit,notes});setFood("");setFoodSub("");setQty("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
   return(<div className="card"><div className="slabel">🍽️ Meal</div>
-    <div style={{display:"flex",gap:4,marginBottom:6}}>
-      {[["all","All"],["veg","🟢 Veg"],["nonveg","🔴 Non-Veg"]].map(([v,l])=>(
-        <button key={v} onClick={()=>setDietFilterSafe(v)}
-          style={{flex:1,padding:"4px 0",borderRadius:7,border:`1px solid ${dietFilter===v?T.accentBtn:T.border}`,
-            background:dietFilter===v?T.accentBg:"transparent",color:dietFilter===v?T.accent:T.textMuted,
-            cursor:"pointer",fontSize:"0.72rem",fontFamily:"inherit",fontWeight:600}}>{l}</button>
-      ))}
-    </div>
-    <div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={mt} onChange={e=>{refreshTime&&refreshTime();setMt(e.target.value);}} style={{flex:"0 0 95px"}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select><select value={food} onChange={e=>onFoodChange(e.target.value)} style={{flex:"2 1 80px",minWidth:0}}><option value="">Food item…</option>{visibleFoods.map(f=><option key={f.name} value={f.name}>{pickIcon(f.name,"food",f.icon||"")} {f.name}</option>)}</select>{hasFoodSub&&<select value={foodSub} onChange={e=>onSubChange(e.target.value)} style={{flex:"1 1 90px",minWidth:0}}><option value="">Sub-type…</option>{rankedSubs.map(s=><option key={s}>{s}</option>)}</select>}<input type="number" placeholder="Qty" value={qty} onChange={e=>setQty(e.target.value)} style={{flex:"0 0 54px",width:54}}/><select value={unit} onChange={e=>setUnit(e.target.value)} style={{flex:"0 0 60px",width:60}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select></div><div style={{display:"flex",gap:6,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
+    <div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={mt} onChange={e=>{refreshTime&&refreshTime();setMt(e.target.value);}} style={{flex:"0 0 95px"}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select><select value={food} onChange={e=>onFoodChange(e.target.value)} style={{flex:"2 1 80px",minWidth:0}}><option value="">Food item…</option>{rankedFoods.map(f=><option key={f.name} value={f.name}>{pickIcon(f.name,"food",f.icon||"")} {f.name}</option>)}</select>{hasFoodSub&&<select value={foodSub} onChange={e=>onSubChange(e.target.value)} style={{flex:"1 1 90px",minWidth:0}}><option value="">Sub-type…</option>{rankedSubs.map(s=><option key={s}>{s}</option>)}</select>}<input type="number" placeholder="Qty" value={qty} onChange={e=>setQty(e.target.value)} style={{flex:"0 0 54px",width:54}}/><select value={unit} onChange={e=>setUnit(e.target.value)} style={{flex:"0 0 60px",width:60}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select></div><div style={{display:"flex",gap:6,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
 }
 function LiquidEntry({settings,entries,onAdd,entryTime,setEntryTime,refreshTime,T}){
   const allTypes=(settings.liquidTypes||FD.liquidTypes||[]);
