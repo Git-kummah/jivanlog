@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v5.2";
+const APP_VERSION="v5.4";
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -1728,8 +1728,8 @@ function HomePage({entries,settings,onAdd,onUpdate,onDelete,entryTime,setEntryTi
         <div className="slabel">Today's Log</div>
         {todayE.length===0?<div style={{color:T.textMuted,fontSize:"0.8rem",textAlign:"center",padding:"18px 0"}}>No entries yet today</div>:<div className="card" style={{padding:"8px 11px"}}>
           {todayE.map(e=>editingId===e.id
-            ?<EditEntry key={e.id} entry={e} settings={settings} T={T} label="✏️ Editing" onSave={d=>{onUpdate&&onUpdate(e.id,d);setEditingId(null);}} onCancel={()=>setEditingId(null)}/>
-            :<TLE key={e.id} e={e} settings={settings} onEdit={()=>setEditingId(e.id)} onDelete={()=>{if(confirm("Delete this entry?"))onDelete&&onDelete(e.id);}} T={T}/>
+            ?<EditEntry key={e.id} entry={e} settings={settings} T={T} label="✏️ Editing" onSave={d=>{onUpdate&&onUpdate(e.id,d);setEditingId(null);}} onCancel={()=>setEditingId(null)} onDelete={()=>{onDelete&&onDelete(e.id);setEditingId(null);}}/>
+            :<TLE key={e.id} e={e} settings={settings} onEdit={()=>setEditingId(e.id)} T={T}/>
           )}
         </div>}
       </div>
@@ -1934,7 +1934,7 @@ function MedEntry({settings,entries,onAdd,entryTime,setEntryTime,refreshTime,T})
     </div>
   </div>);
 }
-function TLE({e,settings,onEdit,onDelete,T}){
+function TLE({e,settings,onEdit,T}){
   const ic={meal:"🍽️",liquid:"💧",drinks:"☕",exercise:"🏃",water:"💧",medical:"🩺",medication:"💊"};
   // Enrich medical unit from presets if not saved on entry (handles old Firebase entries)
   const resolvedUnit=e.unit||(e.type==="medical"&&settings?((settings.medicalPresets||FD.medicalPresets||[]).find(p=>(p.name||p)===e.readingType)||{}).unit||"":"");
@@ -1946,30 +1946,42 @@ function TLE({e,settings,onEdit,onDelete,T}){
   // water is handled by the liquid branch above (shows "Warm Water · 600ml")
   if(e.type==="medical")    {const _mp=(settings?.medicalPresets||FD.medicalPresets||[]).find(p=>(p.name||p)===e.readingType)||{};m=`${pickIcon(e.readingType,"medical",_mp.icon||"")} ${e.readingType} · ${e.value}${resolvedUnit?" "+resolvedUnit:""}`;};
   if(e.type==="medication") {const _mi=(settings?.medicationIcons||{})[e.med]||"";m=`${pickIcon(e.med,"medication",_mi)} ${e.med} · ${e.timing}`;};
-  // N4: long-press (touch, ~550ms hold) or double-click (mouse) opens inline
-  // edit — same gesture pattern as most mobile list apps. Passive: touchmove
-  // past a small threshold cancels the timer so a scroll can't be mistaken
-  // for a hold, and a normal fast tap never fires it. Kept alongside explicit
-  // ✏️/🗑️ icons since a hidden-only gesture is not discoverable.
-  const pressTimer=useRef(null);
-  const pressStart=useRef(null);
-  const clearPress=()=>{if(pressTimer.current){clearTimeout(pressTimer.current);pressTimer.current=null;}};
+  // N4 (revised): double-tap (touch) or double-click (mouse) opens inline edit.
+  // Originally this used a long-press timer, but long press IS the same
+  // gesture as the phone's own "hold to select text and copy" — there is no
+  // way to win that race reliably, and suppressing it via CSS just trades one
+  // problem for another (edit works, but copy/select stops working entirely).
+  // Double-tap is a different gesture altogether, so native text selection is
+  // untouched — you can still long-press to select and copy an entry's text
+  // exactly as before. The explicit ✏️/🗑️ icons are gone too; double-tap /
+  // double-click is now the one way in, and Manage remains the fallback for
+  // anyone who prefers a tap-based flow.
+  const lastTapAt=useRef(0);
+  const lastTapPos=useRef(null);
+  const touchStart=useRef(null);
   const onTouchStart=t=>{
     if(t.touches.length!==1)return;
-    pressStart.current={x:t.touches[0].clientX,y:t.touches[0].clientY};
-    clearPress();
-    pressTimer.current=setTimeout(()=>{
-      pressTimer.current=null;
+    touchStart.current={x:t.touches[0].clientX,y:t.touches[0].clientY};
+  };
+  const onTouchEnd=t=>{
+    const start=touchStart.current;touchStart.current=null;
+    const p=t.changedTouches[0];
+    if(!start||!p)return;
+    // A scroll/drag ends with real movement — never counts as a tap.
+    if(Math.hypot(p.clientX-start.x,p.clientY-start.y)>10){lastTapAt.current=0;return;}
+    const now=Date.now();
+    const isDoubleTap=now-lastTapAt.current<350&&lastTapPos.current&&
+      Math.hypot(p.clientX-lastTapPos.current.x,p.clientY-lastTapPos.current.y)<30;
+    if(isDoubleTap){
+      lastTapAt.current=0;
       try{navigator.vibrate&&navigator.vibrate(12);}catch(err){}
       onEdit&&onEdit();
-    },550);
+    }else{
+      lastTapAt.current=now;
+      lastTapPos.current={x:p.clientX,y:p.clientY};
+    }
   };
-  const onTouchMove=t=>{
-    if(!pressStart.current||!t.touches[0])return;
-    const dx=t.touches[0].clientX-pressStart.current.x,dy=t.touches[0].clientY-pressStart.current.y;
-    if(Math.hypot(dx,dy)>10)clearPress(); // moved -> scrolling, not holding
-  };
-  return(<div className="tle" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={clearPress} onTouchCancel={clearPress} onDoubleClick={()=>onEdit&&onEdit()}><span style={{fontSize:"0.68rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:40,flexShrink:0}}>{fmt24(e.timestamp)}</span><span style={{flexShrink:0}}>{ic[e.type]||"•"}</span><div style={{flex:1,fontSize:"0.83rem",lineHeight:1.45}}>{m}{e.notes&&<span style={{fontSize:"0.74rem",color:T.textSub,fontStyle:"italic"}}> ({e.notes})</span>}</div><div style={{display:"flex",gap:2,flexShrink:0}}><button className="ibtn" title="Edit" onClick={ev=>{ev.stopPropagation();onEdit&&onEdit();}}>✏️</button><button className="ibtn" title="Delete" style={{color:T.danger}} onClick={ev=>{ev.stopPropagation();onDelete&&onDelete();}}>🗑️</button></div></div>);
+  return(<div className="tle" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} onDoubleClick={()=>onEdit&&onEdit()}><span style={{fontSize:"0.68rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:40,flexShrink:0}}>{fmt24(e.timestamp)}</span><span style={{flexShrink:0}}>{ic[e.type]||"•"}</span><div style={{flex:1,fontSize:"0.83rem",lineHeight:1.45}}>{m}{e.notes&&<span style={{fontSize:"0.74rem",color:T.textSub,fontStyle:"italic"}}> ({e.notes})</span>}</div></div>);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -2011,7 +2023,7 @@ function ManagePage({entries,settings,onAddDirect,onUpdate,onDelete,isOnline,T})
     if(Math.abs(dx)<50||Math.abs(dx)<=Math.abs(dy))return; // too short, or vertical scroll
     if(dx<0)goNext();else goPrev();
   };
-  return(<div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+  return(<div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} style={{touchAction:"pan-y"}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
       <div style={{fontWeight:600,fontSize:"0.92rem"}}>📋 Manage Records</div>
       <div style={{fontSize:"0.72rem",color:T.textMuted}}>{entries.length} entries · {allDates.length} dates</div>
@@ -2052,7 +2064,7 @@ function ManageRow({e,settings,onEdit,onDuplicate,onDelete,T}){
   if(e.type==="medication") {const _mi=(settings?.medicationIcons||{})[e.med]||"";m=`${pickIcon(e.med,"medication",_mi)} ${e.med} · ${e.timing}`;};
   return(<div className="card" style={{display:"flex",alignItems:"flex-start",gap:8,padding:"9px 11px",marginBottom:6}}><span style={{fontSize:"0.66rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:40,paddingTop:2,flexShrink:0}}>{fmt24(e.timestamp)}</span><span style={{flexShrink:0}}>{ic[e.type]||"•"}</span><div style={{flex:1,fontSize:"0.82rem",lineHeight:1.4}}>{m}{e.notes&&<span style={{fontSize:"0.74rem",color:T.textSub,fontStyle:"italic"}}> ({e.notes})</span>}</div><div style={{display:"flex",gap:3,flexShrink:0}}><button className="ibtn" onClick={onEdit} title="Edit">✏️</button><button className="ibtn" onClick={onDuplicate} title="Duplicate">📋</button><button className="ibtn" style={{color:T.danger}} onClick={onDelete} title="Delete">🗑️</button></div></div>);
 }
-function EditEntry({entry,settings,onSave,onCancel,label,T}){
+function EditEntry({entry,settings,onSave,onCancel,onDelete,label,T}){
   const[d,setD]=useState(deepClone(entry));
   const set=(k,v)=>setD(p=>({...p,[k]:v}));
   const[editDate,setEditDate]=useState(entry.date||today());
@@ -2116,6 +2128,7 @@ function EditEntry({entry,settings,onSave,onCancel,label,T}){
       <div style={{display:"flex",gap:6}}>
         <button onClick={onCancel} style={{flex:1,padding:"7px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer"}}>Cancel</button>
         <button onClick={doSave} style={{flex:1,padding:"7px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontWeight:600}}>Save Changes</button>
+        {onDelete&&<button onClick={()=>{if(confirm("Delete this entry?"))onDelete();}} title="Delete" style={{flexShrink:0,padding:"7px 11px",borderRadius:8,border:`1px solid ${T.danger}`,background:"transparent",color:T.danger,cursor:"pointer"}}>🗑️</button>}
       </div>
     </div>
   );
