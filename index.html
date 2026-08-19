@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v5.9";
+const APP_VERSION="v5.10";
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -274,6 +274,28 @@ const parseTimeParts=timeStr=>{
   return[Math.min(23,Math.max(0,h)),Math.min(59,Math.max(0,mi))];
 };
 const makeTS  =(dateStr,timeStr)=>{const[y,mo,d]=dateStr.split("-").map(Number);const[h,mi]=parseTimeParts(timeStr);const dt=new Date(y,mo-1,d,h,mi,0,0);return isNaN(dt.getTime())?new Date().toISOString():dt.toISOString();};
+
+// B9: makeTS (and addEntry's old separate approach) assumed a logical date
+// (entry.date / today()'s rollover-adjusted grouping day) and its clock time
+// always fall on the SAME real calendar day. That's true most of the time,
+// but false for the post-midnight window before the rollover cutoff — a
+// 00:30 entry logged under "yesterday's" bucket actually happened on the
+// REAL next calendar day. Editing such an entry (even without changing
+// anything) silently shifted its timestamp back a day, and backdating the
+// time field into that same window during entry CREATION had the identical
+// bug from the other direction. This is the single, correct inverse of
+// today()'s own rollover math: a time before the cutoff belongs to the real
+// calendar day AFTER the logical date; a time at or after it belongs to the
+// same real day as the logical date.
+const timestampForLogicalDate=(logicalDateStr,timeStr)=>{
+  const[h,mi]=parseTimeParts(timeStr);
+  const minsOfDay=h*60+(mi||0);
+  const[y,mo,d]=logicalDateStr.split("-").map(Number);
+  const dt=new Date(y,mo-1,d,h,mi,0,0);
+  if(isNaN(dt.getTime()))return new Date();
+  if(minsOfDay<DAY_ROLLOVER_MIN)dt.setDate(dt.getDate()+1);
+  return dt;
+};
 
 const THEMES={
   dark:{isDark:true,bg:"#0a1628",cardBg:"#112240",navBg:"#0d1e35",inputBg:"#0d1e35",border:"#1e3a5f",text:"#e6edf3",textMuted:"#4a7fa5",textSub:"#7aa0bf",accent:"#00e676",accentBg:"#00897b22",accentBtn:"#00897b",danger:"#ef5350",waterBtn:"#0d2a3d",waterBtnText:"#40c4ff",even:"#0a1628",ok:"#1b5e20",lock:"#060e1a"},
@@ -1465,9 +1487,7 @@ function App(){
   const saveDayRollover=useCallback(min=>{setDayRolloverMinR(min);setDayRolloverCache(min);persistKey("dayRolloverMin",min);},[persistKey]);
 
   const addEntry=useCallback(entry=>{
-    const[h,mm]=entryTime.split(":").map(Number);
-    const d=new Date();d.setHours(h,mm,0,0);
-    const newEntry={...entry,id:genId(),timestamp:d.toISOString(),date:today()};
+    const newEntry={...entry,id:genId(),timestamp:timestampForLogicalDate(today(),entryTime).toISOString(),date:today()};
     const next=[...entries,newEntry];
     setEntries(next);
     if(user){
@@ -2210,18 +2230,34 @@ function ManagePage({entries,settings,onAddDirect,onUpdate,onDelete,isOnline,T})
   const allDates=(()=>{const s=new Set(entries.map(e=>e.date).filter(Boolean));s.add(today());return Array.from(s).sort().reverse();})();
   const[sel,setSel]=useState(today);
   const[eid,setEid]=useState(null);
-  const[dupEid,setDupEid]=useState(null);
+  // B7: duplicating used to write the copy to Firebase IMMEDIATELY, before
+  // any editing happened — only clicking Cancel deleted it. Navigating away,
+  // switching tabs, or backgrounding the app left an unedited, silent
+  // duplicate behind permanently. pendingDup holds the draft as pure local
+  // state instead; nothing is written until Save. If it's abandoned, there's
+  // nothing to clean up — it was never persisted in the first place, and
+  // React discards the state automatically when ManagePage unmounts.
+  const[pendingDup,setPendingDup]=useState(null);
   // C6/E1: previously navigation was locked to today whenever isOnline was
   // false. That was never actually necessary — `entries` here is already
   // hydrated from the local mirror (all history, incl. tombstones) regardless
   // of connection, so browsing past dates has always worked offline. The old
   // restriction just prevented using a feature the data already supported.
   const effectiveSel=sel;
-  const handleDuplicate=e=>{const newId=genId();const ts=new Date(new Date(e.timestamp).getTime()+1000).toISOString();onAddDirect({...deepClone(e),id:newId,timestamp:ts,date:e.date});setEid(newId);setDupEid(newId);};
+  const handleDuplicate=e=>{
+    const newId=genId();
+    const ts=new Date(new Date(e.timestamp).getTime()+1000).toISOString();
+    setPendingDup({...deepClone(e),id:newId,timestamp:ts,date:e.date});
+    setEid(newId);
+  };
   const dayE=entries.filter(e=>e.date===effectiveSel).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
   const idx=allDates.indexOf(effectiveSel);
-  const goPrev=()=>{if(idx<allDates.length-1){setSel(allDates[idx+1]);setEid(null);}};
-  const goNext=()=>{if(idx>0){setSel(allDates[idx-1]);setEid(null);}};
+  // Navigating away from the date a pending duplicate belongs to abandons it
+  // — otherwise it would silently reappear if the user navigated back,
+  // which is more confusing than just discarding it (nothing was ever
+  // saved, so there's nothing to lose).
+  const goPrev=()=>{if(idx<allDates.length-1){setSel(allDates[idx+1]);setEid(null);setPendingDup(null);}};
+  const goNext=()=>{if(idx>0){setSel(allDates[idx-1]);setEid(null);setPendingDup(null);}};
   // N3: swipe to change date. Passive by design — only touchstart/touchend are
   // read, touchmove is never intercepted or preventDefault'd, so normal
   // vertical scrolling of the entry list is completely untouched. The
@@ -2254,7 +2290,7 @@ function ManagePage({entries,settings,onAddDirect,onUpdate,onDelete,isOnline,T})
           background:T.cardBg,color:idx>=allDates.length-1?T.textMuted:T.text,
           fontSize:"1.1rem",cursor:idx>=allDates.length-1?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:idx>=allDates.length-1?0.4:1}}>◀</button>
       <input type="date" aria-label="Select date" value={effectiveSel}
-        onChange={e=>{if(e.target.value){setSel(e.target.value);setEid(null);}}}
+        onChange={e=>{if(e.target.value){setSel(e.target.value);setEid(null);setPendingDup(null);}}}
         style={{flex:1,padding:"8px 10px",borderRadius:8,border:`2px solid ${T.accent}`,
           background:T.cardBg,color:T.text,fontWeight:600,fontSize:"0.92rem",
           fontFamily:"inherit",textAlign:"center",colorScheme:T.isDark?"dark":"light"}}/>
@@ -2263,10 +2299,19 @@ function ManagePage({entries,settings,onAddDirect,onUpdate,onDelete,isOnline,T})
           background:T.cardBg,color:idx<=0?T.textMuted:T.text,
           fontSize:"1.1rem",cursor:idx<=0?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:idx<=0?0.4:1}}>▶</button>
     </div>
-    {dayE.length===0
+    {/* B7: the pending duplicate isn't in `entries` yet (nothing was written),
+        so it renders separately from dayE, only while it's genuinely still
+        being drafted for this date. Save is the FIRST and only time
+        onAddDirect is called — Cancel just clears local state, nothing to
+        delete since nothing was ever saved. */}
+    {pendingDup&&pendingDup.date===effectiveSel&&
+      <EditEntry key={pendingDup.id} entry={pendingDup} settings={settings} T={T} label="📋 Duplicating"
+        onSave={d=>{onAddDirect({...pendingDup,...d});setPendingDup(null);setEid(null);}}
+        onCancel={()=>{setPendingDup(null);setEid(null);}}/>}
+    {dayE.length===0&&!pendingDup
       ?<div style={{color:T.textMuted,fontSize:"0.82rem",textAlign:"center",padding:22}}>No entries for this date</div>
       :dayE.map(e=>eid===e.id
-        ?<EditEntry key={e.id} entry={e} settings={settings} T={T} label={dupEid===e.id?"📋 Duplicating":"✏️ Editing"} onSave={d=>{onUpdate(e.id,d);setEid(null);setDupEid(null);}} onCancel={()=>{if(dupEid===e.id)onDelete(e.id);setEid(null);setDupEid(null);}}/>
+        ?<EditEntry key={e.id} entry={e} settings={settings} T={T} label="✏️ Editing" onSave={d=>{onUpdate(e.id,d);setEid(null);}} onCancel={()=>setEid(null)}/>
         :<ManageRow key={e.id} e={e} settings={settings} T={T} onEdit={()=>setEid(e.id)} onDuplicate={()=>handleDuplicate(e)} onDelete={()=>{if(confirm("Delete this entry?"))onDelete(e.id);}}/>)}
   </div>);
 }
@@ -2295,7 +2340,7 @@ function EditEntry({entry,settings,onSave,onCancel,onDelete,label,T}){
   const eo=(settings.exerciseTypes||FD.exerciseTypes).find(e=>e.name===d.exType);
   const _fdEo=FD.exerciseTypes?.find(e=>e.name===d.exType);
   const _eoM=Array.isArray(eo?.metrics)&&(eo.metrics.length===0||typeof eo.metrics[0]==="string")?eo.metrics:_fdEo?.metrics||["time"];
-  const doSave=()=>onSave({...d,date:editDate,timestamp:makeTS(editDate,editTime)});
+  const doSave=()=>onSave({...d,date:editDate,timestamp:timestampForLogicalDate(editDate,editTime).toISOString()});
   return(
     <div className="card" style={{border:`1px solid ${T.accentBtn}55`,marginBottom:8}}>
       <div className="slabel" style={{color:T.accent,marginBottom:7}}>{label||"✏️ Editing"}</div>
