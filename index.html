@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v5.6";
+const APP_VERSION="v5.7";
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -740,20 +740,34 @@ function exerciseMetricParts(e){
 // values from before this change (e.g. "15") are accepted and normalised to
 // mm:ss ("15:00") the moment they're edited.
 function TimeDurationInput({value,onChange,T}){
-  const display=timeToMinSS(value);
+  // Bug fix: the previous version ran EVERY value through timeToMinSS() on
+  // every render, which is correct for a genuinely legacy stored value
+  // ("15" -> "15:00") but wrong for a value mid-typing — typing "5" set the
+  // stored value to "5", which timeToMinSS then treated as ANOTHER legacy
+  // value and force-padded to "05:00" before the next keystroke could land,
+  // making it impossible to type past the first digit.
+  //
+  // `local` is now the single source of truth for what's on screen. It's
+  // seeded from `value` once (upgrading a legacy value at that moment only),
+  // and only re-seeded later if `value` changes to something OUR OWN last
+  // edit didn't produce — i.e. a genuine external reset (the form clearing
+  // after Save), never an echo of what was just typed.
+  const[local,setLocal]=useState(()=>timeToMinSS(value));
+  useEffect(()=>{if(value!==local)setLocal(timeToMinSS(value));},[value]); // eslint-disable-line
   const handleChange=raw=>{
     const digits=raw.replace(/[^0-9]/g,"").slice(0,4);
     const formatted=digits.length>2?digits.slice(0,2)+":"+digits.slice(2):digits;
+    setLocal(formatted);
     onChange(formatted);
   };
-  const[mm,ss]=display.split(":");
+  const[mm,ss]=local.split(":");
   const mmN=mm!==undefined&&mm!==""?parseInt(mm,10):null;
   const ssN=ss!==undefined&&ss!==""?parseInt(ss,10):null;
   const mmErr=mmN!==null&&!isNaN(mmN)&&mmN>59;
   const ssErr=ssN!==null&&!isNaN(ssN)&&ssN>59;
   const err=mmErr||ssErr;
   return(<div style={{display:"flex",flexDirection:"column"}}>
-    <input value={display} onChange={e=>handleChange(e.target.value)} placeholder="mm:ss" inputMode="numeric"
+    <input value={local} onChange={e=>handleChange(e.target.value)} placeholder="mm:ss" inputMode="numeric"
       style={{width:64,textAlign:"center",fontFamily:"'DM Mono',monospace",borderColor:err?T.danger:undefined}}/>
     {err&&<span style={{fontSize:"0.62rem",color:T.danger,marginTop:1}}>{mmErr?"mm":"ss"}&gt;59</span>}
   </div>);
@@ -2030,7 +2044,12 @@ function ExerciseEntry({settings,entries,onAdd,entryTime,setEntryTime,refreshTim
   // For metrics: FD is the ground truth for known types
   const fdEx=FD.exerciseTypes?.find(e=>e.name===et);
   const storedMetrics=etObj?.metrics;
-  const validMetrics=Array.isArray(storedMetrics)&&storedMetrics.length&&typeof storedMetrics[0]==="string";
+  // Bug fix: an intentionally EMPTY metrics array (LogJam-style — "just log
+  // the timestamp, no numeric fields") was being treated the same as
+  // malformed/missing data, silently falling back to the factory metrics for
+  // that exercise name. `.length` is falsy for [], so the old check
+  // (`storedMetrics.length && ...`) rejected a deliberately empty array.
+  const validMetrics=Array.isArray(storedMetrics)&&(storedMetrics.length===0||typeof storedMetrics[0]==="string");
   // The array's OWN order is the display order — reorderable in Settings, no
   // separate "order" field needed since arrays are already ordered.
   const etMetrics=validMetrics?storedMetrics:fdEx?.metrics||["time"];
@@ -2262,7 +2281,7 @@ function EditEntry({entry,settings,onSave,onCancel,onDelete,label,T}){
   const medIcons=settings.medicationIcons||{};
   const eo=(settings.exerciseTypes||FD.exerciseTypes).find(e=>e.name===d.exType);
   const _fdEo=FD.exerciseTypes?.find(e=>e.name===d.exType);
-  const _eoM=Array.isArray(eo?.metrics)&&eo.metrics.length&&typeof eo.metrics[0]==="string"?eo.metrics:_fdEo?.metrics||["time"];
+  const _eoM=Array.isArray(eo?.metrics)&&(eo.metrics.length===0||typeof eo.metrics[0]==="string")?eo.metrics:_fdEo?.metrics||["time"];
   const doSave=()=>onSave({...d,date:editDate,timestamp:makeTS(editDate,editTime)});
   return(
     <div className="card" style={{border:`1px solid ${T.accentBtn}55`,marginBottom:8}}>
@@ -3352,6 +3371,64 @@ function MedicalPresetSetting({presets,onAdd,onRemove,onReorder,onUpdate,entries
 
 // ── Shared reorder helpers ────────────────────────────────────────────────────
 const moveItem=(arr,i,dir)=>{const a=[...arr];const j=i+dir;if(j<0||j>=a.length)return a;[a[i],a[j]]=[a[j],a[i]];return a;};
+// Splice-out/splice-in, not a chain of adjacent swaps — a single drag gesture
+// can drop an item several positions away in one move.
+const moveToIndex=(arr,from,to)=>{
+  if(from===to||from<0||to<0||from>=arr.length||to>=arr.length)return arr;
+  const a=[...arr];const[item]=a.splice(from,1);a.splice(to,0,item);return a;
+};
+
+// N: drag-to-reorder, built on Pointer Events (one API unifies mouse/touch/pen,
+// so no separate touch-event branch is needed). A dedicated grab handle keeps
+// the drag gesture from fighting the row's other interactive elements — only
+// the handle sets touchAction:"none", so page scroll is untouched everywhere
+// else. Pointer capture means move/up events keep reaching the handle even
+// once the finger/cursor leaves it, which is what makes a single continuous
+// drag work. The existing ▲▼ buttons stay alongside it — drag is an addition,
+// not a replacement, so nothing that already worked (and was tested) changes.
+function DragReorderRow({index,total,label,onCommitMove,onNudge,T,dragState,setDragState,rowRefs,rowRef}){
+  const isDragging=dragState.dragIndex===index;
+  const isOver=dragState.overIndex===index&&dragState.dragIndex!==null&&dragState.dragIndex!==index;
+  const onPointerDown=e=>{
+    setDragState({dragIndex:index,overIndex:index});
+    try{e.currentTarget.setPointerCapture(e.pointerId);}catch(err){}
+  };
+  const onPointerMoveHandle=e=>{
+    setDragState(cur=>{
+      if(cur.dragIndex===null)return cur;
+      const rows=rowRefs.current;
+      let next=cur.overIndex;
+      for(let idx=0;idx<rows.length;idx++){
+        const el=rows[idx];if(!el)continue;
+        const r=el.getBoundingClientRect();
+        if(e.clientY>=r.top&&e.clientY<=r.bottom){next=idx;break;}
+      }
+      return{...cur,overIndex:next};
+    });
+  };
+  const onPointerUpHandle=()=>{
+    // Bug fix: calling onCommitMove (which eventually updates ANOTHER
+    // component's state, several levels up) from inside setDragState's
+    // functional updater triggered React's "Cannot update a component while
+    // rendering a different component" warning — a real issue, not just
+    // noise, since updater functions are meant to be pure. Reading dragState
+    // directly here is safe: it's a fresh prop on every render, and pointerup
+    // is a distinct, later event than whatever pointermove last set it to.
+    if(dragState.dragIndex!==null&&dragState.overIndex!==null&&dragState.dragIndex!==dragState.overIndex){
+      onCommitMove(dragState.dragIndex,dragState.overIndex);
+    }
+    setDragState({dragIndex:null,overIndex:null});
+  };
+  return(
+    <div ref={rowRef} style={{display:"flex",alignItems:"center",fontSize:"0.74rem",padding:"3px 2px",
+      borderRadius:6,background:isOver?T.accentBg:"transparent",opacity:isDragging?0.5:1,transition:"background 0.1s"}}>
+      <span onPointerDown={onPointerDown} onPointerMove={onPointerMoveHandle} onPointerUp={onPointerUpHandle} onPointerCancel={onPointerUpHandle}
+        title="Drag to reorder" style={{cursor:"grab",touchAction:"none",padding:"1px 8px 1px 2px",color:T.textMuted,fontSize:"0.85rem",userSelect:"none"}}>⠿</span>
+      <ReorderBtns i={index} total={total} onMove={onNudge} T={T}/>
+      <span style={{color:T.textSub}}>{label}</span>
+    </div>
+  );
+}
 const ReorderBtns=({i,total,onMove,T})=>(<div style={{display:"flex",flexDirection:"column",gap:1,marginRight:4,flexShrink:0}}><button className="ibtn" onClick={()=>onMove(i,-1)} disabled={i===0} style={{padding:"0 3px",fontSize:"0.65rem",opacity:i===0?0.2:1,lineHeight:1.3}}>▲</button><button className="ibtn" onClick={()=>onMove(i,1)} disabled={i===total-1} style={{padding:"0 3px",fontSize:"0.65rem",opacity:i===total-1?0.2:1,lineHeight:1.3}}>▼</button></div>);
 
 
@@ -3738,6 +3815,21 @@ function EList({items,onRemove,onReorder,icons,onIconUpdate,newItem,setNew,onAdd
   </div>))}
   </div>);
 }
+// One instance per exercise type (via the key given at the call site), so
+// drag state for one exercise's metric list never leaks into another's.
+function MetricOrderList({metrics,onReorder,onNudge,T}){
+  const[dragState,setDragState]=useState({dragIndex:null,overIndex:null});
+  const rowRefs=useRef([]);
+  return(<div style={{marginBottom:5}}>
+    <div style={{fontSize:"0.66rem",color:T.textMuted,marginBottom:2}}>Field order on the entry form (drag ⠿, or use ▲▼):</div>
+    {metrics.map((mk,mi)=>(
+      <DragReorderRow key={mk} index={mi} total={metrics.length} label={metricDef(mk).label}
+        onCommitMove={onReorder} onNudge={onNudge} T={T} dragState={dragState} setDragState={setDragState}
+        rowRefs={rowRefs} rowRef={el=>{rowRefs.current[mi]=el;}}/>
+    ))}
+  </div>);
+}
+
 function ExerciseSetting({types,onChange,entries,onRename,T}){
   const[ei,setEi]=useState(null);const[nn,setNn]=useState("");
   const add=()=>{if(!nn.trim())return;onChange([...types,{name:nn.trim(),subTypes:[],metrics:["time"],note:"",icon:""}]);setNn("");};
@@ -3766,16 +3858,14 @@ function ExerciseSetting({types,onChange,entries,onRename,T}){
         purely a label change (see EXERCISE_METRIC_DEFS); the stored key is
         still "count" so nothing about past data changes. */}
     <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:3}}>{EXERCISE_METRIC_DEFS.map(({key:m,label})=>(<button key={m} onClick={()=>togM(i,m)} style={{padding:"2px 9px",borderRadius:20,fontSize:"0.72rem",border:"1px solid",cursor:"pointer",borderColor:t.metrics.includes(m)?T.accentBtn:T.border,background:t.metrics.includes(m)?T.accentBg:"transparent",color:t.metrics.includes(m)?T.accent:T.textMuted}}>{label}</button>))}</div>
+
     {/* N: the ENABLED metrics, reorderable — this order is what the entry
         form actually renders left-to-right, per the request to control field
-        order per exercise. */}
-    {t.metrics.length>1&&<div style={{marginBottom:5}}>
-      <div style={{fontSize:"0.66rem",color:T.textMuted,marginBottom:2}}>Field order on the entry form:</div>
-      {t.metrics.map((mk,mi)=>(<div key={mk} style={{display:"flex",alignItems:"center",fontSize:"0.74rem",padding:"2px 0"}}>
-        <ReorderBtns i={mi} total={t.metrics.length} onMove={(idx,dir)=>moveMetric(i,idx,dir)} T={T}/>
-        <span style={{color:T.textSub}}>{metricDef(mk).label}</span>
-      </div>))}
-    </div>}
+        order per exercise. Drag (⠿) or the ▲▼ buttons both work. */}
+    {t.metrics.length>1&&<MetricOrderList key={t.name} metrics={t.metrics}
+      onReorder={(from,to)=>onChange(types.map((x,j)=>j!==i?x:{...x,metrics:moveToIndex(x.metrics,from,to)}))}
+      onNudge={(idx,dir)=>moveMetric(i,idx,dir)}
+      T={T}/>}
     <input placeholder="Default note (optional, e.g. 30 min brisk)" value={t.note||""} onChange={e=>onChange(types.map((x,j)=>j===i?{...x,note:e.target.value}:x))} style={{width:"100%",fontSize:"0.76rem",padding:"4px 7px",marginBottom:3,color:T.textSub}}/>
     {ei===i&&<div style={{marginTop:7}}>
       <RenameBox current={t.name} hits={countRenameHits(entries,"exercise",null,t.name)} onRename={nn=>onRename&&onRename("exercise",null,t.name,nn)} T={T}/>
