@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v5.5";
+const APP_VERSION="v5.6";
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -486,7 +486,7 @@ function dayReport(dayEntries,medPresets){
   const totalW=waters.reduce((s,e)=>s+(+e.ml||0),0);
   const waterStr=totalW?`${totalW}ml (${[...new Set(waters.map(e=>e.liquidType))].join("/")})`:`-`;
   const drinksStr=nonW.map(e=>`${e.liquidType}${e.ml?" "+e.ml+"ml":""}${e.notes?" ("+e.notes+")":""}`).join("; ")||"-";
-  const ex=dayEntries.filter(e=>e.type==="exercise").map(e=>{let s=e.exType;if(e.dist)s+=` ${e.dist}km`;if(e.time)s+=` ${e.time}min`;if(e.count)s+=` x${e.count}`;return s;}).join("; ")||"-";
+  const ex=dayEntries.filter(e=>e.type==="exercise").map(e=>[e.exType,...exerciseMetricParts(e)].join(" ")).join("; ")||"-";
   const meds=dayEntries.filter(e=>e.type==="medication").map(e=>`${e.med}(${e.timing})`).join("; ")||"-";
   const meals={};["Breakfast","Lunch","Dinner","Snack"].forEach(mt=>{meals[mt]=dayEntries.filter(e=>e.type==="meal"&&e.mealType===mt).map(e=>e.unit==="count"?`${e.food} ${e.qty}`:`${e.food} ${e.qty}${e.unit}`).join(", ")||"-";});
   const medR={};mp.forEach(p=>{const nm=p.name||p;medR[nm]=dayEntries.filter(e=>e.type==="medical"&&e.readingType===nm).map(e=>`${e.value}${e.unit?" "+e.unit:""}`).join(", ")||"-";});
@@ -499,7 +499,7 @@ function buildAllCSV(entries){
     let t="",st="",d1="",d2="",d3="",u="",n=e.notes||"";
     if(e.type==="meal")      {t="Meal";st=e.mealType;d1=e.food+(e.foodSubType?" · "+e.foodSubType:"");d2=e.qty;u=e.unit;}
     if(e.type==="liquid")    {t="Drinks";st=(e.liquidType||"")+(e.liquidSubType?" · "+e.liquidSubType:"");d1=e.ml||"";u="ml";}
-    if(e.type==="exercise")  {t="Exercise";st=e.exType;d1=e.subType||"";d2=e.dist||"";d3=e.time||e.count||"";u=e.dist?"km":e.count?"count":"min";}
+    if(e.type==="exercise")  {t="Exercise";st=e.exType;d1=e.subType||"";d2=e.dist||"";d3=formatTimeDisplay(e.time)||(e.count?`${e.count} Floors`:"")||(e.hr?`HR ${e.hr}`:"")||(e.steps?`${e.steps} Steps`:"")||(e.speed?`${e.speed}km/h`:"");u=e.dist?"km":"";}
     if(e.type==="medical")   {t="Medical";st=e.readingType;d1=e.value;u=e.unit||"";}
     if(e.type==="medication"){t="Medication";st=e.med;d1=e.timing;}
     // S8: was unconditional-quote-wrap only, which does NOT stop formula
@@ -682,6 +682,95 @@ function NoteSuggestChips({suggestions,onPick,T}){
           overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s}</button>
     ))}
   </div>);
+}
+
+// ── Exercise metrics catalog ──────────────────────────────────────────────
+// "count" was renamed "Floors" (global, per user decision — it's the term
+// already used historically for Stairs; the stored field key stays `count`
+// for backward compatibility, only the label/placeholder changed). HR, Steps
+// and Speed are new. `kind` drives which input widget renders: "time" gets
+// the mm:ss masked input, "decimal"/"integer" get a plain numeric input with
+// the right inputMode, "distance" is decimal with a km suffix.
+const EXERCISE_METRIC_DEFS=[
+  {key:"distance",field:"dist", label:"Distance",placeholder:"km",  kind:"decimal", width:58},
+  {key:"time",    field:"time", label:"Time",    placeholder:"mm:ss",kind:"time",   width:64},
+  {key:"count",   field:"count",label:"Floors",  placeholder:"Floors",kind:"integer",width:64},
+  {key:"hr",      field:"hr",   label:"HR",      placeholder:"HR",   kind:"integer",width:52},
+  {key:"steps",   field:"steps",label:"Steps",   placeholder:"Steps",kind:"integer",width:64},
+  {key:"speed",   field:"speed",label:"Speed",   placeholder:"km/h", kind:"decimal", width:58},
+];
+const metricDef=key=>EXERCISE_METRIC_DEFS.find(m=>m.key===key)||{key,field:key,label:key,placeholder:key,kind:"decimal",width:56};
+
+// A bare number with no colon is a legacy value ("15" = 15 minutes, the only
+// format ever stored before this change) — display it plainly rather than
+// forcing it through mm:ss, but EDITING it upgrades it to mm:ss on next save.
+const formatTimeDisplay=v=>{
+  if(v===undefined||v===null||v==="")return"";
+  const s=String(v);
+  return s.includes(":")?s:`${s}min`;
+};
+const timeToMinSS=v=>{
+  if(v===undefined||v===null||v==="")return"";
+  const s=String(v);
+  return s.includes(":")?s:(/^\d+$/.test(s)?`${s.padStart(2,"0")}:00`:s);
+};
+
+// Shared by Reports (dayReport), CSV export, Today's Log (TLE) and Manage
+// (ManageRow) — one place that knows how to turn an exercise entry's metric
+// fields into display text, so all four always agree with each other and
+// with EXERCISE_METRIC_DEFS's labels/order.
+function exerciseMetricParts(e){
+  return EXERCISE_METRIC_DEFS
+    .filter(d=>e[d.field])
+    .map(d=>{
+      if(d.kind==="time")return formatTimeDisplay(e[d.field]);
+      if(d.key==="distance")return`${e[d.field]}km`;
+      if(d.key==="speed")return`${e[d.field]}km/h`;
+      if(d.key==="count")return`${e[d.field]} Floors`;
+      if(d.key==="hr")return`HR ${e[d.field]}`;
+      if(d.key==="steps")return`${e[d.field]} Steps`;
+      return`${e[d.field]}`;
+    });
+}
+
+// N: mm:ss masked duration input. Digits only; the colon is inserted
+// programmatically at a fixed position (after 2 digits) so typing AND
+// backspacing both just work — no special-casing needed for either
+// direction. Validates both mm and ss to 0–59 per spec; legacy plain-minute
+// values from before this change (e.g. "15") are accepted and normalised to
+// mm:ss ("15:00") the moment they're edited.
+function TimeDurationInput({value,onChange,T}){
+  const display=timeToMinSS(value);
+  const handleChange=raw=>{
+    const digits=raw.replace(/[^0-9]/g,"").slice(0,4);
+    const formatted=digits.length>2?digits.slice(0,2)+":"+digits.slice(2):digits;
+    onChange(formatted);
+  };
+  const[mm,ss]=display.split(":");
+  const mmN=mm!==undefined&&mm!==""?parseInt(mm,10):null;
+  const ssN=ss!==undefined&&ss!==""?parseInt(ss,10):null;
+  const mmErr=mmN!==null&&!isNaN(mmN)&&mmN>59;
+  const ssErr=ssN!==null&&!isNaN(ssN)&&ssN>59;
+  const err=mmErr||ssErr;
+  return(<div style={{display:"flex",flexDirection:"column"}}>
+    <input value={display} onChange={e=>handleChange(e.target.value)} placeholder="mm:ss" inputMode="numeric"
+      style={{width:64,textAlign:"center",fontFamily:"'DM Mono',monospace",borderColor:err?T.danger:undefined}}/>
+    {err&&<span style={{fontSize:"0.62rem",color:T.danger,marginTop:1}}>{mmErr?"mm":"ss"}&gt;59</span>}
+  </div>);
+}
+
+// N: BP auto-slash. Digits only; once 3 digits are typed (covers the large
+// majority of real systolic readings, 100–199) the "/" is inserted for you.
+// A 2-digit systolic (e.g. a low "90") just needs a manual "/" — typing one
+// yourself is always respected and never overridden.
+function BPValueInput({value,onChange,T}){
+  const handleChange=raw=>{
+    if(raw.includes("/")){onChange(raw.replace(/[^0-9/]/g,""));return;}
+    const digits=raw.replace(/[^0-9]/g,"").slice(0,6);
+    const formatted=digits.length>3?digits.slice(0,3)+"/"+digits.slice(3):digits;
+    onChange(formatted);
+  };
+  return<input value={value} onChange={e=>handleChange(e.target.value)} placeholder="Sys/Dia" inputMode="numeric" style={{width:"100%"}}/>;
 }
 
 function App(){
@@ -1883,7 +1972,7 @@ function MealEntry({settings,entries,onAdd,entryTime,setEntryTime,refreshTime,T}
   const noteSuggestions=useMemo(()=>food?pastNoteSuggestions(entries,e=>e.type==="meal"&&e.food===food&&(foodSub?e.foodSubType===foodSub:true)):[],[entries,food,foodSub]);
   const save=()=>{if(!food||!qty)return;onAdd({type:"meal",mealType:mt,food,foodSubType:foodSub,qty,unit,notes});setFood("");setFoodSub("");setQty("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
   return(<div className="card"><div className="slabel">🍽️ Meal</div>
-    <div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={mt} onChange={e=>{refreshTime&&refreshTime();setMt(e.target.value);}} style={{flex:"0 0 95px"}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select><select value={food} onChange={e=>onFoodChange(e.target.value)} style={{flex:"2 1 80px",minWidth:0}}><option value="">Food item…</option>{rankedFoods.map(f=><option key={f.name} value={f.name}>{pickIcon(f.name,"food",f.icon||"")} {f.name}</option>)}</select>{hasFoodSub&&<select value={foodSub} onChange={e=>onSubChange(e.target.value)} style={{flex:"1 1 90px",minWidth:0}}><option value="">Sub-type…</option>{rankedSubs.map(s=><option key={s}>{s}</option>)}</select>}<input type="number" placeholder="Qty" value={qty} onChange={e=>setQty(e.target.value)} style={{flex:"0 0 54px",width:54}}/><select value={unit} onChange={e=>setUnit(e.target.value)} style={{flex:"0 0 60px",width:60}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select></div>
+    <div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={mt} onChange={e=>{refreshTime&&refreshTime();setMt(e.target.value);}} style={{flex:"0 0 95px"}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select><select value={food} onChange={e=>onFoodChange(e.target.value)} style={{flex:"2 1 80px",minWidth:0}}><option value="">Food item…</option>{rankedFoods.map(f=><option key={f.name} value={f.name}>{pickIcon(f.name,"food",f.icon||"")} {f.name}</option>)}</select>{hasFoodSub&&<select value={foodSub} onChange={e=>onSubChange(e.target.value)} style={{flex:"1 1 90px",minWidth:0}}><option value="">Sub-type…</option>{rankedSubs.map(s=><option key={s}>{s}</option>)}</select>}<input type="number" inputMode="decimal" placeholder="Qty" value={qty} onChange={e=>setQty(e.target.value)} style={{flex:"0 0 54px",width:54}}/><select value={unit} onChange={e=>setUnit(e.target.value)} style={{flex:"0 0 60px",width:60}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select></div>
     <NoteSuggestChips suggestions={noteSuggestions} onPick={setNotes} T={T}/>
     <div style={{display:"flex",gap:6,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
 }
@@ -1922,7 +2011,7 @@ function LiquidEntry({settings,entries,onAdd,entryTime,setEntryTime,refreshTime,
       </select>
       {hasLiqSub&&<select value={liqSub} onChange={e=>onSubChange(e.target.value)} style={{flex:"1 1 90px",minWidth:0}}><option value="">Sub-type…</option>{rankedSubs.map(s=><option key={s}>{s}</option>)}</select>}
       {[500,250,100,50].map(amt=><button key={amt} className="wbtn" onClick={()=>add(amt)} style={{padding:"5px 7px",fontSize:"0.78rem",flex:"0 0 auto"}}>{"+"+amt}</button>)}
-      <input type="number" placeholder="ml" value={ml} onChange={e=>setMl(e.target.value)} style={{flex:"0 0 58px",textAlign:"center"}}/>
+      <input type="number" inputMode="decimal" placeholder="ml" value={ml} onChange={e=>setMl(e.target.value)} style={{flex:"0 0 58px",textAlign:"center"}}/>
     </div>
     <NoteSuggestChips suggestions={noteSuggestions} onPick={setNotes} T={T}/>
     {/* Row 2: time | notes | Save */}
@@ -1930,7 +2019,10 @@ function LiquidEntry({settings,entries,onAdd,entryTime,setEntryTime,refreshTime,
   </div>);
 }
 function ExerciseEntry({settings,entries,onAdd,entryTime,setEntryTime,refreshTime,T}){
-  const[et,setEt]=useState("");const[sub,setSub]=useState("");const[dist,setDist]=useState("");const[min,setMin]=useState("");const[cnt,setCnt]=useState("");const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
+  const[et,setEt]=useState("");const[sub,setSub]=useState("");const[notes,setNotes]=useState("");const[fl,setFl]=useState(false);
+  // One state slot per possible metric field, keyed the same as EXERCISE_METRIC_DEFS.
+  const[vals,setVals]=useState({dist:"",time:"",count:"",hr:"",steps:"",speed:""});
+  const setVal=(field,v)=>setVals(p=>({...p,[field]:v}));
   const exTypes=settings.exerciseTypes||FD.exerciseTypes;
   const exCounts=useMemo(()=>usageCounts(entries,e=>e.type==="exercise",e=>e.exType),[entries]);
   const rankedExTypes=byUsage(exTypes||[],exCounts,e=>e.name);
@@ -1939,8 +2031,10 @@ function ExerciseEntry({settings,entries,onAdd,entryTime,setEntryTime,refreshTim
   const fdEx=FD.exerciseTypes?.find(e=>e.name===et);
   const storedMetrics=etObj?.metrics;
   const validMetrics=Array.isArray(storedMetrics)&&storedMetrics.length&&typeof storedMetrics[0]==="string";
+  // The array's OWN order is the display order — reorderable in Settings, no
+  // separate "order" field needed since arrays are already ordered.
   const etMetrics=validMetrics?storedMetrics:fdEx?.metrics||["time"];
-  const hasSub=etObj?.subTypes?.length>0;const hasDist=etMetrics.includes("distance");const hasTime=etMetrics.includes("time");const hasCnt=etMetrics.includes("count");
+  const hasSub=etObj?.subTypes?.length>0;
   const exSubCounts=useMemo(()=>usageCounts(entries,e=>e.type==="exercise"&&e.exType===et,e=>e.subType),[entries,et]);
   const rankedExSubs=hasSub?byUsage(subNames(etObj.subTypes),exSubCounts,s=>s):[];
   const noteFor=(t,sv)=>{
@@ -1952,8 +2046,20 @@ function ExerciseEntry({settings,entries,onAdd,entryTime,setEntryTime,refreshTim
   // Re-sync when Firebase settings arrive — ensures metrics/notes are current
   useEffect(()=>{if(et)setNotes(noteFor(et,sub));},[settings]);
   const noteSuggestions=useMemo(()=>et?pastNoteSuggestions(entries,e=>e.type==="exercise"&&e.exType===et&&(sub?e.subType===sub:true)):[],[entries,et,sub]);
-  const save=()=>{if(!et||(hasSub&&!sub))return;onAdd({type:"exercise",exType:et,subType:sub,dist,time:min,count:cnt,notes});setSub("");setDist("");setMin("");setCnt("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
-  return(<div className="card"><div className="slabel">🏃 Exercise</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={et} onChange={e=>onTypeChange(e.target.value)} style={{flex:"1 1 100px",minWidth:0}}><option value="">Type…</option>{rankedExTypes.map(e=><option key={e.name} value={e.name}>{pickIcon(e.name,"exercise",e.icon||"")} {e.name}</option>)}</select>{hasSub&&<select value={sub} onChange={e=>onSubChange(e.target.value)} style={{flex:"1 1 110px",minWidth:0}}><option value="">Sub-type…</option>{rankedExSubs.map(s=><option key={s}>{s}</option>)}</select>}{hasDist&&<input type="number" placeholder="km" value={dist} onChange={e=>setDist(e.target.value)} style={{flex:"0 0 52px"}}/>}{(hasDist||hasTime)&&<input type="number" placeholder="min" value={min} onChange={e=>setMin(e.target.value)} style={{flex:"0 0 52px"}}/>}{hasCnt&&<input type="number" placeholder="count" value={cnt} onChange={e=>setCnt(e.target.value)} style={{flex:"0 0 68px"}}/>}</div>
+  const save=()=>{
+    if(!et||(hasSub&&!sub))return;
+    onAdd({type:"exercise",exType:et,subType:sub,dist:vals.dist,time:vals.time,count:vals.count,hr:vals.hr,steps:vals.steps,speed:vals.speed,notes});
+    setSub("");setVals({dist:"",time:"",count:"",hr:"",steps:"",speed:""});setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);
+  };
+  return(<div className="card"><div className="slabel">🏃 Exercise</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}>
+    <select value={et} onChange={e=>onTypeChange(e.target.value)} style={{flex:"1 1 100px",minWidth:0}}><option value="">Type…</option>{rankedExTypes.map(e=><option key={e.name} value={e.name}>{pickIcon(e.name,"exercise",e.icon||"")} {e.name}</option>)}</select>
+    {hasSub&&<select value={sub} onChange={e=>onSubChange(e.target.value)} style={{flex:"1 1 110px",minWidth:0}}><option value="">Sub-type…</option>{rankedExSubs.map(s=><option key={s}>{s}</option>)}</select>}
+    {etMetrics.map(mk=>{
+      const d=metricDef(mk);
+      if(d.kind==="time")return<TimeDurationInput key={mk} value={vals.time} onChange={v=>setVal("time",v)} T={T}/>;
+      return<input key={mk} type="number" inputMode={d.kind==="decimal"?"decimal":"numeric"} placeholder={d.placeholder} value={vals[d.field]} onChange={e=>setVal(d.field,e.target.value)} style={{flex:`0 0 ${d.width}px`,width:d.width}}/>;
+    })}
+  </div>
     <NoteSuggestChips suggestions={noteSuggestions} onPick={setNotes} T={T}/>
     <div style={{display:"flex",gap:6,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
 }
@@ -1969,10 +2075,12 @@ function MedicalEntry({settings,entries,onAdd,entryTime,setEntryTime,refreshTime
   return(<div className="card"><div className="slabel">🩺 Medical Reading</div>
     <div style={{display:"flex",gap:5,marginBottom:6}}>
       <select value={rt} onChange={e=>{refreshTime&&refreshTime();setRt(e.target.value);setVal("");}} style={{flex:"1 1 118px",minWidth:0}}><option value="">Type...</option>{rankedPresets.map(p=>{const n=p.name||p;const ic=typeof p==="object"?p.icon||"":"";return<option key={n} value={n}>{pickIcon(n,"medical",ic)} {n}</option>;})}</select>
-      <div style={{flex:1,position:"relative"}}>
-        <input value={val} onChange={e=>setVal(e.target.value)} placeholder={unit||"Value"} style={{width:"100%",paddingRight:unit&&!val?(unit.length*8+12)+"px":"9px"}}/>
+      {unit==="Sys/Dia"
+        ?<div style={{flex:1}}><BPValueInput value={val} onChange={setVal} T={T}/></div>
+        :<div style={{flex:1,position:"relative"}}>
+        <input value={val} onChange={e=>setVal(e.target.value)} inputMode="decimal" placeholder={unit||"Value"} style={{width:"100%",paddingRight:unit&&!val?(unit.length*8+12)+"px":"9px"}}/>
         {unit&&!val&&<span style={{position:"absolute",right:9,top:"50%",transform:"translateY(-50%)",fontSize:"0.74rem",color:T.textMuted,pointerEvents:"none",fontFamily:"'DM Mono',monospace"}}>{unit}</span>}
-      </div>
+      </div>}
     </div>
     <NoteSuggestChips suggestions={noteSuggestions} onPick={setNotes} T={T}/>
     <div style={{display:"flex",gap:6}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><button onClick={save} style={{flexShrink:0,padding:"7px 14px",fontSize:"0.85rem",borderRadius:8,fontFamily:"inherit",fontWeight:500,cursor:"pointer",border:"none",background:fl?T.ok:T.accentBtn,color:"#fff",minWidth:52}}>{fl?"✔":"Save"}</button></div>
@@ -2020,7 +2128,7 @@ function TLE({e,settings,onEdit,T}){
   let m="";
   if(e.type==="meal")       {const _f=(settings?.foodCategories||FD.foodCategories||[]).find(f=>(f.name||f)===e.food)||{};m=`${e.mealType} · ${pickIcon(e.food,"food",_f.icon||"")} ${e.food}${e.foodSubType?" · "+e.foodSubType:""} · ${e.unit==="count"?e.qty:e.qty+e.unit}`;}
   if(e.type==="liquid")     {const _li=(settings?.liquidIcons||{})[e.liquidType]||"";m=`${pickIcon(e.liquidType,"drink",_li)} ${e.liquidType}${e.liquidSubType?" · "+e.liquidSubType:""}${e.ml?" · "+e.ml+"ml":""}`;};
-  if(e.type==="exercise")   {const _e=(settings?.exerciseTypes||FD.exerciseTypes||[]).find(x=>x.name===e.exType)||{};m=`${pickIcon(e.exType,"exercise",_e.icon||"")} ${e.exType}`;if(e.subType)m+=` · ${e.subType}`;if(e.dist)m+=` · ${e.dist}km`;if(e.time)m+=` · ${e.time}min`;if(e.count)m+=` · x${e.count}`;}
+  if(e.type==="exercise")   {const _e=(settings?.exerciseTypes||FD.exerciseTypes||[]).find(x=>x.name===e.exType)||{};m=`${pickIcon(e.exType,"exercise",_e.icon||"")} ${e.exType}`;if(e.subType)m+=` · ${e.subType}`;exerciseMetricParts(e).forEach(p=>{m+=` · ${p}`;});}
   if(e.type==="water")     {const _wt=e.waterTemp||e.liquidType||"Water";const _wi=(settings?.liquidIcons||{})[_wt]||"";m=`${pickIcon(_wt,"drink",_wi)} ${_wt}${e.ml?" · "+e.ml+"ml":""}`;};
   // water is handled by the liquid branch above (shows "Warm Water · 600ml")
   if(e.type==="medical")    {const _mp=(settings?.medicalPresets||FD.medicalPresets||[]).find(p=>(p.name||p)===e.readingType)||{};m=`${pickIcon(e.readingType,"medical",_mp.icon||"")} ${e.readingType} · ${e.value}${resolvedUnit?" "+resolvedUnit:""}`;};
@@ -2136,7 +2244,7 @@ function ManageRow({e,settings,onEdit,onDuplicate,onDelete,T}){
   let m="";
   if(e.type==="meal")       {const _f=(settings?.foodCategories||FD.foodCategories||[]).find(f=>(f.name||f)===e.food)||{};m=`${e.mealType} · ${pickIcon(e.food,"food",_f.icon||"")} ${e.food}${e.foodSubType?" · "+e.foodSubType:""} · ${e.unit==="count"?e.qty:e.qty+e.unit}`;}
   if(e.type==="liquid")     {const _li=(settings?.liquidIcons||{})[e.liquidType]||"";m=`${pickIcon(e.liquidType,"drink",_li)} ${e.liquidType}${e.liquidSubType?" · "+e.liquidSubType:""}${e.ml?" · "+e.ml+"ml":""}`;};
-  if(e.type==="exercise")   {const _e=(settings?.exerciseTypes||FD.exerciseTypes||[]).find(x=>x.name===e.exType)||{};m=`${pickIcon(e.exType,"exercise",_e.icon||"")} ${e.exType}`;if(e.subType)m+=` · ${e.subType}`;if(e.dist)m+=` · ${e.dist}km`;if(e.time)m+=` · ${e.time}min`;if(e.count)m+=` · x${e.count}`;}
+  if(e.type==="exercise")   {const _e=(settings?.exerciseTypes||FD.exerciseTypes||[]).find(x=>x.name===e.exType)||{};m=`${pickIcon(e.exType,"exercise",_e.icon||"")} ${e.exType}`;if(e.subType)m+=` · ${e.subType}`;exerciseMetricParts(e).forEach(p=>{m+=` · ${p}`;});}
 
   if(e.type==="water")     {const _wt=e.waterTemp||e.liquidType||"Water";const _wi=(settings?.liquidIcons||{})[_wt]||"";m=`${pickIcon(_wt,"drink",_wi)} ${_wt}${e.ml?" · "+e.ml+"ml":""}`;};
   if(e.type==="medical")    {const _mp=(settings?.medicalPresets||FD.medicalPresets||[]).find(p=>(p.name||p)===e.readingType)||{};m=`${pickIcon(e.readingType,"medical",_mp.icon||"")} ${e.readingType} · ${e.value}${e.unit?" "+e.unit:""}`;};
@@ -2155,9 +2263,6 @@ function EditEntry({entry,settings,onSave,onCancel,onDelete,label,T}){
   const eo=(settings.exerciseTypes||FD.exerciseTypes).find(e=>e.name===d.exType);
   const _fdEo=FD.exerciseTypes?.find(e=>e.name===d.exType);
   const _eoM=Array.isArray(eo?.metrics)&&eo.metrics.length&&typeof eo.metrics[0]==="string"?eo.metrics:_fdEo?.metrics||["time"];
-  const hasDist=_eoM.includes("distance");
-  const hasTime=_eoM.includes("time");
-  const hasCnt=_eoM.includes("count");
   const doSave=()=>onSave({...d,date:editDate,timestamp:makeTS(editDate,editTime)});
   return(
     <div className="card" style={{border:`1px solid ${T.accentBtn}55`,marginBottom:8}}>
@@ -2171,7 +2276,7 @@ function EditEntry({entry,settings,onSave,onCancel,onDelete,label,T}){
         <select value={d.mealType} onChange={e=>set("mealType",e.target.value)} style={{width:95}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select>
         <select value={d.food} onChange={e=>{set("food",e.target.value);set("foodSubType","");}} style={{flex:"2 1 80px"}}><option value="">Food…</option>{[...foods].sort((a,b)=>a.name.localeCompare(b.name)).map(f=><option key={f.name} value={f.name}>{pickIcon(f.name,"food",f.icon||"")} {f.name}</option>)}</select>
         {fo?.subTypes?.length>0&&<select value={d.foodSubType||""} onChange={e=>set("foodSubType",e.target.value)} style={{flex:"1 1 90px"}}><option value="">Sub-type…</option>{subNames(fo.subTypes).map(s=><option key={s}>{s}</option>)}</select>}
-        <input type="number" value={d.qty} onChange={e=>set("qty",e.target.value)} style={{width:58}}/>
+        <input type="number" inputMode="decimal" value={d.qty} onChange={e=>set("qty",e.target.value)} style={{width:58}}/>
         <select value={d.unit} onChange={e=>set("unit",e.target.value)} style={{width:66}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select>
         <input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100%"}}/>
         </>);})()}
@@ -2180,7 +2285,7 @@ function EditEntry({entry,settings,onSave,onCancel,onDelete,label,T}){
         {(()=>{const liqSubs=(settings.liquidSubTypes||FD.liquidSubTypes||{})[d.liquidType]||[];return(<>
         <select value={d.liquidType||""} onChange={e=>{set("liquidType",e.target.value);set("liquidSubType","");}} style={{flex:"2 1 130px"}}>{liqTypes.map(t=><option key={t} value={t}>{pickIcon(t,"drink",liqIcons[t]||"")} {t}</option>)}</select>
         {liqSubs.length>0&&<select value={d.liquidSubType||""} onChange={e=>set("liquidSubType",e.target.value)} style={{flex:"1 1 90px"}}><option value="">Sub-type…</option>{subNames(liqSubs).map(s=><option key={s}>{s}</option>)}</select>}
-        <input type="number" placeholder="ml" value={d.ml||""} onChange={e=>set("ml",e.target.value)} style={{width:72}}/>
+        <input type="number" inputMode="decimal" placeholder="ml" value={d.ml||""} onChange={e=>set("ml",e.target.value)} style={{width:72}}/>
         <input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100%"}}/>
         </>);})()}
       </div>}
@@ -2190,14 +2295,23 @@ function EditEntry({entry,settings,onSave,onCancel,onDelete,label,T}){
             but had no control here, so a sub-type set on Home could never be
             corrected afterwards. */}
         {eo?.subTypes?.length>0&&<select value={d.subType||""} onChange={e=>set("subType",e.target.value)} style={{flex:"1 1 110px"}}><option value="">Sub-type…</option>{subNames(eo.subTypes).map(s=><option key={s}>{s}</option>)}</select>}
-        {hasDist&&<input type="number" placeholder="km" value={d.dist||""} onChange={e=>set("dist",e.target.value)} style={{width:52}}/>}
-        {(hasDist||hasTime)&&<input type="number" placeholder="min" value={d.time||""} onChange={e=>set("time",e.target.value)} style={{width:52}}/>}
-        {hasCnt&&<input type="number" placeholder="count" value={d.count||""} onChange={e=>set("count",e.target.value)} style={{width:68}}/>}
+        {/* N: metrics rendered in configured order, same as ExerciseEntry —
+            editing an entry now shows exactly the same field set/order/labels
+            it was logged with. */}
+        {_eoM.map(mk=>{
+          const md=metricDef(mk);
+          if(md.kind==="time")return<TimeDurationInput key={mk} value={d.time||""} onChange={v=>set("time",v)} T={T}/>;
+          return<input key={mk} type="number" inputMode={md.kind==="decimal"?"decimal":"numeric"} placeholder={md.placeholder} value={d[md.field]||""} onChange={e=>set(md.field,e.target.value)} style={{width:md.width}}/>;
+        })}
         <input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100%"}}/>
       </div>}
       {d.type==="medical"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}>
         <select value={d.readingType} onChange={e=>set("readingType",e.target.value)} style={{flex:"1 1 118px",minWidth:0}}>{mp.map(p=>{const n=p.name||p;return <option key={n}>{n}</option>;})}</select>
-        <input value={d.value} onChange={e=>set("value",e.target.value)} placeholder={(mp.find(p=>(p.name||p)===d.readingType)||{}).unit||""} style={{flex:1}}/>
+        {/* N: BP gets the auto-slash mask; every other reading gets a plain
+            numeric field with the right on-screen keyboard. */}
+        {(mp.find(p=>(p.name||p)===d.readingType)||{}).unit==="Sys/Dia"
+          ?<div style={{flex:1}}><BPValueInput value={d.value} onChange={v=>set("value",v)} T={T}/></div>
+          :<input value={d.value} onChange={e=>set("value",e.target.value)} inputMode="decimal" placeholder={(mp.find(p=>(p.name||p)===d.readingType)||{}).unit||""} style={{flex:1}}/>}
         <input placeholder="Notes" value={d.notes||""} onChange={e=>set("notes",e.target.value)} style={{flex:"1 1 100%"}}/>
       </div>}
       {d.type==="medication"&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:7}}>
@@ -3634,6 +3748,7 @@ function ExerciseSetting({types,onChange,entries,onRename,T}){
   const moveSub=(i,si,dir)=>onChange(types.map((t,x)=>x===i?{...t,subTypes:moveItem(t.subTypes||[],si,dir)}:t));
   const updSubNote=(i,sName,note)=>onChange(types.map((t,x)=>x===i?{...t,subTypes:(t.subTypes||[]).map(v=>subName(v)===sName?{name:sName,note}:v)}:t));
   const togM=(i,m)=>onChange(types.map((t,x)=>{if(x!==i)return t;const h=t.metrics.includes(m);return{...t,metrics:h?t.metrics.filter(v=>v!==m):[...t.metrics,m]};}));
+  const moveMetric=(i,mi,dir)=>onChange(types.map((t,x)=>x!==i?t:{...t,metrics:moveItem(t.metrics,mi,dir)}));
   return(<div><div className="card" style={{marginBottom:7}}><div style={{display:"flex",gap:7}}><input placeholder="New exercise type…" value={nn} onChange={e=>setNn(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button onClick={add} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div><div style={{fontSize:"0.7rem",color:T.textMuted,marginTop:5}}>New types default to time metric. Toggle below to change.</div></div>
   <div style={{display:"flex",gap:5,marginBottom:6,alignItems:"center"}}>
     <span style={{fontSize:"0.72rem",color:T.textMuted}}>Sort:</span>
@@ -3647,7 +3762,20 @@ function ExerciseSetting({types,onChange,entries,onRename,T}){
       <span style={{fontWeight:600,fontSize:"0.85rem",flex:1,marginLeft:5}}>{t.name}</span>
       <div style={{display:"flex",gap:5}}><button className="ibtn" onClick={()=>setEi(ei===i?null:i)}>{ei===i?"✖️":"✏️"}</button><button className="ibtn" style={{color:T.danger}} onClick={()=>rem(i)}>🗑️</button></div>
     </div>
-    <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:3}}>{["distance","time","count"].map(m=>(<button key={m} onClick={()=>togM(i,m)} style={{padding:"2px 9px",borderRadius:20,fontSize:"0.72rem",border:"1px solid",cursor:"pointer",borderColor:t.metrics.includes(m)?T.accentBtn:T.border,background:t.metrics.includes(m)?T.accentBg:"transparent",color:t.metrics.includes(m)?T.accent:T.textMuted}}>{m}</button>))}</div>
+    {/* Toggle to add/remove a metric. "count" shows as "Floors" here too —
+        purely a label change (see EXERCISE_METRIC_DEFS); the stored key is
+        still "count" so nothing about past data changes. */}
+    <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:3}}>{EXERCISE_METRIC_DEFS.map(({key:m,label})=>(<button key={m} onClick={()=>togM(i,m)} style={{padding:"2px 9px",borderRadius:20,fontSize:"0.72rem",border:"1px solid",cursor:"pointer",borderColor:t.metrics.includes(m)?T.accentBtn:T.border,background:t.metrics.includes(m)?T.accentBg:"transparent",color:t.metrics.includes(m)?T.accent:T.textMuted}}>{label}</button>))}</div>
+    {/* N: the ENABLED metrics, reorderable — this order is what the entry
+        form actually renders left-to-right, per the request to control field
+        order per exercise. */}
+    {t.metrics.length>1&&<div style={{marginBottom:5}}>
+      <div style={{fontSize:"0.66rem",color:T.textMuted,marginBottom:2}}>Field order on the entry form:</div>
+      {t.metrics.map((mk,mi)=>(<div key={mk} style={{display:"flex",alignItems:"center",fontSize:"0.74rem",padding:"2px 0"}}>
+        <ReorderBtns i={mi} total={t.metrics.length} onMove={(idx,dir)=>moveMetric(i,idx,dir)} T={T}/>
+        <span style={{color:T.textSub}}>{metricDef(mk).label}</span>
+      </div>))}
+    </div>}
     <input placeholder="Default note (optional, e.g. 30 min brisk)" value={t.note||""} onChange={e=>onChange(types.map((x,j)=>j===i?{...x,note:e.target.value}:x))} style={{width:"100%",fontSize:"0.76rem",padding:"4px 7px",marginBottom:3,color:T.textSub}}/>
     {ei===i&&<div style={{marginTop:7}}>
       <RenameBox current={t.name} hits={countRenameHits(entries,"exercise",null,t.name)} onRename={nn=>onRename&&onRename("exercise",null,t.name,nn)} T={T}/>
