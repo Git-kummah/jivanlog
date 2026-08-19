@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v5.7";
+const APP_VERSION="v5.8";
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -477,7 +477,7 @@ const dbSet=(uid,key,val)=>dbRef(uid,key).set(val);
 const dbDel=(uid,key)=>dbRef(uid,key).remove();
 
 // ── REPORT HELPERS ────────────────────────────────────────────────────────────
-function dayReport(dayEntries,medPresets){
+function dayReport(dayEntries,medPresets,exerciseTypesConfig){
   const mp=medPresets||FD.medicalPresets||[];
   const WTYP=["Warm Water","Plain Water","Cold Water"];
   const liqs=dayEntries.filter(e=>e.type==="liquid");
@@ -486,7 +486,7 @@ function dayReport(dayEntries,medPresets){
   const totalW=waters.reduce((s,e)=>s+(+e.ml||0),0);
   const waterStr=totalW?`${totalW}ml (${[...new Set(waters.map(e=>e.liquidType))].join("/")})`:`-`;
   const drinksStr=nonW.map(e=>`${e.liquidType}${e.ml?" "+e.ml+"ml":""}${e.notes?" ("+e.notes+")":""}`).join("; ")||"-";
-  const ex=dayEntries.filter(e=>e.type==="exercise").map(e=>[e.exType,...exerciseMetricParts(e)].join(" ")).join("; ")||"-";
+  const ex=dayEntries.filter(e=>e.type==="exercise").map(e=>[e.exType,...exerciseMetricParts(e,exerciseTypesConfig)].join(" ")).join("; ")||"-";
   const meds=dayEntries.filter(e=>e.type==="medication").map(e=>`${e.med}(${e.timing})`).join("; ")||"-";
   const meals={};["Breakfast","Lunch","Dinner","Snack"].forEach(mt=>{meals[mt]=dayEntries.filter(e=>e.type==="meal"&&e.mealType===mt).map(e=>e.unit==="count"?`${e.food} ${e.qty}`:`${e.food} ${e.qty}${e.unit}`).join(", ")||"-";});
   const medR={};mp.forEach(p=>{const nm=p.name||p;medR[nm]=dayEntries.filter(e=>e.type==="medical"&&e.readingType===nm).map(e=>`${e.value}${e.unit?" "+e.unit:""}`).join(", ")||"-";});
@@ -515,7 +515,7 @@ function buildAllCSV(entries){
 function buildFullJSON(allEntries){
   return JSON.stringify({app:"JivanLog",exportedAt:new Date().toISOString(),count:allEntries.length,entries:allEntries},null,2);
 }
-function buildViewCSV(entries,dates,medPresets){
+function buildViewCSV(entries,dates,medPresets,exerciseTypesConfig){
   const medNames=(medPresets||FD.medicalPresets).map(p=>typeof p==="string"?p:p.name);
   const rows=[
     {key:"water",label:"Water"},{key:"drinks",label:"Drinks"},{key:"medication",label:"Medications"},{key:"exercise",label:"Exercise"},
@@ -523,7 +523,7 @@ function buildViewCSV(entries,dates,medPresets){
     ...medNames.map(n=>({key:n,label:n})),
   ];
   const hdr=["Category",...dates.map(fmtDate)].join(",");
-  const dataRows=rows.map(({label,key})=>{const vals=dates.map(d=>{const r=dayReport(entries.filter(e=>e.date===d),medPresets);return csvCell(r[key]||"-");});return[csvCell(label),...vals].join(",");});
+  const dataRows=rows.map(({label,key})=>{const vals=dates.map(d=>{const r=dayReport(entries.filter(e=>e.date===d),medPresets,exerciseTypesConfig);return csvCell(r[key]||"-");});return[csvCell(label),...vals].join(",");});
   return[hdr,...dataRows].join("\n");
 }
 
@@ -719,8 +719,21 @@ const timeToMinSS=v=>{
 // (ManageRow) — one place that knows how to turn an exercise entry's metric
 // fields into display text, so all four always agree with each other and
 // with EXERCISE_METRIC_DEFS's labels/order.
-function exerciseMetricParts(e){
-  return EXERCISE_METRIC_DEFS
+function exerciseMetricParts(e,exerciseTypesConfig){
+  // N: this used to always use the fixed catalog order, so per-exercise
+  // reordering only ever affected the entry FORM's input order — Today's Log,
+  // Manage, and Reports kept showing every Stairs entry (past and future) in
+  // catalog order regardless. Now it looks up the exercise's CURRENT
+  // configured order and uses that for display too. Anything the entry
+  // actually has a value for, but that isn't in the current config (e.g. a
+  // metric since disabled for this exercise), is still shown — appended in
+  // catalog order — so a later config change can never hide logged data.
+  const cfgEx=(exerciseTypesConfig||[]).find(x=>x.name===e.exType);
+  const configuredOrder=Array.isArray(cfgEx?.metrics)?cfgEx.metrics:[];
+  const remainingKeys=EXERCISE_METRIC_DEFS.map(d=>d.key).filter(k=>!configuredOrder.includes(k));
+  const orderKeys=[...configuredOrder,...remainingKeys];
+  return orderKeys
+    .map(k=>metricDef(k))
     .filter(d=>e[d.field])
     .map(d=>{
       if(d.kind==="time")return formatTimeDisplay(e[d.field]);
@@ -2147,7 +2160,7 @@ function TLE({e,settings,onEdit,T}){
   let m="";
   if(e.type==="meal")       {const _f=(settings?.foodCategories||FD.foodCategories||[]).find(f=>(f.name||f)===e.food)||{};m=`${e.mealType} · ${pickIcon(e.food,"food",_f.icon||"")} ${e.food}${e.foodSubType?" · "+e.foodSubType:""} · ${e.unit==="count"?e.qty:e.qty+e.unit}`;}
   if(e.type==="liquid")     {const _li=(settings?.liquidIcons||{})[e.liquidType]||"";m=`${pickIcon(e.liquidType,"drink",_li)} ${e.liquidType}${e.liquidSubType?" · "+e.liquidSubType:""}${e.ml?" · "+e.ml+"ml":""}`;};
-  if(e.type==="exercise")   {const _e=(settings?.exerciseTypes||FD.exerciseTypes||[]).find(x=>x.name===e.exType)||{};m=`${pickIcon(e.exType,"exercise",_e.icon||"")} ${e.exType}`;if(e.subType)m+=` · ${e.subType}`;exerciseMetricParts(e).forEach(p=>{m+=` · ${p}`;});}
+  if(e.type==="exercise")   {const _e=(settings?.exerciseTypes||FD.exerciseTypes||[]).find(x=>x.name===e.exType)||{};m=`${pickIcon(e.exType,"exercise",_e.icon||"")} ${e.exType}`;if(e.subType)m+=` · ${e.subType}`;exerciseMetricParts(e,settings?.exerciseTypes||FD.exerciseTypes).forEach(p=>{m+=` · ${p}`;});}
   if(e.type==="water")     {const _wt=e.waterTemp||e.liquidType||"Water";const _wi=(settings?.liquidIcons||{})[_wt]||"";m=`${pickIcon(_wt,"drink",_wi)} ${_wt}${e.ml?" · "+e.ml+"ml":""}`;};
   // water is handled by the liquid branch above (shows "Warm Water · 600ml")
   if(e.type==="medical")    {const _mp=(settings?.medicalPresets||FD.medicalPresets||[]).find(p=>(p.name||p)===e.readingType)||{};m=`${pickIcon(e.readingType,"medical",_mp.icon||"")} ${e.readingType} · ${e.value}${resolvedUnit?" "+resolvedUnit:""}`;};
@@ -2263,7 +2276,7 @@ function ManageRow({e,settings,onEdit,onDuplicate,onDelete,T}){
   let m="";
   if(e.type==="meal")       {const _f=(settings?.foodCategories||FD.foodCategories||[]).find(f=>(f.name||f)===e.food)||{};m=`${e.mealType} · ${pickIcon(e.food,"food",_f.icon||"")} ${e.food}${e.foodSubType?" · "+e.foodSubType:""} · ${e.unit==="count"?e.qty:e.qty+e.unit}`;}
   if(e.type==="liquid")     {const _li=(settings?.liquidIcons||{})[e.liquidType]||"";m=`${pickIcon(e.liquidType,"drink",_li)} ${e.liquidType}${e.liquidSubType?" · "+e.liquidSubType:""}${e.ml?" · "+e.ml+"ml":""}`;};
-  if(e.type==="exercise")   {const _e=(settings?.exerciseTypes||FD.exerciseTypes||[]).find(x=>x.name===e.exType)||{};m=`${pickIcon(e.exType,"exercise",_e.icon||"")} ${e.exType}`;if(e.subType)m+=` · ${e.subType}`;exerciseMetricParts(e).forEach(p=>{m+=` · ${p}`;});}
+  if(e.type==="exercise")   {const _e=(settings?.exerciseTypes||FD.exerciseTypes||[]).find(x=>x.name===e.exType)||{};m=`${pickIcon(e.exType,"exercise",_e.icon||"")} ${e.exType}`;if(e.subType)m+=` · ${e.subType}`;exerciseMetricParts(e,settings?.exerciseTypes||FD.exerciseTypes).forEach(p=>{m+=` · ${p}`;});}
 
   if(e.type==="water")     {const _wt=e.waterTemp||e.liquidType||"Water";const _wi=(settings?.liquidIcons||{})[_wt]||"";m=`${pickIcon(_wt,"drink",_wi)} ${_wt}${e.ml?" · "+e.ml+"ml":""}`;};
   if(e.type==="medical")    {const _mp=(settings?.medicalPresets||FD.medicalPresets||[]).find(p=>(p.name||p)===e.readingType)||{};m=`${pickIcon(e.readingType,"medical",_mp.icon||"")} ${e.readingType} · ${e.value}${e.unit?" "+e.unit:""}`;};
@@ -2679,7 +2692,7 @@ function ReportsPage({entries,deletedEntries,settings,isOnline,T}){
   const reportCache=useMemo(()=>new Map(),[entriesByDate,medPresets]);
   const rpt=date=>{
     if(reportCache.has(date))return reportCache.get(date);
-    const r=dayReport(entriesByDate.get(date)||[],medPresets);
+    const r=dayReport(entriesByDate.get(date)||[],medPresets,settings?.exerciseTypes||FD.exerciseTypes);
     reportCache.set(date,r);
     return r;
   };
@@ -2700,7 +2713,7 @@ function ReportsPage({entries,deletedEntries,settings,isOnline,T}){
     {!isOnline&&<div style={{fontSize:"0.73rem",color:T.waterBtnText,background:T.waterBtn,borderRadius:8,padding:"6px 10px",marginBottom:8,textAlign:"center"}}>📵 Showing entries saved on this device.</div>}
     <div style={{display:"flex",alignItems:"center",gap:4,marginBottom:10,flexWrap:"wrap"}}>
       <span style={{fontWeight:700,fontSize:"0.92rem",marginRight:4}}>📊 Reports</span>
-      <button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} onClick={()=>doExport(buildViewCSV(entries,tab==="view"?[vd]:cd,medPresets),`jivanlog-view-${today()}.csv`)}>⬇️ Export view</button>
+      <button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} onClick={()=>doExport(buildViewCSV(entries,tab==="view"?[vd]:cd,medPresets,settings?.exerciseTypes||FD.exerciseTypes),`jivanlog-view-${today()}.csv`)}>⬇️ Export view</button>
       <button className="tbtn" style={{fontSize:"0.72rem",padding:"4px 7px"}} onClick={()=>setShowRangeExport(v=>!v)}>{showRangeExport?"✖ Close":"📤 Export range…"}</button>
     </div>
 
@@ -2728,7 +2741,7 @@ function ReportsPage({entries,deletedEntries,settings,isOnline,T}){
         if(rFrom>rTo){alert("The 'from' date must be on or before the 'to' date.");return;}
         const dates=[];for(let d=rFrom;d<=rTo;){dates.push(d);const nd=new Date(d+"T00:00:00");nd.setDate(nd.getDate()+1);d=`${nd.getFullYear()}-${String(nd.getMonth()+1).padStart(2,"0")}-${String(nd.getDate()).padStart(2,"0")}`;}
         if(rMode==="summary"){
-          doExport(buildViewCSV(entries,dates,medPresets),`jivanlog-summary-${rFrom}_to_${rTo}.csv`);
+          doExport(buildViewCSV(entries,dates,medPresets,settings?.exerciseTypes||FD.exerciseTypes),`jivanlog-summary-${rFrom}_to_${rTo}.csv`);
         }else{
           const inRange=[...entries,...(deletedEntries||[])].filter(e=>e.date>=rFrom&&e.date<=rTo);
           doExport(buildAllCSV(inRange),`jivanlog-detail-${rFrom}_to_${rTo}.csv`);
@@ -3386,48 +3399,82 @@ const moveToIndex=(arr,from,to)=>{
 // once the finger/cursor leaves it, which is what makes a single continuous
 // drag work. The existing ▲▼ buttons stay alongside it — drag is an addition,
 // not a replacement, so nothing that already worked (and was tested) changes.
-function DragReorderRow({index,total,label,onCommitMove,onNudge,T,dragState,setDragState,rowRefs,rowRef}){
-  const isDragging=dragState.dragIndex===index;
-  const isOver=dragState.overIndex===index&&dragState.dragIndex!==null&&dragState.dragIndex!==index;
+// N: replaces the earlier two-part UI (a toggle-chip row, plus a separate
+// vertical list below just for reordering) with ONE row: tap a chip to
+// toggle it on/off, drag an ENABLED chip left/right to reorder it — both
+// actions live on the same chips now. Disabled chips sit after the enabled
+// ones (catalog order) and are tap-only, since there's nothing to reorder
+// among metrics that aren't active. Same tap-vs-drag disambiguation as
+// before (a small movement threshold decides which gesture it is), just
+// comparing X position instead of Y since this row is horizontal.
+function MetricChip({metricKey,label,enabled,index,onToggle,onCommitMove,dragState,setDragState,chipRefs,chipRef,T}){
+  const startPos=useRef(null);
+  const draggingRef=useRef(false);
+  const DRAG_THRESHOLD=6;
+  const isDragging=enabled&&dragState.dragIndex===index;
+  const isOver=enabled&&dragState.overIndex===index&&dragState.dragIndex!==null&&dragState.dragIndex!==index;
   const onPointerDown=e=>{
-    setDragState({dragIndex:index,overIndex:index});
+    if(!enabled)return;
+    startPos.current={x:e.clientX};
+    draggingRef.current=false;
     try{e.currentTarget.setPointerCapture(e.pointerId);}catch(err){}
   };
-  const onPointerMoveHandle=e=>{
-    setDragState(cur=>{
-      if(cur.dragIndex===null)return cur;
-      const rows=rowRefs.current;
-      let next=cur.overIndex;
-      for(let idx=0;idx<rows.length;idx++){
-        const el=rows[idx];if(!el)continue;
-        const r=el.getBoundingClientRect();
-        if(e.clientY>=r.top&&e.clientY<=r.bottom){next=idx;break;}
-      }
-      return{...cur,overIndex:next};
-    });
-  };
-  const onPointerUpHandle=()=>{
-    // Bug fix: calling onCommitMove (which eventually updates ANOTHER
-    // component's state, several levels up) from inside setDragState's
-    // functional updater triggered React's "Cannot update a component while
-    // rendering a different component" warning — a real issue, not just
-    // noise, since updater functions are meant to be pure. Reading dragState
-    // directly here is safe: it's a fresh prop on every render, and pointerup
-    // is a distinct, later event than whatever pointermove last set it to.
-    if(dragState.dragIndex!==null&&dragState.overIndex!==null&&dragState.dragIndex!==dragState.overIndex){
-      onCommitMove(dragState.dragIndex,dragState.overIndex);
+  const onPointerMoveChip=e=>{
+    if(!enabled||!startPos.current)return;
+    if(!draggingRef.current&&Math.abs(e.clientX-startPos.current.x)>DRAG_THRESHOLD){
+      draggingRef.current=true;
+      setDragState({dragIndex:index,overIndex:index});
     }
+    if(draggingRef.current){
+      const refs=chipRefs.current;
+      let next=index;
+      for(let idx=0;idx<refs.length;idx++){
+        const el=refs[idx];if(!el)continue;
+        const r=el.getBoundingClientRect();
+        if(e.clientX>=r.left&&e.clientX<=r.right){next=idx;break;}
+      }
+      setDragState(cur=>cur.dragIndex===null?cur:{...cur,overIndex:next});
+    }
+  };
+  const onPointerUpChip=()=>{
+    if(!enabled){onToggle(metricKey);return;}
+    if(draggingRef.current){
+      // Read dragState directly rather than via setDragState's functional
+      // updater — calling a side-effecting callback (onCommitMove, which
+      // updates a DIFFERENT component's state) from inside an updater
+      // triggers React's "update during render" warning. See the identical
+      // fix on the vertical list this replaces.
+      if(dragState.dragIndex!==null&&dragState.overIndex!==null&&dragState.dragIndex!==dragState.overIndex){
+        onCommitMove(dragState.dragIndex,dragState.overIndex);
+      }
+    }else{
+      onToggle(metricKey); // no real movement -> treat as a plain tap
+    }
+    startPos.current=null;draggingRef.current=false;
     setDragState({dragIndex:null,overIndex:null});
   };
   return(
-    <div ref={rowRef} style={{display:"flex",alignItems:"center",fontSize:"0.74rem",padding:"3px 2px",
-      borderRadius:6,background:isOver?T.accentBg:"transparent",opacity:isDragging?0.5:1,transition:"background 0.1s"}}>
-      <span onPointerDown={onPointerDown} onPointerMove={onPointerMoveHandle} onPointerUp={onPointerUpHandle} onPointerCancel={onPointerUpHandle}
-        title="Drag to reorder" style={{cursor:"grab",touchAction:"none",padding:"1px 8px 1px 2px",color:T.textMuted,fontSize:"0.85rem",userSelect:"none"}}>⠿</span>
-      <ReorderBtns i={index} total={total} onMove={onNudge} T={T}/>
-      <span style={{color:T.textSub}}>{label}</span>
-    </div>
+    <button ref={chipRef}
+      onPointerDown={onPointerDown} onPointerMove={onPointerMoveChip} onPointerUp={onPointerUpChip} onPointerCancel={onPointerUpChip}
+      style={{padding:"2px 9px",borderRadius:20,fontSize:"0.72rem",border:"1px solid",cursor:enabled?"grab":"pointer",
+        touchAction:enabled?"none":"auto",userSelect:"none",
+        borderColor:enabled?T.accentBtn:T.border,background:isOver?T.accentBtn:enabled?T.accentBg:"transparent",
+        color:enabled?T.accent:T.textMuted,opacity:isDragging?0.5:1,transition:"background 0.1s"}}>{label}</button>
   );
+}
+function MetricToggleRow({metrics,onToggle,onReorder,T}){
+  const[dragState,setDragState]=useState({dragIndex:null,overIndex:null});
+  const chipRefs=useRef([]);
+  const disabledKeys=EXERCISE_METRIC_DEFS.map(d=>d.key).filter(k=>!metrics.includes(k));
+  const displayOrder=[...metrics.map(k=>({key:k,enabled:true})),...disabledKeys.map(k=>({key:k,enabled:false}))];
+  return(<div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:3}}>
+    {displayOrder.map(item=>{
+      const idx=item.enabled?metrics.indexOf(item.key):null;
+      return<MetricChip key={item.key} metricKey={item.key} label={metricDef(item.key).label} enabled={item.enabled}
+        index={idx} onToggle={onToggle} onCommitMove={onReorder} dragState={dragState} setDragState={setDragState}
+        chipRefs={chipRefs} chipRef={item.enabled?(el=>{chipRefs.current[idx]=el;}):undefined} T={T}/>;
+    })}
+  </div>);
 }
 const ReorderBtns=({i,total,onMove,T})=>(<div style={{display:"flex",flexDirection:"column",gap:1,marginRight:4,flexShrink:0}}><button className="ibtn" onClick={()=>onMove(i,-1)} disabled={i===0} style={{padding:"0 3px",fontSize:"0.65rem",opacity:i===0?0.2:1,lineHeight:1.3}}>▲</button><button className="ibtn" onClick={()=>onMove(i,1)} disabled={i===total-1} style={{padding:"0 3px",fontSize:"0.65rem",opacity:i===total-1?0.2:1,lineHeight:1.3}}>▼</button></div>);
 
@@ -3815,21 +3862,6 @@ function EList({items,onRemove,onReorder,icons,onIconUpdate,newItem,setNew,onAdd
   </div>))}
   </div>);
 }
-// One instance per exercise type (via the key given at the call site), so
-// drag state for one exercise's metric list never leaks into another's.
-function MetricOrderList({metrics,onReorder,onNudge,T}){
-  const[dragState,setDragState]=useState({dragIndex:null,overIndex:null});
-  const rowRefs=useRef([]);
-  return(<div style={{marginBottom:5}}>
-    <div style={{fontSize:"0.66rem",color:T.textMuted,marginBottom:2}}>Field order on the entry form (drag ⠿, or use ▲▼):</div>
-    {metrics.map((mk,mi)=>(
-      <DragReorderRow key={mk} index={mi} total={metrics.length} label={metricDef(mk).label}
-        onCommitMove={onReorder} onNudge={onNudge} T={T} dragState={dragState} setDragState={setDragState}
-        rowRefs={rowRefs} rowRef={el=>{rowRefs.current[mi]=el;}}/>
-    ))}
-  </div>);
-}
-
 function ExerciseSetting({types,onChange,entries,onRename,T}){
   const[ei,setEi]=useState(null);const[nn,setNn]=useState("");
   const add=()=>{if(!nn.trim())return;onChange([...types,{name:nn.trim(),subTypes:[],metrics:["time"],note:"",icon:""}]);setNn("");};
@@ -3840,7 +3872,6 @@ function ExerciseSetting({types,onChange,entries,onRename,T}){
   const moveSub=(i,si,dir)=>onChange(types.map((t,x)=>x===i?{...t,subTypes:moveItem(t.subTypes||[],si,dir)}:t));
   const updSubNote=(i,sName,note)=>onChange(types.map((t,x)=>x===i?{...t,subTypes:(t.subTypes||[]).map(v=>subName(v)===sName?{name:sName,note}:v)}:t));
   const togM=(i,m)=>onChange(types.map((t,x)=>{if(x!==i)return t;const h=t.metrics.includes(m);return{...t,metrics:h?t.metrics.filter(v=>v!==m):[...t.metrics,m]};}));
-  const moveMetric=(i,mi,dir)=>onChange(types.map((t,x)=>x!==i?t:{...t,metrics:moveItem(t.metrics,mi,dir)}));
   return(<div><div className="card" style={{marginBottom:7}}><div style={{display:"flex",gap:7}}><input placeholder="New exercise type…" value={nn} onChange={e=>setNn(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button onClick={add} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div><div style={{fontSize:"0.7rem",color:T.textMuted,marginTop:5}}>New types default to time metric. Toggle below to change.</div></div>
   <div style={{display:"flex",gap:5,marginBottom:6,alignItems:"center"}}>
     <span style={{fontSize:"0.72rem",color:T.textMuted}}>Sort:</span>
@@ -3854,18 +3885,15 @@ function ExerciseSetting({types,onChange,entries,onRename,T}){
       <span style={{fontWeight:600,fontSize:"0.85rem",flex:1,marginLeft:5}}>{t.name}</span>
       <div style={{display:"flex",gap:5}}><button className="ibtn" onClick={()=>setEi(ei===i?null:i)}>{ei===i?"✖️":"✏️"}</button><button className="ibtn" style={{color:T.danger}} onClick={()=>rem(i)}>🗑️</button></div>
     </div>
-    {/* Toggle to add/remove a metric. "count" shows as "Floors" here too —
-        purely a label change (see EXERCISE_METRIC_DEFS); the stored key is
-        still "count" so nothing about past data changes. */}
-    <div style={{display:"flex",gap:5,flexWrap:"wrap",marginBottom:3}}>{EXERCISE_METRIC_DEFS.map(({key:m,label})=>(<button key={m} onClick={()=>togM(i,m)} style={{padding:"2px 9px",borderRadius:20,fontSize:"0.72rem",border:"1px solid",cursor:"pointer",borderColor:t.metrics.includes(m)?T.accentBtn:T.border,background:t.metrics.includes(m)?T.accentBg:"transparent",color:t.metrics.includes(m)?T.accent:T.textMuted}}>{label}</button>))}</div>
-
-    {/* N: the ENABLED metrics, reorderable — this order is what the entry
-        form actually renders left-to-right, per the request to control field
-        order per exercise. Drag (⠿) or the ▲▼ buttons both work. */}
-    {t.metrics.length>1&&<MetricOrderList key={t.name} metrics={t.metrics}
+    {/* N: one row now, not two — tap a chip (Distance/Time/Floors/etc.) to
+        toggle it on/off, drag an ENABLED chip left/right to reorder it. This
+        replaced a separate vertical list that used to sit below purely for
+        reordering; "count" still shows as "Floors" (a label change only —
+        the stored key is unchanged, so nothing about past data changes). */}
+    <MetricToggleRow key={t.name} metrics={t.metrics}
+      onToggle={m=>togM(i,m)}
       onReorder={(from,to)=>onChange(types.map((x,j)=>j!==i?x:{...x,metrics:moveToIndex(x.metrics,from,to)}))}
-      onNudge={(idx,dir)=>moveMetric(i,idx,dir)}
-      T={T}/>}
+      T={T}/>
     <input placeholder="Default note (optional, e.g. 30 min brisk)" value={t.note||""} onChange={e=>onChange(types.map((x,j)=>j===i?{...x,note:e.target.value}:x))} style={{width:"100%",fontSize:"0.76rem",padding:"4px 7px",marginBottom:3,color:T.textSub}}/>
     {ei===i&&<div style={{marginTop:7}}>
       <RenameBox current={t.name} hits={countRenameHits(entries,"exercise",null,t.name)} onRename={nn=>onRename&&onRename("exercise",null,t.name,nn)} T={T}/>
