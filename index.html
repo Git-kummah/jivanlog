@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v5.10";
+const APP_VERSION="v5.11";
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -2238,6 +2238,9 @@ function ManagePage({entries,settings,onAddDirect,onUpdate,onDelete,isOnline,T})
   // nothing to clean up — it was never persisted in the first place, and
   // React discards the state automatically when ManagePage unmounts.
   const[pendingDup,setPendingDup]=useState(null);
+  // Which entry the pending duplicate came from, so it can render right next
+  // to it rather than always at the top of the list.
+  const[dupSourceId,setDupSourceId]=useState(null);
   // C6/E1: previously navigation was locked to today whenever isOnline was
   // false. That was never actually necessary — `entries` here is already
   // hydrated from the local mirror (all history, incl. tombstones) regardless
@@ -2248,6 +2251,7 @@ function ManagePage({entries,settings,onAddDirect,onUpdate,onDelete,isOnline,T})
     const newId=genId();
     const ts=new Date(new Date(e.timestamp).getTime()+1000).toISOString();
     setPendingDup({...deepClone(e),id:newId,timestamp:ts,date:e.date});
+    setDupSourceId(e.id);
     setEid(newId);
   };
   const dayE=entries.filter(e=>e.date===effectiveSel).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
@@ -2256,8 +2260,8 @@ function ManagePage({entries,settings,onAddDirect,onUpdate,onDelete,isOnline,T})
   // — otherwise it would silently reappear if the user navigated back,
   // which is more confusing than just discarding it (nothing was ever
   // saved, so there's nothing to lose).
-  const goPrev=()=>{if(idx<allDates.length-1){setSel(allDates[idx+1]);setEid(null);setPendingDup(null);}};
-  const goNext=()=>{if(idx>0){setSel(allDates[idx-1]);setEid(null);setPendingDup(null);}};
+  const goPrev=()=>{if(idx<allDates.length-1){setSel(allDates[idx+1]);setEid(null);setPendingDup(null);setDupSourceId(null);}};
+  const goNext=()=>{if(idx>0){setSel(allDates[idx-1]);setEid(null);setPendingDup(null);setDupSourceId(null);}};
   // N3: swipe to change date. Passive by design — only touchstart/touchend are
   // read, touchmove is never intercepted or preventDefault'd, so normal
   // vertical scrolling of the entry list is completely untouched. The
@@ -2290,7 +2294,7 @@ function ManagePage({entries,settings,onAddDirect,onUpdate,onDelete,isOnline,T})
           background:T.cardBg,color:idx>=allDates.length-1?T.textMuted:T.text,
           fontSize:"1.1rem",cursor:idx>=allDates.length-1?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:idx>=allDates.length-1?0.4:1}}>◀</button>
       <input type="date" aria-label="Select date" value={effectiveSel}
-        onChange={e=>{if(e.target.value){setSel(e.target.value);setEid(null);setPendingDup(null);}}}
+        onChange={e=>{if(e.target.value){setSel(e.target.value);setEid(null);setPendingDup(null);setDupSourceId(null);}}}
         style={{flex:1,padding:"8px 10px",borderRadius:8,border:`2px solid ${T.accent}`,
           background:T.cardBg,color:T.text,fontWeight:600,fontSize:"0.92rem",
           fontFamily:"inherit",textAlign:"center",colorScheme:T.isDark?"dark":"light"}}/>
@@ -2299,20 +2303,36 @@ function ManagePage({entries,settings,onAddDirect,onUpdate,onDelete,isOnline,T})
           background:T.cardBg,color:idx<=0?T.textMuted:T.text,
           fontSize:"1.1rem",cursor:idx<=0?"not-allowed":"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:idx<=0?0.4:1}}>▶</button>
     </div>
-    {/* B7: the pending duplicate isn't in `entries` yet (nothing was written),
-        so it renders separately from dayE, only while it's genuinely still
-        being drafted for this date. Save is the FIRST and only time
-        onAddDirect is called — Cancel just clears local state, nothing to
-        delete since nothing was ever saved. */}
-    {pendingDup&&pendingDup.date===effectiveSel&&
-      <EditEntry key={pendingDup.id} entry={pendingDup} settings={settings} T={T} label="📋 Duplicating"
-        onSave={d=>{onAddDirect({...pendingDup,...d});setPendingDup(null);setEid(null);}}
-        onCancel={()=>{setPendingDup(null);setEid(null);}}/>}
-    {dayE.length===0&&!pendingDup
-      ?<div style={{color:T.textMuted,fontSize:"0.82rem",textAlign:"center",padding:22}}>No entries for this date</div>
-      :dayE.map(e=>eid===e.id
-        ?<EditEntry key={e.id} entry={e} settings={settings} T={T} label="✏️ Editing" onSave={d=>{onUpdate(e.id,d);setEid(null);}} onCancel={()=>setEid(null)}/>
-        :<ManageRow key={e.id} e={e} settings={settings} T={T} onEdit={()=>setEid(e.id)} onDuplicate={()=>handleDuplicate(e)} onDelete={()=>{if(confirm("Delete this entry?"))onDelete(e.id);}}/>)}
+    {(() => {
+      // Renders the pending-duplicate EditEntry block. Save is the FIRST and
+      // only time onAddDirect is called — Cancel just clears local state,
+      // nothing to delete since nothing was ever saved (see B7).
+      const renderPendingDup=()=>(
+        <EditEntry key={pendingDup.id} entry={pendingDup} settings={settings} T={T} label="📋 Duplicating"
+          onSave={d=>{onAddDirect({...pendingDup,...d});setPendingDup(null);setDupSourceId(null);setEid(null);}}
+          onCancel={()=>{setPendingDup(null);setDupSourceId(null);setEid(null);}}/>
+      );
+      const showPending=pendingDup&&pendingDup.date===effectiveSel;
+      const sourceStillVisible=showPending&&dayE.some(x=>x.id===dupSourceId);
+      if(dayE.length===0&&!showPending)
+        return<div style={{color:T.textMuted,fontSize:"0.82rem",textAlign:"center",padding:22}}>No entries for this date</div>;
+      return(<>
+        {dayE.map(e=>(
+          <React.Fragment key={e.id}>
+            {eid===e.id
+              ?<EditEntry entry={e} settings={settings} T={T} label="✏️ Editing" onSave={d=>{onUpdate(e.id,d);setEid(null);}} onCancel={()=>setEid(null)}/>
+              :<ManageRow e={e} settings={settings} T={T} onEdit={()=>setEid(e.id)} onDuplicate={()=>handleDuplicate(e)} onDelete={()=>{if(confirm("Delete this entry?"))onDelete(e.id);}}/>}
+            {/* Sits right after the entry it was duplicated from, not always
+                at the top of the list — was the reported cosmetic issue. */}
+            {showPending&&dupSourceId===e.id&&renderPendingDup()}
+          </React.Fragment>
+        ))}
+        {/* Fallback: if the source entry is no longer in dayE for some reason
+            (e.g. deleted while its duplicate was still being drafted), still
+            show the draft rather than silently losing it from view. */}
+        {showPending&&!sourceStillVisible&&renderPendingDup()}
+      </>);
+    })()}
   </div>);
 }
 
