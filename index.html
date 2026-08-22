@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v5.11";
+const APP_VERSION="v5.12";
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -1032,6 +1032,29 @@ function App(){
     return()=>{unsub();if(t)clearTimeout(t);};
   },[]);
 
+  // N: isOnline confirms a genuinely live Firebase connection (.info/connected,
+  // with its own v4.70 watchdog against staleness) — a stronger, more direct
+  // signal than waiting on onAuthStateChanged's listener, which was observed
+  // to sometimes lag well behind actual connectivity for reasons not fully
+  // understood (possibly IndexedDB read latency in this PWA's persistence
+  // layer). Two real symptoms traced to this: the "you're offline" banner
+  // showing while genuinely connected, AND the offline queue staying stuck —
+  // a live SOCKET (.info/connected) is not the same as a live AUTH TOKEN, and
+  // Firebase's security rules need the latter to accept a write. So rather
+  // than only waiting passively for the listener, actively check
+  // fbAuth.currentUser (synchronously available the moment Firebase Auth has
+  // internally resolved, even if the listener callback itself hasn't
+  // separately fired yet) once we have independent proof we're online.
+  useEffect(()=>{
+    if(!isOnline||!offlineAuth)return;
+    const cur=fbAuth.currentUser;
+    if(cur){
+      setOfflineAuth(false);
+      saveCachedAuthUser(cur);
+      setUser(cur);
+    }
+  },[isOnline,offlineAuth]);
+
   // ── Resolve access state ──────────────────────────────────────────────────
   // Superadmin bypasses entirely (hardcoded, never depends on a DB read).
   // Offline sessions bypass too — they're already using previously-cached
@@ -1846,7 +1869,13 @@ function App(){
         </span>
         <button onClick={()=>setStorageWarn(null)} style={{background:"none",border:"none",color:T.danger,cursor:"pointer",fontSize:"0.9rem",padding:0,lineHeight:1,flexShrink:0}}>×</button>
       </div>}
-      {offlineAuth&&<div style={{display:"flex",alignItems:"center",gap:7,padding:"6px 13px",background:T.accentBg,borderBottom:`1px solid ${T.border}`,fontSize:"0.72rem",color:T.accent,flexShrink:0}}>📵 Offline mode — you're signed in from saved data. New entries are stored on this device and will sync automatically when you're back online.</div>}
+      {/* N: offlineAuth alone means "still running on cached identity, auth
+          listener hasn't confirmed yet" — not the same as actually being
+          offline. isOnline is the stronger, directly-verified signal (see the
+          catch-up effect above), so the banner only shows when BOTH agree
+          there's no real connection, avoiding a misleading "you're offline"
+          message while genuinely connected. */}
+      {offlineAuth&&!isOnline&&<div style={{display:"flex",alignItems:"center",gap:7,padding:"6px 13px",background:T.accentBg,borderBottom:`1px solid ${T.border}`,fontSize:"0.72rem",color:T.accent,flexShrink:0}}>📵 Offline mode — you're signed in from saved data. New entries are stored on this device and will sync automatically when you're back online.</div>}
 
       <div style={{flex:1,overflowY:"auto",padding:"12px 13px"}} onClick={()=>showUserMenu&&setShowUserMenu(false)}>
         {page==="home"    &&<HomePage entries={entries} settings={settings} onAdd={addEntry} onUpdate={updateEntry} onDelete={deleteEntry} entryTime={entryTime} setEntryTime={setEntryTime} isOnline={isOnline} T={T}/>}
