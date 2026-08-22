@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v5.12";
+const APP_VERSION="v5.13";
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -723,6 +723,28 @@ const EXERCISE_METRIC_DEFS=[
 ];
 const metricDef=key=>EXERCISE_METRIC_DEFS.find(m=>m.key===key)||{key,field:key,label:key,placeholder:key,kind:"decimal",width:56};
 
+// N: Firebase Realtime Database does not persist empty arrays or objects —
+// writing metrics:[] gets silently DROPPED from what's actually stored, so
+// on the next load the key is simply ABSENT. That's indistinguishable from
+// "never configured", which incorrectly falls back to the factory default —
+// this is exactly why LogJam kept reverting to ["time"] even after being
+// explicitly emptied: the empty array never actually survived the save.
+//
+// A sentinel fixes it: an intentionally-empty metrics list is stored as
+// [METRICS_EMPTY_SENTINEL] — a real, NON-empty array, which Firebase keeps
+// normally — rather than []. normalizeMetrics decodes it back to [] for
+// every reader; encodeMetrics re-applies the sentinel only when a write
+// would otherwise produce a genuinely empty array.
+const METRICS_EMPTY_SENTINEL="__none__";
+// Returns: null if metrics is genuinely unset (caller should fall back to
+// factory defaults), or the real effective array otherwise (possibly []).
+const normalizeMetrics=raw=>{
+  if(!Array.isArray(raw))return null;
+  if(raw.length===1&&raw[0]===METRICS_EMPTY_SENTINEL)return[];
+  return raw;
+};
+const encodeMetrics=arr=>(arr&&arr.length?arr:[METRICS_EMPTY_SENTINEL]);
+
 // A bare number with no colon is a legacy value ("15" = 15 minutes, the only
 // format ever stored before this change) — display it plainly rather than
 // forcing it through mm:ss, but EDITING it upgrades it to mm:ss on next save.
@@ -751,7 +773,7 @@ function exerciseMetricParts(e,exerciseTypesConfig){
   // metric since disabled for this exercise), is still shown — appended in
   // catalog order — so a later config change can never hide logged data.
   const cfgEx=(exerciseTypesConfig||[]).find(x=>x.name===e.exType);
-  const configuredOrder=Array.isArray(cfgEx?.metrics)?cfgEx.metrics:[];
+  const configuredOrder=normalizeMetrics(cfgEx?.metrics)||[];
   const remainingKeys=EXERCISE_METRIC_DEFS.map(d=>d.key).filter(k=>!configuredOrder.includes(k));
   const orderKeys=[...configuredOrder,...remainingKeys];
   return orderKeys
@@ -2106,15 +2128,13 @@ function ExerciseEntry({settings,entries,onAdd,entryTime,setEntryTime,refreshTim
   // For metrics: FD is the ground truth for known types
   const fdEx=FD.exerciseTypes?.find(e=>e.name===et);
   const storedMetrics=etObj?.metrics;
-  // Bug fix: an intentionally EMPTY metrics array (LogJam-style — "just log
-  // the timestamp, no numeric fields") was being treated the same as
-  // malformed/missing data, silently falling back to the factory metrics for
-  // that exercise name. `.length` is falsy for [], so the old check
-  // (`storedMetrics.length && ...`) rejected a deliberately empty array.
-  const validMetrics=Array.isArray(storedMetrics)&&(storedMetrics.length===0||typeof storedMetrics[0]==="string");
-  // The array's OWN order is the display order — reorderable in Settings, no
-  // separate "order" field needed since arrays are already ordered.
-  const etMetrics=validMetrics?storedMetrics:fdEx?.metrics||["time"];
+  // Was previously a manual "is this a valid array" check that couldn't tell
+  // an intentionally-empty list (LogJam) apart from data Firebase had
+  // silently dropped the empty array from — see normalizeMetrics for the
+  // real fix. null means genuinely unconfigured (fall back to factory
+  // defaults); an array (possibly []) means the user's own choice stands.
+  const decodedMetrics=normalizeMetrics(storedMetrics);
+  const etMetrics=decodedMetrics!==null?decodedMetrics:(fdEx?.metrics||["time"]);
   const hasSub=etObj?.subTypes?.length>0;
   const exSubCounts=useMemo(()=>usageCounts(entries,e=>e.type==="exercise"&&e.exType===et,e=>e.subType),[entries,et]);
   const rankedExSubs=hasSub?byUsage(subNames(etObj.subTypes),exSubCounts,s=>s):[];
@@ -2388,7 +2408,7 @@ function EditEntry({entry,settings,onSave,onCancel,onDelete,label,T}){
   const medIcons=settings.medicationIcons||{};
   const eo=(settings.exerciseTypes||FD.exerciseTypes).find(e=>e.name===d.exType);
   const _fdEo=FD.exerciseTypes?.find(e=>e.name===d.exType);
-  const _eoM=Array.isArray(eo?.metrics)&&(eo.metrics.length===0||typeof eo.metrics[0]==="string")?eo.metrics:_fdEo?.metrics||["time"];
+  const _eoM=(()=>{const d=normalizeMetrics(eo?.metrics);return d!==null?d:(_fdEo?.metrics||["time"]);})();
   const doSave=()=>onSave({...d,date:editDate,timestamp:timestampForLogicalDate(editDate,editTime).toISOString()});
   return(
     <div className="card" style={{border:`1px solid ${T.accentBtn}55`,marginBottom:8}}>
@@ -3965,7 +3985,7 @@ function ExerciseSetting({types,onChange,entries,onRename,T}){
   const remSub=(i,s)=>onChange(types.map((t,x)=>x===i?{...t,subTypes:(t.subTypes||[]).filter(v=>subName(v)!==s)}:t));
   const moveSub=(i,si,dir)=>onChange(types.map((t,x)=>x===i?{...t,subTypes:moveItem(t.subTypes||[],si,dir)}:t));
   const updSubNote=(i,sName,note)=>onChange(types.map((t,x)=>x===i?{...t,subTypes:(t.subTypes||[]).map(v=>subName(v)===sName?{name:sName,note}:v)}:t));
-  const togM=(i,m)=>onChange(types.map((t,x)=>{if(x!==i)return t;const h=t.metrics.includes(m);return{...t,metrics:h?t.metrics.filter(v=>v!==m):[...t.metrics,m]};}));
+  const togM=(i,m)=>onChange(types.map((t,x)=>{if(x!==i)return t;const cur=normalizeMetrics(t.metrics)||[];const h=cur.includes(m);const next=h?cur.filter(v=>v!==m):[...cur,m];return{...t,metrics:encodeMetrics(next)};}));
   return(<div><div className="card" style={{marginBottom:7}}><div style={{display:"flex",gap:7}}><input placeholder="New exercise type…" value={nn} onChange={e=>setNn(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button onClick={add} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div><div style={{fontSize:"0.7rem",color:T.textMuted,marginTop:5}}>New types default to time metric. Toggle below to change.</div></div>
   <div style={{display:"flex",gap:5,marginBottom:6,alignItems:"center"}}>
     <span style={{fontSize:"0.72rem",color:T.textMuted}}>Sort:</span>
@@ -3984,9 +4004,9 @@ function ExerciseSetting({types,onChange,entries,onRename,T}){
         replaced a separate vertical list that used to sit below purely for
         reordering; "count" still shows as "Floors" (a label change only —
         the stored key is unchanged, so nothing about past data changes). */}
-    <MetricToggleRow key={t.name} metrics={t.metrics}
+    <MetricToggleRow key={t.name} metrics={normalizeMetrics(t.metrics)||[]}
       onToggle={m=>togM(i,m)}
-      onReorder={(from,to)=>onChange(types.map((x,j)=>j!==i?x:{...x,metrics:moveToIndex(x.metrics,from,to)}))}
+      onReorder={(from,to)=>onChange(types.map((x,j)=>j!==i?x:{...x,metrics:encodeMetrics(moveToIndex(normalizeMetrics(x.metrics)||[],from,to))}))}
       T={T}/>
     <input placeholder="Default note (optional, e.g. 30 min brisk)" value={t.note||""} onChange={e=>onChange(types.map((x,j)=>j===i?{...x,note:e.target.value}:x))} style={{width:"100%",fontSize:"0.76rem",padding:"4px 7px",marginBottom:3,color:T.textSub}}/>
     {ei===i&&<div style={{marginTop:7}}>
