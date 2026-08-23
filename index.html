@@ -45,7 +45,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v5.13";
+const APP_VERSION="v5.14";
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -745,6 +745,35 @@ const normalizeMetrics=raw=>{
 };
 const encodeMetrics=arr=>(arr&&arr.length?arr:[METRICS_EMPTY_SENTINEL]);
 
+// N: same root cause, different fields — "Clear [section]" writes a literal
+// empty foodCategories:[]/liquidNotes:{}/etc via the same whole-settings
+// .set() call, so it hits the identical Firebase quirk: an intentionally
+// cleared list silently reverts to the factory defaults on next load,
+// instead of staying empty. Deliberately a SEPARATE, more general pair from
+// the metrics-specific one above — metrics already shipped and is confirmed
+// working; this covers every other clearable config list/map without
+// touching that code path. Decoding happens once, at settings LOAD time
+// (see norm() below) — everything downstream just sees a real [] or {},
+// so none of the many scattered `settings.xxx||FD.xxx` reads need to change.
+const EMPTY_SENTINEL_KEY="__empty__";
+const encodeEmptyList=arr=>(arr&&arr.length?arr:[EMPTY_SENTINEL_KEY]);
+const decodeEmptyList=arr=>(Array.isArray(arr)&&arr.length===1&&arr[0]===EMPTY_SENTINEL_KEY)?[]:arr;
+const encodeEmptyMap=obj=>(obj&&Object.keys(obj).length?obj:{[EMPTY_SENTINEL_KEY]:true});
+const decodeEmptyMap=obj=>(obj&&typeof obj==="object"&&!Array.isArray(obj)&&Object.keys(obj).length===1&&obj[EMPTY_SENTINEL_KEY]===true)?{}:obj;
+// Applies the encode step to every field capable of being cleared to empty —
+// one place to update if a new clearable config field is ever added, rather
+// than three separate call sites drifting out of sync.
+const encodeSettingsForFirebase=obj=>{
+  const out={...obj};
+  ["foodCategories","liquidTypes","exerciseTypes","medicalPresets","medications"].forEach(k=>{
+    if(out[k]!==undefined)out[k]=encodeEmptyList(out[k]);
+  });
+  ["liquidNotes","liquidSubTypes"].forEach(k=>{
+    if(out[k]!==undefined)out[k]=encodeEmptyMap(out[k]);
+  });
+  return out;
+};
+
 // A bare number with no colon is a legacy value ("15" = 15 minutes, the only
 // format ever stored before this change) — display it plainly rather than
 // forcing it through mm:ss, but EDITING it upgrades it to mm:ss on next save.
@@ -1282,6 +1311,16 @@ function App(){
         // Helper: normalise a settings/defaults object
           const norm=o=>{
             if(!o)return o;
+            // Decode empty-list/empty-map sentinels FIRST, before any of the
+            // per-item logic below runs — otherwise the sentinel marker
+            // string would get processed as if it were a real item name
+            // (e.g. a food literally called "__empty__").
+            ["foodCategories","liquidTypes","exerciseTypes","medicalPresets","medications"].forEach(k=>{
+              if(o[k]!==undefined)o[k]=decodeEmptyList(o[k]);
+            });
+            ["liquidNotes","liquidSubTypes"].forEach(k=>{
+              if(o[k]!==undefined)o[k]=decodeEmptyMap(o[k]);
+            });
             // N1a: sub-type lists may be strings or {name,note}, and Firebase
             // can hand an array back as an object ({0:..,1:..}) when keys look
             // numeric — coerce both shapes here so every downstream reader gets
@@ -1663,7 +1702,7 @@ function App(){
     tombstoneAll();
     if(user){try{
       const emptyCfg={foodCategories:[],liquidTypes:[],liquidNotes:{},liquidSubTypes:{},exerciseTypes:[],medicalPresets:[],medications:[]};
-      await Promise.all([dbSet(user.uid,"settings",emptyCfg),dbSet(user.uid,CONFIG_MODEL_KEY,CONFIG_MODEL_V2),dbSet(user.uid,"theme","system")]);
+      await Promise.all([dbSet(user.uid,"settings",encodeSettingsForFirebase(emptyCfg)),dbSet(user.uid,CONFIG_MODEL_KEY,CONFIG_MODEL_V2),dbSet(user.uid,"theme","system")]);
       const empty={foodCategories:[],liquidTypes:[],liquidNotes:{},liquidSubTypes:{},exerciseTypes:[],medicalPresets:[],medications:[]};
       setSettings({...empty});setTheme("system");setDayRolloverMinR(90);setDayRolloverCache(90);
     }catch(e){console.error(e);}}
@@ -1684,8 +1723,14 @@ function App(){
     };
     const patch=emptyMap[section]||{};
     const newSet={...settings,...patch};
-    setSettings(newSet);
-    if(user){try{await Promise.all([dbSet(user.uid,"settings",newSet),dbSet(user.uid,CONFIG_MODEL_KEY,CONFIG_MODEL_V2)]);}catch(e){}}
+    setSettings(newSet); // real empty values in memory — correct immediate UI
+    if(user){try{
+      // Encode ONLY for the Firebase write — see encodeSettingsForFirebase.
+      // Without this, .set() silently drops any now-empty field entirely,
+      // and the next load falls back to factory defaults instead of
+      // staying cleared.
+      await Promise.all([dbSet(user.uid,"settings",encodeSettingsForFirebase(newSet)),dbSet(user.uid,CONFIG_MODEL_KEY,CONFIG_MODEL_V2)]);
+    }catch(e){}}
   },[settings,user]);
 
   // ── N6: rename a config item and cascade it across all history ────────────
@@ -1774,7 +1819,9 @@ function App(){
   const onImportConfig=useCallback(async cfg=>{
     const newSet={...settings,...cfg};
     setSettings(newSet);
-    if(user){try{await Promise.all([dbSet(user.uid,"settings",newSet),dbSet(user.uid,CONFIG_MODEL_KEY,CONFIG_MODEL_V2)]);}catch(e){}}
+    if(user){try{
+      await Promise.all([dbSet(user.uid,"settings",encodeSettingsForFirebase(newSet)),dbSet(user.uid,CONFIG_MODEL_KEY,CONFIG_MODEL_V2)]);
+    }catch(e){}}
     alert("✓ Config imported successfully.");
   },[settings,user]);
 
