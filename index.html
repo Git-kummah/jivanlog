@@ -17,19 +17,37 @@
        what would actually remove this need). Even with those, this still
        blocks loading a script from any THIRD origin, restricts where the app
        can send network requests (connect-src), and closes off several other
-       attack classes (object-src, base-uri, frame-ancestors) — meaningful
-       defense in depth, just not a complete XSS barrier on its own.
+       attack classes (object-src, base-uri) — meaningful defense in depth,
+       just not a complete XSS barrier on its own.
 
        apis.google.com / accounts.google.com: the FIRST deployed version of
        this policy omitted these and broke Google sign-in entirely
        (auth/internal-error) — signInWithPopup loads a helper script from
-       apis.google.com and opens its popup at accounts.google.com; Firebase's
-       own docs list apis.google.com as required for exactly this flow
-       (https://firebase.google.com/docs/auth/web/chrome-extension). Caught
-       via a real device report, not something a sandboxed test could have
-       exercised — there's no way to drive an actual Google OAuth popup
-       outside a real browser. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://cdnjs.cloudflare.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebasedatabase.app wss://*.firebasedatabase.app https://*.firebaseapp.com https://apis.google.com; frame-src https://*.firebaseapp.com https://accounts.google.com https://apis.google.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self';"/>
+       apis.google.com and opens its popup at accounts.google.com.
+
+       www.google.com (script-src/connect-src/frame-src): the SECOND deployed
+       version still broke — App Check's ReCaptchaV3Provider loads
+       https://www.google.com/recaptcha/api.js, which was never allowed, so
+       App Check could never get a token and RTDB (App Check-enforced)
+       rejected everything, including plain data loads — this is what looked
+       like "the app isn't updating." Sourced from Google's own official
+       reCAPTCHA FAQ (developers.google.com/recaptcha/docs/faq), which lists
+       script-src/frame-src/connect-src all needing www.google.com — cross-
+       checked against several independent integration guides that all state
+       the same three directives, not just one source. reCAPTCHA v3 has no
+       visible challenge UI, but still uses an invisible iframe internally,
+       hence frame-src needs it too, not just script-src.
+
+       frame-ancestors removed: Chrome logs (correctly) that it's ignored
+       entirely when delivered via <meta> — it only works as a real HTTP
+       header, which GitHub Pages can't send. Keeping it was dead weight
+       that implied protection this policy was never actually providing.
+
+       None of this — either break — was something a sandboxed test could
+       have caught. There's no way to drive an actual Google OAuth popup or
+       a real reCAPTCHA token exchange outside a real browser against the
+       real Firebase project. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://cdnjs.cloudflare.com https://apis.google.com https://www.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebasedatabase.app wss://*.firebasedatabase.app https://*.firebaseapp.com https://apis.google.com https://www.google.com https://www.gstatic.com https://cdnjs.cloudflare.com; frame-src https://*.firebaseapp.com https://accounts.google.com https://apis.google.com https://www.google.com https://recaptcha.google.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self';"/>
   <link rel="manifest" href="manifest.json"/>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" integrity="sha384-AQ3POAMqIhwS81FrUH95ekxqBZHeP5tG2JfEL3+7GuTtfRLWnrRh32UxwzM+//A9" crossorigin="anonymous"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" integrity="sha384-TnlRYaR4JYz/lpaGuaiU61PjNberSA4vjLjtF+oRC/IkohkJqnWxw5EmDSOt1vA1" crossorigin="anonymous"></script>
@@ -66,7 +84,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v5.16";
+const APP_VERSION="v5.17";
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
