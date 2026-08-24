@@ -84,7 +84,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v5.17";
+const APP_VERSION="v5.20";
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -112,7 +112,6 @@ const deepClone=o=>JSON.parse(JSON.stringify(o));
 const FOOD_UNITS=["g","ml","Tsp","Tbsp","count"];
 const MED_TIMES=["Before breakfast","After breakfast","Before lunch","After lunch","Before dinner","After dinner","Bedtime"];
 const MEAL_TYPES=["Breakfast","Lunch","Dinner","Snack"];
-const WATER_TYPES=["Warm Water","Plain Water","Cold Water"];
 
 // ── HELPERS ───────────────────────────────────────────────────────────────────
 const genId   =()=>Date.now().toString(36)+Math.random().toString(36).slice(2);
@@ -350,7 +349,6 @@ const saveOfflineQ =(uid,arr)=>{
   try{localStorage.setItem(`jivanlog-offlineQ-${uid}`,JSON.stringify(arr));return true;}
   catch(e){onStorageProblem("offline-queue",e);return false;}
 };
-const clearOfflineQ=uid=>{try{localStorage.removeItem(`jivanlog-offlineQ-${uid}`);}catch{}};
 // Remove ONLY the specified ids from the queue (entries added meanwhile survive).
 const removeFromQueue=(uid,ids)=>{const set=new Set(ids);const left=getOfflineQ(uid).filter(e=>!set.has(e.id));saveOfflineQ(uid,left);return left;};
 // E3: upsert one item into the offline queue, stamping _queuedAt so the UI can
@@ -660,8 +658,13 @@ function parseAndMergeCSV(csvText,existingEntries){
     for(const ch of lines[i]+","){if(ch==='"'){inQ=!inQ;}else if(ch===","&&!inQ){row.push(cur);cur="";}else cur+=ch;}
     const rawId=cell(row,"ID");const id=rawId||[cell(row,"Date"),cell(row,"Time"),cell(row,"Type"),cell(row,"SubType"),cell(row,"Detail1"),String(i)].join("|").replace(/[\s.#$\[\]/]/g,"_");if(!cell(row,"Date")||!cell(row,"Type"))continue;
     if(rawId&&existingIds.has(id))continue;
-    // Natural key = date+time+type+subtype — used to deduplicate re-imports
-    const nk=[cell(row,"Date"),cell(row,"Time"),cell(row,"Type"),cell(row,"SubType")].join("|");
+    // C4 (still open): ID-less rows have no dedup mechanism on re-import — a
+    // natural key was computed here but never actually used for anything,
+    // going all the way back to the original audit. Re-importing the same
+    // ID-less CSV (e.g. the sugar diary format) will duplicate every row.
+    // Removing the dead computation rather than building the fix into this
+    // cleanup pass — implementing dedup properly deserves its own attention,
+    // not to be rushed in here.
     const dateStr=cell(row,"Date");const timeStr=cell(row,"Time")||"00:00";
     const type=cell(row,"Type").toLowerCase();
     const subType=cell(row,"SubType");const d1=cell(row,"Detail1")||cell(row,"T");const d2=cell(row,"Detail2");const d3=cell(row,"Detail3");const unit=cell(row,"Unit");const notes=cell(row,"Notes");
@@ -687,7 +690,14 @@ function parseAndMergeCSV(csvText,existingEntries){
 
 // ── DOWNLOAD ──────────────────────────────────────────────────────────────────
 function downloadCSV(csv,filename){
-  try{const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.setAttribute("download",filename);document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},1000);}catch(e){alert("Download failed: "+e.message);}
+  try{const blob=new Blob(["\uFEFF"+csv],{type:"text/csv;charset=utf-8;"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.setAttribute("download",filename);document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},1000);}catch(e){
+    // E15: the one deliberate exception. downloadCSV is a standalone utility
+    // called from dozens of places throughout the app, not a component —
+    // there's no showToast in scope here, and threading it through every
+    // call site for a failure mode this rare (Blob/URL.createObjectURL not
+    // existing) isn't worth the plumbing. Left as alert().
+    alert("Download failed: "+e.message);
+  }
 }
 
 // ── SHARED COMPONENTS ─────────────────────────────────────────────────────────
@@ -1102,8 +1112,20 @@ function App(){
   // moment way back — you had to know to go find it in Settings. This surfaces
   // that safety net right where the delete happened, for a few seconds.
   const[undoToast,setUndoToast]=useState(null); // {id,label}
+  // E15: replaces alert()'s role for every non-destructive message — errors,
+  // success confirmations, validation blocks. confirm() is untouched; that
+  // still gates anything genuinely consequential (admin changes, resets,
+  // permanent wipes, historical rewrites). Single-slot, same pattern as the
+  // undo toast above: a new toast replaces whatever's showing.
+  const[toast,setToast]=useState(null); // {msg,kind:'success'|'error'|'info'}
+  const toastTimerRef=useRef(null);
+  const showToast=useCallback((msg,kind="info")=>{
+    if(toastTimerRef.current)clearTimeout(toastTimerRef.current);
+    setToast({msg,kind});
+    const duration=kind==="error"?7000:4000; // errors get more reading time
+    toastTimerRef.current=setTimeout(()=>setToast(null),duration);
+  },[]);
   const undoTimerRef=useRef(null);
-  const deliberateClearRef=useRef(false);
   const entriesRef=useRef(null);
   // Mirror of (live + tombstoned) entries as last rendered. Lets the Firebase
   // listener answer "do we hold local data?" synchronously, without a storage
@@ -1410,35 +1432,35 @@ function App(){
     try{
       await fbDb.ref(`pendingRequests/${user.uid}`).set({name:user.displayName||"",email:user.email||"",photoURL:user.photoURL||"",message:"",requestedAt:firebase.database.ServerValue.TIMESTAMP});
       setAccessState("pending");
-    }catch(e){alert("Couldn't send request: "+(e.message||e));}
+    }catch(e){showToast("Couldn't send request: "+(e.message||e),"error");}
   },[user]);
   const approveRequest=useCallback(async(uid,profile)=>{
     try{
       await fbDb.ref(`approvedUsers/${uid}`).set({allowed:true,name:profile?.name||"",email:profile?.email||"",photoURL:profile?.photoURL||"",approvedAt:firebase.database.ServerValue.TIMESTAMP,via:"admin"});
       await fbDb.ref(`pendingRequests/${uid}`).remove();
-    }catch(e){alert("Approve failed: "+(e.message||e));}
+    }catch(e){showToast("Approve failed: "+(e.message||e),"error");}
   },[]);
   const denyRequest=useCallback(async uid=>{
     if(!confirm("Deny this access request?\nThey can ask again later."))return;
-    try{await fbDb.ref(`pendingRequests/${uid}`).remove();}catch(e){alert("Deny failed: "+(e.message||e));}
+    try{await fbDb.ref(`pendingRequests/${uid}`).remove();}catch(e){showToast("Deny failed: "+(e.message||e),"error");}
   },[]);
   const promoteToAdmin=useCallback(async(uid,profile)=>{
     if(!confirm(`Make ${profile?.name||profile?.email||uid} an admin?\nThey'll be able to approve new users and manage admins.`))return;
-    try{await fbDb.ref(`admins/${uid}`).set({name:profile?.name||"",email:profile?.email||"",photoURL:profile?.photoURL||"",addedAt:firebase.database.ServerValue.TIMESTAMP,addedBy:user.uid});}catch(e){alert("Failed: "+(e.message||e));}
+    try{await fbDb.ref(`admins/${uid}`).set({name:profile?.name||"",email:profile?.email||"",photoURL:profile?.photoURL||"",addedAt:firebase.database.ServerValue.TIMESTAMP,addedBy:user.uid});}catch(e){showToast("Failed: "+(e.message||e),"error");}
   },[user]);
   const demoteAdmin=useCallback(async uid=>{
-    if(isSuperAdmin(uid)){alert("The superadmin can't be removed.");return;}
+    if(isSuperAdmin(uid)){showToast("The superadmin can't be removed.","error");return;}
     if(!confirm("Remove admin access for this user?"))return;
-    try{await fbDb.ref(`admins/${uid}`).remove();}catch(e){alert("Failed: "+(e.message||e));}
+    try{await fbDb.ref(`admins/${uid}`).remove();}catch(e){showToast("Failed: "+(e.message||e),"error");}
   },[]);
   const addAllowlistEntry=useCallback(async email=>{
     const clean=(email||"").trim().toLowerCase();
-    if(!clean||!clean.includes("@")){alert("Enter a valid email address.");return;}
-    try{await fbDb.ref(`allowlist/${emailKey(clean)}`).set({email:clean,addedAt:firebase.database.ServerValue.TIMESTAMP,addedBy:user.uid});}catch(e){alert("Failed: "+(e.message||e));}
+    if(!clean||!clean.includes("@")){showToast("Enter a valid email address.","error");return;}
+    try{await fbDb.ref(`allowlist/${emailKey(clean)}`).set({email:clean,addedAt:firebase.database.ServerValue.TIMESTAMP,addedBy:user.uid});}catch(e){showToast("Failed: "+(e.message||e),"error");}
   },[user]);
   const removeAllowlistEntry=useCallback(async key=>{
     if(!confirm("Remove this email from the auto-approve list?"))return;
-    try{await fbDb.ref(`allowlist/${key}`).remove();}catch(e){alert("Failed: "+(e.message||e));}
+    try{await fbDb.ref(`allowlist/${key}`).remove();}catch(e){showToast("Failed: "+(e.message||e),"error");}
   },[]);
 
   // Real-time entries listener — READ-ONLY.
@@ -1633,7 +1655,7 @@ function App(){
   // Restore today's entries from the daily backup (backend first, then local).
   // Additive .update() only — never deletes anything currently in /entries.
   const restoreFromBackup=useCallback(async()=>{
-    if(!user||user._offline){alert("Restore needs an internet connection. Please reconnect and try again.");return;}
+    if(!user||user._offline){showToast("Restore needs an internet connection. Please reconnect and try again.","error");return;}
     const uid=user.uid;
     try{
       let snap=await fbDb.ref(`users/${uid}/dailyBackup`).get();
@@ -1642,13 +1664,13 @@ function App(){
       // Prefer whichever snapshot has more entries.
       if(local&&(!bk||(local.entries||[]).length>(bk.entries||[]).length))bk=local;
       const list=bk&&bk.entries?bk.entries:[];
-      if(!list.length){alert("No backup entries found to restore.");return;}
+      if(!list.length){showToast("No backup entries found to restore.","error");return;}
       if(!confirm(`Restore ${list.length} entr${list.length===1?"y":"ies"} from the ${bk.date} backup?\n\nThis re-adds any missing entries. It does not delete anything you already have.`))return;
       const updates={};
       list.forEach(e=>{const k=String(e.id||genId()).replace(/[\s.#$\[\]/]/g,"_");updates[k]={...e,id:k};});
       await fbDb.ref(`users/${uid}/entries`).update(updates);
-      alert("Restore complete. Your entries have been re-added.");
-    }catch(e){console.warn("Restore failed:",e);alert("Restore failed: "+(e.message||e));}
+      showToast("Restore complete. Your entries have been re-added.","success");
+    }catch(e){console.warn("Restore failed:",e);showToast("Restore failed: "+(e.message||e),"error");}
   },[user]);
 
   // Download a lossless full backup (all entries incl. tombstones) as JSON.
@@ -1663,17 +1685,17 @@ function App(){
   // Restore from a full JSON backup — additive .update() preserving ALL fields
   // (including deleted/deletedAt). Never removes anything.
   const importFullBackup=useCallback(async(jsonText)=>{
-    if(!user||user._offline){alert("Importing a backup needs an internet connection.");return;}
+    if(!user||user._offline){showToast("Importing a backup needs an internet connection.","error");return;}
     try{
       const data=JSON.parse(jsonText);
       const list=Array.isArray(data)?data:(data.entries||[]);
-      if(!list.length){alert("No entries found in that backup file.");return;}
+      if(!list.length){showToast("No entries found in that backup file.","error");return;}
       if(!confirm(`Import ${list.length} entries from this backup?\n\nThis re-adds/updates entries by ID. It never deletes anything you already have.`))return;
       const updates={};
       list.forEach(e=>{const k=String(e.id||genId()).replace(/[\s.#$\[\]/]/g,"_");updates[k]={...e,id:k,date:normDate(e.date)};});
       await fbDb.ref(`users/${user.uid}/entries`).update(updates);
-      alert(`✓ Imported ${list.length} entries.`);
-    }catch(e){console.warn("JSON import failed:",e);alert("Import failed: "+(e.message||e));}
+      showToast(`✓ Imported ${list.length} entries.`,"success");
+    }catch(e){console.warn("JSON import failed:",e);showToast("Import failed: "+(e.message||e),"error");}
   },[user]);
 
   // Flush pending offline queue to Firebase (called on reconnect or "Sync Now").
@@ -1713,9 +1735,23 @@ function App(){
   // near-instant) in exchange for one code path instead of three. It's a
   // no-op whenever the queue is empty, which is nearly always, so this
   // costs nothing the rest of the time.
+  //
+  // Extended: a flush attempt is gated on isOnlineRef, but nothing was ever
+  // PERIODICALLY correcting that signal if it got stuck false — only the
+  // browser's online/visibilitychange events could trigger the stale-socket
+  // bounce below, and a session that never backgrounds or visibly drops its
+  // network interface might never fire either one. A queue that stays
+  // non-empty while isOnlineRef reports false is now itself the signal to
+  // bounce the connection, on the same timer, rather than waiting on a
+  // browser event that may never come.
   useEffect(()=>{
     if(!user)return;
-    const id=setInterval(()=>{if(queueSize>0&&isOnlineRef.current)flushOfflineQueue();},20000);
+    const id=setInterval(()=>{
+      if(queueSize>0){
+        if(isOnlineRef.current)flushOfflineQueue();
+        else{try{fbDb.goOffline();fbDb.goOnline();}catch(e){}}
+      }
+    },20000);
     return()=>clearInterval(id);
   },[user,queueSize,flushOfflineQueue]);
 
@@ -1738,32 +1774,11 @@ function App(){
     return()=>{window.removeEventListener("online",nudge);document.removeEventListener("visibilitychange",onVisible);};
   },[]);
 
-  // Persist helpers
-  const persistEntries=useCallback(async arr=>{
-    if(!user)return;
-    const uid=user.uid;
-    // Always write cache first — survives even if Firebase write fails
-    saveTodayCache(uid,arr);
-    setSyncStatus("saving");
-    try{
-      // Use .update() not .set() — writes only these entries, never wipes others.
-      // .set() on the full collection caused silent data loss when the write
-      // promise was killed mid-flight (e.g. by a Chrome extension intercepting
-      // the service worker message channel).
-      const updates=arr.reduce((acc,e)=>{const k=e.id.replace(/[\s.#$\[\]/]/g,"_");acc[k]={...e,id:k};return acc;},{});
-      await fbDb.ref(`users/${uid}/entries`).update(updates);
-      // Do NOT clearOfflineQ here — queue is managed by addEntry/flushOfflineQueue.
-      // Clearing it here would destroy entries queued while this write was in-flight.
-      setSyncStatus("synced");setTimeout(()=>setSyncStatus("idle"),1500);
-    }catch(e){console.warn("persistEntries failed:",e);setSyncStatus("idle");}
-  },[user]);
-
   const persistKey=useCallback(async(key,val)=>{
     if(!user)return;
     try{await dbSet(user.uid,key,val);}catch(e){console.error("Persist:",key,e);}
   },[user]);
 
-  const saveEntries  =useCallback(n=>persistEntries(n),[persistEntries]);
   // Write only the new/changed entries using .update() — more reliable for large imports
   const persistImport=useCallback(async(newEntries)=>{
     if(!user||!newEntries.length)return;
@@ -1774,8 +1789,12 @@ function App(){
         const safeId=e.id.replace(/[.#$\[\]/]/g,"_");
         updates[safeId]={...e,id:safeId};
       });
+      // .update() writes only these entries, never wipes others. .set() on the
+      // full /entries collection caused the original data-loss incident this
+      // whole per-entry-write discipline exists to prevent — the write
+      // promise got killed mid-flight (a Chrome extension intercepting the
+      // service worker message channel) and took every other entry with it.
       await fbDb.ref(`users/${user.uid}/entries`).update(updates);
-      console.log("Import persisted:",newEntries.length,"entries via .update()");
     }catch(e){console.error("persistImport error:",e);throw e;}
   },[user]);
   const saveSettings =useCallback(n=>{setSettings(n);persistKey("settings",n);},[persistKey]);
@@ -1901,13 +1920,6 @@ function App(){
     }
   },[entries,user]);
 
-  const clearAll=useCallback(()=>{
-    if(!confirm("Clear all entries?\n\nEntries are moved to Trash (not destroyed) and can be restored. A backup downloads first.\n\nPress OK to continue."))return;
-    if(!confirm("FINAL CONFIRMATION\n\nPress OK to download backup, then move all entries to Trash."))return;
-    downloadCSV(buildAllCSV([...entries,...deletedEntries]),`jivanlog-backup-${today()}.csv`);
-    tombstoneAll();
-  },[entries,deletedEntries,user,tombstoneAll]);
-
   const onClearAll=useCallback(async()=>{
     downloadCSV(buildAllCSV([...entries,...deletedEntries]),`jivanlog-backup-full-${today()}.csv`);
     // Entries → Trash (reversible). Config is reset (factory-restorable).
@@ -1984,7 +1996,7 @@ function App(){
     const nn=(newName||"").trim();
     if(!nn||nn===oldName)return;
     if(!isOnline){
-      alert("Renaming needs a connection.\n\nIt rewrites past entries, which must not go through the offline queue. Try again once you're back online.");
+      showToast("Renaming needs a connection.\n\nIt rewrites past entries, which must not go through the offline queue. Try again once you're back online.","error");
       return;
     }
     const all=[...entries,...deletedEntries];
@@ -2001,17 +2013,17 @@ function App(){
       const patches=hits.map(e=>({id:e.id,field:RENAME_SPECS[kind].field,to:nn}));
       await applyEntryPatches(patches);
       saveSettings(renameInConfig(settings,kind,parent,oldName,nn));
-      alert(`Renamed to "${nn}".${hits.length?`\n${hits.length} past ${hits.length===1?"entry":"entries"} updated.`:""}`);
+      showToast(`Renamed to "${nn}".${hits.length?`\n${hits.length} past ${hits.length===1?"entry":"entries"} updated.`:""}`,"success");
     }catch(err){
       console.error("Rename failed:",err);
-      alert("Rename failed: "+(err&&err.message||err)+"\n\nNothing was left half-done in your config — re-check the list and try again.");
+      showToast("Rename failed: "+(err&&err.message||err)+"\n\nNothing was left half-done in your config — re-check the list and try again.","error");
     }
   },[isOnline,entries,deletedEntries,settings,saveSettings,applyEntryPatches,exportFullBackup]);
 
   const repairEmojiNames=useCallback(async()=>{
-    if(!isOnline){alert("Repair needs a connection — it rewrites past entries.");return;}
+    if(!isOnline){showToast("Repair needs a connection — it rewrites past entries.","error");return;}
     const plan=findEmojiRepairs([...entries,...deletedEntries],settings);
-    if(!plan.length){alert("Nothing to repair — no entries have an emoji stuck in a stored name.");return;}
+    if(!plan.length){showToast("Nothing to repair — no entries have an emoji stuck in a stored name.","info");return;}
     const sample=[...new Set(plan.map(p=>`${p.from}  →  ${p.to}`))].slice(0,8);
     if(!confirm(
       `Repair ${plan.length} ${plan.length===1?"entry":"entries"}?\n\n`+
@@ -2021,10 +2033,10 @@ function App(){
     try{
       exportFullBackup();
       await applyEntryPatches(plan);
-      alert(`Repaired ${plan.length} ${plan.length===1?"entry":"entries"}.\nThey'll now appear in Reports and Trends.`);
+      showToast(`Repaired ${plan.length} ${plan.length===1?"entry":"entries"}.\nThey'll now appear in Reports and Trends.`,"success");
     }catch(err){
       console.error("Repair failed:",err);
-      alert("Repair failed: "+(err&&err.message||err));
+      showToast("Repair failed: "+(err&&err.message||err),"error");
     }
   },[isOnline,entries,deletedEntries,settings,applyEntryPatches,exportFullBackup]);
 
@@ -2034,13 +2046,13 @@ function App(){
     if(user){try{
       await Promise.all([dbSet(user.uid,"settings",encodeSettingsForFirebase(newSet)),dbSet(user.uid,CONFIG_MODEL_KEY,CONFIG_MODEL_V2)]);
     }catch(e){}}
-    alert("✓ Config imported successfully.");
+    showToast("✓ Config imported successfully.","success");
   },[settings,user]);
 
   const handleImport=useCallback(async csvText=>{
     try{
       const imported=parseAndMergeCSV(csvText,entries);
-      if(!imported.length){alert("No new entries found — all IDs already exist.");return;}
+      if(!imported.length){showToast("No new entries found — all IDs already exist.","info");return;}
       if(!confirm(`Import ${imported.length} new entries?\nDuplicates are skipped.\nPress OK to merge.`))return;
       // Merge imported into existing, new wins over old with same ID
       const existMap=Object.fromEntries(entries.map(e=>[e.id,e]));
@@ -2051,8 +2063,8 @@ function App(){
       if(user){mirrorPut(user.uid,imported);saveTodayCache(user.uid,merged);}
       // Write ONLY the new entries to Firebase using .update() (faster, more reliable)
       await persistImport(imported);
-      alert(`✓ Imported ${imported.length} entries.\nTotal in database: ${merged.length}\nOpen 📋 Manage — use ◀▶ buttons to browse past dates.`);
-    }catch(err){alert("Import failed: "+err.message+"\n\nPlease try again.");console.error("Import error:",err);}
+      showToast(`✓ Imported ${imported.length} entries.\nTotal in database: ${merged.length}\nOpen 📋 Manage — use ◀▶ buttons to browse past dates.`,"success");
+    }catch(err){showToast("Import failed: "+err.message+"\n\nPlease try again.","error");console.error("Import error:",err);}
   },[entries,user,persistImport]);
 
   const signOut=async()=>{
@@ -2157,6 +2169,16 @@ function App(){
         }} style={{flexShrink:0,padding:"5px 12px",borderRadius:7,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:700,fontSize:"0.8rem"}}>Undo</button>
       </div>}
 
+      {toast&&<div role="status" style={{position:"fixed",left:12,right:12,bottom:undoToast?116:64,zIndex:41,display:"flex",alignItems:"flex-start",gap:9,padding:"10px 13px",borderRadius:10,
+        background:T.cardBg,
+        border:`1px solid ${toast.kind==="error"?T.danger:toast.kind==="success"?"#4ade80":T.border}`,
+        boxShadow:"0 4px 18px rgba(0,0,0,0.28)"}}>
+        <span style={{flexShrink:0,fontSize:"0.95rem",lineHeight:1.3}}>{toast.kind==="error"?"⚠️":toast.kind==="success"?"✅":"ℹ️"}</span>
+        <span style={{flex:1,fontSize:"0.82rem",color:T.text,whiteSpace:"pre-line",lineHeight:1.4}}>{toast.msg}</span>
+        <button onClick={()=>{if(toastTimerRef.current)clearTimeout(toastTimerRef.current);setToast(null);}} aria-label="Dismiss"
+          style={{flexShrink:0,background:"none",border:"none",color:T.textMuted,cursor:"pointer",fontSize:"0.95rem",padding:"0 2px",lineHeight:1}}>✕</button>
+      </div>}
+
       <div style={{display:"flex",alignItems:"center",gap:10,padding:"9px 13px 7px",background:T.navBg,borderBottom:`1px solid ${T.border}`,flexShrink:0}}>
         <img src={LOGO_SVG} style={{width:32,height:32,borderRadius:8}} alt="logo"/>
         <div style={{flex:1}}>
@@ -2190,10 +2212,10 @@ function App(){
       {offlineAuth&&!isOnline&&<div style={{display:"flex",alignItems:"center",gap:7,padding:"6px 13px",background:T.accentBg,borderBottom:`1px solid ${T.border}`,fontSize:"0.72rem",color:T.accent,flexShrink:0}}>📵 Offline mode — you're signed in from saved data. New entries are stored on this device and will sync automatically when you're back online.</div>}
 
       <div style={{flex:1,overflowY:"auto",padding:"12px 13px"}} onClick={()=>showUserMenu&&setShowUserMenu(false)}>
-        {page==="home"    &&<HomePage entries={entries} settings={settings} onAdd={addEntry} onUpdate={updateEntry} onDelete={deleteEntry} entryTime={entryTime} setEntryTime={setEntryTime} isOnline={isOnline} T={T}/>}
+        {page==="home"    &&<HomePage entries={entries} settings={settings} onAdd={addEntry} onUpdate={updateEntry} onDelete={deleteEntry} entryTime={entryTime} setEntryTime={setEntryTime} T={T}/>}
         {page==="manage"  &&<ManagePage entries={entries} settings={settings} onAddDirect={addEntryDirect} onUpdate={updateEntry} onDelete={deleteEntry} isOnline={isOnline} T={T}/>}
-        {page==="reports" &&<ReportsPage entries={entries} deletedEntries={deletedEntries} settings={settings} isOnline={isOnline} T={T}/>}
-        {page==="settings"&&<SettingsPage settings={settings} theme={theme} setSettings={saveSettings} setTheme={saveTheme} dayRolloverMin={dayRolloverMin} setDayRolloverMin={saveDayRollover} user={user} entries={entries} deletedEntries={deletedEntries} onRestoreEntry={restoreEntry} onExportJSON={exportFullBackup} onImportJSON={importFullBackup} onImport={handleImport} clearAll={clearAll} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} onRestore={restoreFromBackup} onRename={renameConfigItem} onRepairEmoji={repairEmojiNames} offlineAuth={offlineAuth}
+        {page==="reports" &&<ReportsPage entries={entries} deletedEntries={deletedEntries} settings={settings} isOnline={isOnline} showToast={showToast} T={T}/>}
+        {page==="settings"&&<SettingsPage settings={settings} theme={theme} setSettings={saveSettings} setTheme={saveTheme} dayRolloverMin={dayRolloverMin} setDayRolloverMin={saveDayRollover} user={user} entries={entries} deletedEntries={deletedEntries} onRestoreEntry={restoreEntry} onExportJSON={exportFullBackup} onImportJSON={importFullBackup} onImport={handleImport} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} onRestore={restoreFromBackup} onRename={renameConfigItem} onRepairEmoji={repairEmojiNames} offlineAuth={offlineAuth} showToast={showToast}
           isAdminUser={isAdminUser} pendingRequests={pendingRequests} adminsMap={adminsMap} allowlistMap={allowlistMap} approvedUsersMap={approvedUsersMap}
           onApproveRequest={approveRequest} onDenyRequest={denyRequest} onPromoteAdmin={promoteToAdmin} onDemoteAdmin={demoteAdmin} onAddAllowlist={addAllowlistEntry} onRemoveAllowlist={removeAllowlistEntry}
           T={T}/>}
@@ -2237,7 +2259,7 @@ function App(){
 // ═══════════════════════════════════════════════════════════════════════════════
 // HOME
 // ═══════════════════════════════════════════════════════════════════════════════
-function HomePage({entries,settings,onAdd,onUpdate,onDelete,entryTime,setEntryTime,isOnline,T}){
+function HomePage({entries,settings,onAdd,onUpdate,onDelete,entryTime,setEntryTime,T}){
   const[active,setActive]=useState("meal");
   const todayE=entries.filter(e=>e.date===today()).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
   // N: entry time previously refreshed to "now" only on switching the top-level
@@ -3040,7 +3062,7 @@ function TrendsPanel({entries,settings,T}){
   </div>);
 }
 
-function ReportsPage({entries,deletedEntries,settings,isOnline,T}){
+function ReportsPage({entries,deletedEntries,settings,isOnline,showToast,T}){
   // B1: every hook must run on every render. The offline early-return used to sit
   // ABOVE these useState calls, so flipping isOnline changed the hook count between
   // renders and React unmounted the whole tree ("Rendered fewer hooks than expected").
@@ -3059,7 +3081,6 @@ function ReportsPage({entries,deletedEntries,settings,isOnline,T}){
     s.add(today());
     return Array.from(s).sort().reverse();
   })();
-  const d30=allDates;
   const medPresets=settings.medicalPresets||FD.medicalPresets;
   const medNames=medPresets.map(p=>typeof p==="string"?p:p.name);
   // E7: out-of-range highlighting for Sugar/BP. Deliberately a rough VISUAL cue,
@@ -3147,7 +3168,7 @@ function ReportsPage({entries,deletedEntries,settings,isOnline,T}){
           : "Every logged entry in the range as its own row (like a Data export, but scoped to these dates). Includes Trash."}
       </div>
       <button onClick={()=>{
-        if(rFrom>rTo){alert("The 'from' date must be on or before the 'to' date.");return;}
+        if(rFrom>rTo){showToast("The 'from' date must be on or before the 'to' date.","error");return;}
         const dates=[];for(let d=rFrom;d<=rTo;){dates.push(d);const nd=new Date(d+"T00:00:00");nd.setDate(nd.getDate()+1);d=`${nd.getFullYear()}-${String(nd.getMonth()+1).padStart(2,"0")}-${String(nd.getDate()).padStart(2,"0")}`;}
         if(rMode==="summary"){
           doExport(buildViewCSV(entries,dates,medPresets,settings?.exerciseTypes||FD.exerciseTypes),`jivanlog-summary-${rFrom}_to_${rTo}.csv`);
@@ -3480,7 +3501,7 @@ function LockPinCard({user,T}){
   </div>);
 }
 
-function SettingsPage({settings,theme,setSettings,setTheme,dayRolloverMin,setDayRolloverMin,user,entries,deletedEntries,onRestoreEntry,onExportJSON,onImportJSON,onImport,onImportConfig,onClearEntries,onClearConfig,onClearAll,onRestore,onRename,onRepairEmoji,offlineAuth,isAdminUser,pendingRequests,adminsMap,allowlistMap,approvedUsersMap,onApproveRequest,onDenyRequest,onPromoteAdmin,onDemoteAdmin,onAddAllowlist,onRemoveAllowlist,T}){
+function SettingsPage({settings,theme,setSettings,setTheme,dayRolloverMin,setDayRolloverMin,user,entries,deletedEntries,onRestoreEntry,onExportJSON,onImportJSON,onImport,onImportConfig,onClearEntries,onClearConfig,onClearAll,onRestore,onRename,onRepairEmoji,offlineAuth,showToast,isAdminUser,pendingRequests,adminsMap,allowlistMap,approvedUsersMap,onApproveRequest,onDenyRequest,onPromoteAdmin,onDemoteAdmin,onAddAllowlist,onRemoveAllowlist,T}){
   const[stab,setStab]=useState("general");const[ctab,setCtab]=useState("food");const[newItem,setNewItem]=useState("");
   // C1: `active` was the `defaults` draft node and edits only reached entry
   // forms via Apply ▶. There is no draft any more — edits are the live config,
@@ -3510,7 +3531,7 @@ function SettingsPage({settings,theme,setSettings,setTheme,dayRolloverMin,setDay
       <div className="card"><div className="slabel">🎨 Theme</div><div style={{display:"flex",gap:6}}>{[["dark","🌙 Dark"],["light","☀️ Light"],["system","💻 System"]].map(([m,l])=><button key={m} onClick={()=>setTheme(m)} style={{flex:1,padding:"7px 4px",borderRadius:8,border:"1px solid",fontSize:"0.78rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit",borderColor:theme===m?T.accentBtn:T.border,background:theme===m?T.accentBg:T.cardBg,color:theme===m?T.accent:T.textMuted}}>{l}</button>)}</div></div>
       <div className="card"><div className="slabel">🌙 Day Rollover</div><div style={{fontSize:"0.72rem",color:T.textMuted,marginBottom:8,lineHeight:1.5}}>Entries logged before this time still count toward the previous day — useful on nights you're up late.</div><select value={dayRolloverMin} onChange={e=>setDayRolloverMin(parseInt(e.target.value,10))} style={{width:"100%",padding:"9px 10px",borderRadius:8,border:`1px solid ${T.border}`,background:T.inputBg,color:T.text,fontFamily:"inherit",fontSize:"0.85rem"}}>{[[0,"Midnight (12:00 AM)"],[30,"12:30 AM"],[60,"1:00 AM"],[90,"1:30 AM"],[120,"2:00 AM"],[150,"2:30 AM"],[180,"3:00 AM"],[240,"4:00 AM"]].map(([m,l])=><option key={m} value={m}>{l}</option>)}</select></div>
       <LockPinCard user={user} T={T}/>
-      {isAdminUser&&<AdminPanel pendingRequests={pendingRequests} adminsMap={adminsMap} allowlistMap={allowlistMap} approvedUsersMap={approvedUsersMap} onApproveRequest={onApproveRequest} onDenyRequest={onDenyRequest} onPromoteAdmin={onPromoteAdmin} onDemoteAdmin={onDemoteAdmin} onAddAllowlist={onAddAllowlist} onRemoveAllowlist={onRemoveAllowlist} T={T}/>}
+      {isAdminUser&&<AdminPanel pendingRequests={pendingRequests} adminsMap={adminsMap} allowlistMap={allowlistMap} approvedUsersMap={approvedUsersMap} onApproveRequest={onApproveRequest} onDenyRequest={onDenyRequest} onPromoteAdmin={onPromoteAdmin} onDemoteAdmin={onDemoteAdmin} onAddAllowlist={onAddAllowlist} onRemoveAllowlist={onRemoveAllowlist} showToast={showToast} T={T}/>}
     </>}
 
     {stab==="config"&&<>
@@ -3526,7 +3547,7 @@ function SettingsPage({settings,theme,setSettings,setTheme,dayRolloverMin,setDay
       {ctab==="exercise"&&<ExerciseSetting entries={entries} onRename={onRename} types={active.exerciseTypes||FD.exerciseTypes} onChange={v=>updateActive(p=>({...p,exerciseTypes:v}))} T={T}/>}
       {ctab==="medical"&&<MedicalPresetSetting entries={entries} onRename={onRename} presets={active.medicalPresets||FD.medicalPresets} onAdd={addMedPreset} onRemove={removeMedPreset} onReorder={arr=>updateActive(p=>({...p,medicalPresets:arr}))} onUpdate={arr=>updateActive(p=>({...p,medicalPresets:arr}))} T={T}/>}
       {ctab==="meds"&&<EList entries={entries} onRename={onRename} items={active.medications||FD.medications} onRemove={item=>removeItem("medications",item)} onReorder={arr=>updateActive(p=>({...p,medications:arr}))} icons={active.medicationIcons||{}} onIconUpdate={(name,ic)=>updateActive(p=>({...p,medicationIcons:{...(p.medicationIcons||{}),[name]:ic}}))} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("medications")} T={T}/>}
-      <ConfigTools ctab={ctab} settings={settings} onImportConfig={onImportConfig} onClearConfig={onClearConfig} onFactorySection={sec=>{
+      <ConfigTools ctab={ctab} settings={settings} onImportConfig={onImportConfig} onClearConfig={onClearConfig} showToast={showToast} onFactorySection={sec=>{
         const map={food:["foodCategories"],drinks:["liquidTypes","liquidNotes","liquidSubTypes","liquidIcons"],exercise:["exerciseTypes"],medical:["medicalPresets"],meds:["medications","medicationIcons"]};
         const keys=map[sec]||[];
         const patch={};keys.forEach(k=>{if(FD[k]!==undefined)patch[k]=deepClone(FD[k]);});
@@ -3534,11 +3555,11 @@ function SettingsPage({settings,theme,setSettings,setTheme,dayRolloverMin,setDay
       }} onFactoryAll={()=>updateActive(()=>deepClone(FD))} T={T}/>
     </>}
 
-    {stab==="data"&&<DataPanel entries={entries} deletedEntries={deletedEntries} settings={settings} onRepairEmoji={onRepairEmoji} onImport={onImport} onClearEntries={onClearEntries} onClearAll={onClearAll} onRestoreEntry={onRestoreEntry} onExportJSON={onExportJSON} onImportJSON={onImportJSON} onRestore={onRestore} offlineAuth={offlineAuth} T={T}/>}
+    {stab==="data"&&<DataPanel entries={entries} deletedEntries={deletedEntries} settings={settings} onRepairEmoji={onRepairEmoji} onImport={onImport} onClearEntries={onClearEntries} onClearAll={onClearAll} onRestoreEntry={onRestoreEntry} onExportJSON={onExportJSON} onImportJSON={onImportJSON} onRestore={onRestore} offlineAuth={offlineAuth} user={user} T={T}/>}
   </div>);
 }
 
-function AdminPanel({pendingRequests,adminsMap,allowlistMap,approvedUsersMap,onApproveRequest,onDenyRequest,onPromoteAdmin,onDemoteAdmin,onAddAllowlist,onRemoveAllowlist,T}){
+function AdminPanel({pendingRequests,adminsMap,allowlistMap,approvedUsersMap,onApproveRequest,onDenyRequest,onPromoteAdmin,onDemoteAdmin,onAddAllowlist,onRemoveAllowlist,showToast,T}){
   const[newEmail,setNewEmail]=useState("");
   const pendingList=Object.entries(pendingRequests||{});
   const adminList=Object.entries(adminsMap||{});
@@ -3615,7 +3636,7 @@ function AdminPanel({pendingRequests,adminsMap,allowlistMap,approvedUsersMap,onA
 // N8: config export / import / clear / factory-reset used to live under the
 // Backup tab, separated from the config editing they act on. They now sit
 // directly beneath the list being edited, scoped to the section in view.
-function ConfigTools({ctab,settings,onImportConfig,onClearConfig,onFactorySection,onFactoryAll,T}){
+function ConfigTools({ctab,settings,onImportConfig,onClearConfig,showToast,onFactorySection,onFactoryAll,T}){
   const cfgRef=useRef();
   const[open,setOpen]=useState(false);
   const LABEL={food:"Food",drinks:"Drinks",exercise:"Exercise",medical:"Medical",meds:"Meds"};
@@ -3623,7 +3644,7 @@ function ConfigTools({ctab,settings,onImportConfig,onClearConfig,onFactorySectio
   const handleCfgFile=e=>{
     const f=e.target.files[0];if(!f)return;
     const r=new FileReader();
-    r.onload=ev=>{try{const cfg=importConfigCSV(ev.target.result);onImportConfig(cfg);}catch(err){alert("Config import failed: "+err.message);}};
+    r.onload=ev=>{try{const cfg=importConfigCSV(ev.target.result);onImportConfig(cfg);}catch(err){showToast("Config import failed: "+err.message,"error");}};
     r.readAsText(f);e.target.value="";
   };
   const btn={width:"100%",padding:"8px",borderRadius:8,border:`1px solid ${T.border}`,background:T.inputBg,color:T.text,fontFamily:"inherit",fontWeight:600,fontSize:"0.78rem",cursor:"pointer",marginBottom:6};
@@ -3656,7 +3677,7 @@ function ConfigTools({ctab,settings,onImportConfig,onClearConfig,onFactorySectio
   </div>);
 }
 
-function DataPanel({entries,deletedEntries,settings,onRepairEmoji,onImport,onClearEntries,onClearAll,onRestoreEntry,onExportJSON,onImportJSON,onRestore,offlineAuth,T}){
+function DataPanel({entries,deletedEntries,settings,onRepairEmoji,onImport,onClearEntries,onClearAll,onRestoreEntry,onExportJSON,onImportJSON,onRestore,offlineAuth,user,T}){
   const dataRef=useRef();
   const jsonRef=useRef();
   // N8: the "config" section moved out to ConfigTools, beside the config it
@@ -3666,21 +3687,21 @@ function DataPanel({entries,deletedEntries,settings,onRepairEmoji,onImport,onCle
   const[showClear,setShowClear]=useState(false);
 
   // ── Local daily backup status ────────────────────────────────────────────
+  // O9: this used to read window._jivanUid, a global that was never set
+  // anywhere in the app — the uid always evaluated to "", so the lookup
+  // below just grabbed whichever jivanlog-dailyBackup-* key localStorage
+  // happened to iterate to first. Harmless with one account on a device;
+  // silently wrong (someone else's backup status shown as "yours") on a
+  // shared one. user is already available here as a real prop — using it
+  // directly means looking up the exact key for THIS user, not guessing.
   const[localBk,setLocalBk]=useState(null);
   useEffect(()=>{
+    if(!user?.uid)return;
     try{
-      const uid=entries.length>0?(entries[0]&&window._jivanUid)||"":"";
-      // Read from all possible localStorage keys for this user
-      for(let i=0;i<localStorage.length;i++){
-        const k=localStorage.key(i);
-        if(k&&k.startsWith("jivanlog-dailyBackup-")){
-          const v=JSON.parse(localStorage.getItem(k)||"null");
-          if(v)setLocalBk(v);
-          break;
-        }
-      }
+      const v=JSON.parse(localStorage.getItem(`jivanlog-dailyBackup-${user.uid}`)||"null");
+      if(v)setLocalBk(v);
     }catch(e){}
-  },[]);
+  },[user?.uid]);
 
   const ENTRY_SUBS=[["all","All"],["meal","🍽️ Meals"],["liquid","💧 Drinks"],["exercise","🏃 Exercise"],["medical","🩺 Medical"],["medication","💊 Meds"]];
   const CLEAR_OPTS=[
