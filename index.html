@@ -9,6 +9,17 @@
   <meta name="apple-mobile-web-app-title" content="JivanLog"/>
   <meta name="theme-color" content="#0a1628"/>
   <title>JivanLog</title>
+  <!-- S9: GitHub Pages can't set response headers, so this is the meta-tag
+       form. Two honest caveats, matching the audit finding: script-src needs
+       'unsafe-inline' (the whole app is one inline Babel-type script block,
+       not an external file) and 'unsafe-eval' (Babel compiles JSX to
+       JS and executes it at runtime — see S2/pre-compile in the roadmap for
+       what would actually remove this need). Even with those, this still
+       blocks loading a script from any THIRD origin, restricts where the app
+       can send network requests (connect-src), and closes off several other
+       attack classes (object-src, base-uri, frame-ancestors) — meaningful
+       defense in depth, just not a complete XSS barrier on its own. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebasedatabase.app wss://*.firebasedatabase.app https://*.firebaseapp.com; frame-src https://*.firebaseapp.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self';"/>
   <link rel="manifest" href="manifest.json"/>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" integrity="sha384-AQ3POAMqIhwS81FrUH95ekxqBZHeP5tG2JfEL3+7GuTtfRLWnrRh32UxwzM+//A9" crossorigin="anonymous"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" integrity="sha384-TnlRYaR4JYz/lpaGuaiU61PjNberSA4vjLjtF+oRC/IkohkJqnWxw5EmDSOt1vA1" crossorigin="anonymous"></script>
@@ -45,7 +56,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v5.14";
+const APP_VERSION="v5.15";
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -482,6 +493,54 @@ const getDailyBackupLocal=uid=>{try{return JSON.parse(localStorage.getItem(`jiva
 // ── CACHED AUTH IDENTITY ─ lets the app open offline after one online sign-in ──
 const saveCachedAuthUser=u=>{try{localStorage.setItem("jivanlog-authUser",JSON.stringify({uid:u.uid,displayName:u.displayName,email:u.email,photoURL:u.photoURL}));}catch(e){}};
 const getCachedAuthUser =()=>{try{return JSON.parse(localStorage.getItem("jivanlog-authUser")||"null");}catch{return null;}};
+
+// S6: the lock screen used to be "tap anywhere to unlock" — no real barrier
+// at all — and the locked flag was pure React state, so a refresh while
+// locked booted straight back into the unlocked app. This is the real
+// version: a 4-digit PIN, hashed (never stored in plain text) and salted
+// with the uid so two accounts sharing a device can't collide or leak each
+// other's PIN via a shared hash. SHA-256 via the Web Crypto API — no
+// library needed, available in every browser this app runs in.
+async function hashPin(pin,uid){
+  const enc=new TextEncoder().encode(pin+":"+uid);
+  const buf=await crypto.subtle.digest("SHA-256",enc);
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+const pinHashKey=uid=>`jivanlog-pinHash-${uid}`;
+const lockedFlagKey=uid=>`jivanlog-locked-${uid}`;
+
+// S7: normal sign-out only ever cleared the cached IDENTITY — the offline
+// mirror, queue, daily-backup flags, and settings/today caches all stayed on
+// the device afterward, readable via devtools by anyone with the unlocked
+// phone. This is the thorough alternative: every per-account key, found by
+// PREFIX match since todayCache carries a variable date suffix that can't be
+// computed as one exact key, plus the IndexedDB mirror (a whole database,
+// not a key — needs its own delete call). Deliberately leaves
+// jivanlog-rolloverMin alone: it's a device-level UI preference, not
+// per-account data, and wiping it would just reset a cosmetic setting for
+// whoever signs in next on a shared device.
+const wipeLocalDeviceData=uid=>{
+  const prefixes=[
+    `jivanlog-approved-${uid}`,
+    `jivanlog-dailyBackup-${uid}`,
+    `jivanlog-offlineQ-${uid}`,
+    `jivanlog-settingsCache-${uid}`,
+    `jivanlog-todayCache-${uid}-`,
+    `jivanlog-mirror-${uid}`, // localStorage fallback path when IndexedDB is unavailable
+    `jivanlog-lastBackup-${uid}`,
+    `jivanlog-lastRemoteBackup-${uid}`,
+  ];
+  try{
+    const toRemove=[];
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i);
+      if(k&&prefixes.some(p=>k===p||k.startsWith(p)))toRemove.push(k);
+    }
+    toRemove.forEach(k=>{try{localStorage.removeItem(k);}catch(e){}});
+  }catch(e){}
+  try{localStorage.removeItem("jivanlog-authUser");}catch(e){}
+  try{indexedDB.deleteDatabase(mirrorDbName(uid));}catch(e){}
+};
 const clearCachedAuthUser=()=>{try{localStorage.removeItem("jivanlog-authUser");}catch{}};
 
 const saveTodayCache=(uid,allEntries)=>{
@@ -608,8 +667,89 @@ function Saver({flash,onClick,T,label="Save"}){
   return<button onClick={onClick} style={{flexShrink:0,padding:"7px 14px",fontSize:"0.85rem",borderRadius:8,fontFamily:"inherit",fontWeight:500,cursor:"pointer",border:"none",background:flash?T.ok:T.accentBtn,color:"#fff",minWidth:52,transition:"all 0.15s"}}>{flash?"✔":label}</button>;
 }
 
-function LockScreen({T,onUnlock}){
-  return(<div style={{position:"fixed",inset:0,background:T.lock,zIndex:9999,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:20}}><img src={LOGO_SVG} style={{width:72,height:72,borderRadius:18}} alt="JivanLog"/><div style={{color:T.accent,fontWeight:700,fontSize:"1.4rem",letterSpacing:"0.05em"}}>JivanLog</div><div style={{color:T.textMuted,fontSize:"0.85rem"}}>Session locked</div><button onClick={onUnlock} style={{marginTop:8,padding:"12px 36px",fontSize:"1rem",borderRadius:12,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>🔓 Tap to Unlock</button></div>);
+// Reusable 4-dot progress indicator + numeric keypad, shared by setup,
+// confirm, and unlock modes so they look and behave identically.
+function PinPad({T,onDigit,onBackspace,filled,error,disabled}){
+  return(<>
+    <div style={{display:"flex",gap:14,margin:"4px 0 22px"}}>
+      {[0,1,2,3].map(i=>(
+        <div key={i} style={{width:14,height:14,borderRadius:"50%",
+          border:`2px solid ${error?T.danger:T.accent}`,
+          background:i<filled?(error?T.danger:T.accent):"transparent",
+          transition:"background 0.1s"}}/>
+      ))}
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(3,64px)",gap:12}}>
+      {[1,2,3,4,5,6,7,8,9].map(d=>(
+        <button key={d} disabled={disabled} onClick={()=>onDigit(String(d))}
+          style={{width:64,height:64,borderRadius:"50%",border:`1px solid ${T.border}`,background:T.cardBg,
+            color:T.text,fontSize:"1.3rem",fontFamily:"inherit",cursor:disabled?"default":"pointer"}}>{d}</button>
+      ))}
+      <div/>
+      <button disabled={disabled} onClick={()=>onDigit("0")}
+        style={{width:64,height:64,borderRadius:"50%",border:`1px solid ${T.border}`,background:T.cardBg,
+          color:T.text,fontSize:"1.3rem",fontFamily:"inherit",cursor:disabled?"default":"pointer"}}>0</button>
+      <button disabled={disabled} onClick={onBackspace} aria-label="Backspace"
+        style={{width:64,height:64,borderRadius:"50%",border:"none",background:"transparent",
+          color:T.textMuted,fontSize:"1.2rem",fontFamily:"inherit",cursor:disabled?"default":"pointer"}}>⌫</button>
+    </div>
+  </>);
+}
+
+function LockScreen({T,uid,hasPin,onUnlock,onPinSet,onSignOut}){
+  // Three modes: "setup" (no PIN exists yet — first time locking) walks
+  // through choosing a PIN then confirming it; "unlock" (the normal case)
+  // just asks for the existing PIN.
+  const[mode,setMode]=useState(hasPin?"unlock":"setup");
+  const[pin,setPin]=useState("");
+  const[firstPin,setFirstPin]=useState("");
+  const[error,setError]=useState(false);
+  const[busy,setBusy]=useState(false);
+
+  const shake=()=>{setError(true);setPin("");setTimeout(()=>setError(false),500);};
+
+  const onDigit=d=>{
+    if(busy||pin.length>=4)return;
+    const next=pin+d;
+    setPin(next);
+    if(next.length===4)submit(next);
+  };
+  const onBackspace=()=>{if(!busy)setPin(p=>p.slice(0,-1));};
+
+  const submit=async four=>{
+    setBusy(true);
+    if(mode==="setup"){
+      setFirstPin(four);setPin("");setMode("confirm");setBusy(false);return;
+    }
+    if(mode==="confirm"){
+      if(four!==firstPin){shake();setMode("setup");setFirstPin("");setBusy(false);return;}
+      const hash=await hashPin(four,uid);
+      try{localStorage.setItem(pinHashKey(uid),hash);}catch(e){}
+      onPinSet&&onPinSet();
+      setBusy(false);
+      onUnlock(); // setting the PIN doubles as confirming the lock — no need to immediately re-enter it
+      return;
+    }
+    // mode === "unlock"
+    const hash=await hashPin(four,uid);
+    let stored=null;
+    try{stored=localStorage.getItem(pinHashKey(uid));}catch(e){}
+    setBusy(false);
+    if(hash===stored)onUnlock();
+    else shake();
+  };
+
+  const title=mode==="setup"?"Set a 4-digit PIN":mode==="confirm"?"Confirm your PIN":"Enter PIN to unlock";
+  return(<div style={{position:"fixed",inset:0,background:T.lock,zIndex:9999,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:14}}>
+    <img src={LOGO_SVG} style={{width:56,height:56,borderRadius:14}} alt="JivanLog"/>
+    <div style={{color:T.accent,fontWeight:700,fontSize:"1.1rem",letterSpacing:"0.04em"}}>JivanLog</div>
+    <div style={{color:error?T.danger:T.textMuted,fontSize:"0.85rem",marginBottom:6,minHeight:18}}>
+      {error?"PIN didn't match — try again":title}
+    </div>
+    <PinPad T={T} onDigit={onDigit} onBackspace={onBackspace} filled={pin.length} error={error} disabled={busy}/>
+    {mode==="unlock"&&<button onClick={()=>{if(confirm("Forgot your PIN?\n\nThis signs you out completely — you'll need to sign in with Google again to get back in."))onSignOut();}}
+      style={{marginTop:20,padding:"8px 16px",borderRadius:10,border:`1px solid ${T.border}`,background:"transparent",color:T.textSub,fontSize:"0.78rem",cursor:"pointer",fontFamily:"inherit"}}>Forgot PIN? Sign out</button>}
+  </div>);
 }
 function LoginScreen({error,T}){
   const[loading,setLoading]=useState(false);
@@ -879,6 +1019,15 @@ function App(){
   const[user,setUser]=useState(null);
   const[page,setPage]=useState("home");
   const[locked,setLocked]=useState(false);
+  // S6: `locked` can't read the persisted flag directly in useState's
+  // initializer above — `user` isn't known yet at that point in the
+  // component's own initialization. This runs once user resolves (whether
+  // from the optimistic cache boot or the real onAuthStateChanged callback)
+  // and picks up a lock left active from before a refresh or app restart.
+  useEffect(()=>{
+    if(!user)return;
+    try{if(localStorage.getItem(lockedFlagKey(user.uid))==="1")setLocked(true);}catch(e){}
+  },[user]);
   const[entries,setEntries]=useState([]);
   const[deletedEntries,setDeletedEntries]=useState([]);
   const[settings,setSettings]=useState(deepClone(FD));
@@ -1850,12 +1999,45 @@ function App(){
     await fbAuth.signOut();setEntries([]);setDataLoaded(false);setLocked(false);
   };
 
+  // S7: the thorough alternative — see wipeLocalDeviceData for exactly what
+  // gets removed and why rolloverMin is deliberately left alone. The queue
+  // check matters: entries waiting in the offline queue haven't reached
+  // Firebase yet, so wiping the device before they sync would lose them
+  // permanently, not just locally.
+  const signOutAndWipe=async()=>{
+    const uid=user&&user.uid;
+    if(!uid)return;
+    if(queueSize>0){
+      if(!confirm(`⚠️ ${queueSize} ${queueSize===1?"entry hasn't":"entries haven't"} synced to Firebase yet.\n\nWiping this device now will lose ${queueSize===1?"it":"them"} PERMANENTLY — they only exist locally until they sync.\n\nWipe anyway?`))return;
+    }else{
+      if(!confirm("Sign out and wipe this device?\n\nThis removes all locally cached data — the offline mirror, queue, and caches. Your data stays safe in Firebase; signing in again on this device will re-download everything from scratch.\n\nUse this when handing off or selling the device."))return;
+    }
+    clearCachedAuthUser();
+    setOfflineAuth(false);
+    wipeLocalDeviceData(uid);
+    await fbAuth.signOut();setEntries([]);setDataLoaded(false);setLocked(false);
+  };
+
   if(authState==="checking")return<LoadingScreen message="Checking sign-in…" T={T}/>;
   if(authState==="out")return<LoginScreen error={authError} T={T}/>;
   if(!user._offline&&!isSuperAdmin(user.uid)){
     if(accessState==="checking")return<LoadingScreen message="Checking access…" T={T}/>;
     if(accessState==="pending")return<WaitingScreen user={user} onSignOut={signOut} onSendMessage={sendPendingMessage} T={T}/>;
     if(accessState==="denied")return<WaitingScreen denied user={user} onSignOut={signOut} onRequestAgain={requestAccessAgain} T={T}/>;
+  }
+
+  // S6: was `{locked&&<LockScreen/>}` further down, layered on TOP of the
+  // main content with a z-index — the content was still fully present in the
+  // DOM underneath, inspectable via devtools, and "unlock" was a single tap
+  // with no real barrier. This early return means locked content is
+  // genuinely never rendered at all, and unlocking now requires the actual
+  // PIN (see LockScreen).
+  if(locked){
+    let hasPin=false;
+    try{hasPin=!!localStorage.getItem(pinHashKey(user.uid));}catch(e){}
+    return<LockScreen T={T} uid={user.uid} hasPin={hasPin}
+      onUnlock={()=>{setLocked(false);try{localStorage.removeItem(lockedFlagKey(user.uid));}catch(e){}}}
+      onSignOut={signOut}/>;
   }
 
   // Derive sync display state.
@@ -1903,8 +2085,6 @@ function App(){
         .tpl-row:last-child{border-bottom:none}
         .tpl-chk{width:18px;height:18px;accent-color:${T.accentBtn};flex-shrink:0;cursor:pointer}
       `}</style>
-
-      {locked&&<LockScreen T={T} onUnlock={()=>setLocked(false)}/>}
 
       {undoToast&&<div style={{position:"fixed",left:12,right:12,bottom:64,zIndex:40,display:"flex",alignItems:"center",gap:10,padding:"10px 13px",borderRadius:10,background:T.cardBg,border:`1px solid ${T.border}`,boxShadow:"0 4px 18px rgba(0,0,0,0.28)"}}>
         <span style={{flex:1,fontSize:"0.82rem",color:T.text}}>🗑️ {undoToast.label} deleted</span>
@@ -1977,8 +2157,13 @@ function App(){
               <div style={{fontWeight:600,fontSize:"0.82rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.displayName||"User"}</div>
               <div style={{fontSize:"0.68rem",color:T.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.email}</div>
             </div>
-            <button onClick={()=>{setShowUserMenu(false);if(confirm("Lock JivanLog?\nYour data is saved."))setLocked(true);}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",background:"none",border:"none",borderRadius:8,cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem",color:T.text}}>🔒 Lock session</button>
+            <button onClick={()=>{setShowUserMenu(false);if(confirm("Lock JivanLog?\nYour data is saved.")){try{localStorage.setItem(lockedFlagKey(user.uid),"1");}catch(e){}setLocked(true);}}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",background:"none",border:"none",borderRadius:8,cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem",color:T.text}}>🔒 Lock session</button>
             <button onClick={()=>{setShowUserMenu(false);signOut();}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",background:"none",border:"none",borderRadius:8,cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem",color:T.danger}}>↩ Sign out</button>
+            {/* S7: normal sign-out leaves the offline mirror, queue, and
+                every cache on the device — readable via devtools by anyone
+                holding it afterward. This is the thorough option, for
+                handing off or selling the device. */}
+            <button onClick={()=>{setShowUserMenu(false);signOutAndWipe();}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",background:"none",border:"none",borderRadius:8,cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem",color:T.danger}}>🗑️ Sign out &amp; wipe device</button>
           </div>}
         </div>
       </nav>
@@ -3175,6 +3360,63 @@ function DataSafetyCard({entries,deletedEntries,onRestoreEntry,onExportJSON,onIm
   );
 }
 
+// S6: lets a PIN be set up ahead of time, rather than only at the moment of
+// first locking — and gives a way to change or remove it. Reuses PinPad so
+// this flow is visually and behaviorally identical to the lock screen's own.
+function LockPinCard({user,T}){
+  const[hasPin,setHasPin]=useState(()=>{try{return !!localStorage.getItem(pinHashKey(user.uid));}catch(e){return false;}});
+  const[mode,setMode]=useState(null); // null | "setup" | "confirm"
+  const[pin,setPin]=useState("");
+  const[firstPin,setFirstPin]=useState("");
+  const[error,setError]=useState(false);
+  const[busy,setBusy]=useState(false);
+
+  const startSetup=()=>{setMode("setup");setPin("");setFirstPin("");setError(false);};
+  const cancel=()=>{setMode(null);setPin("");setFirstPin("");setError(false);};
+  const onDigit=d=>{
+    if(busy||pin.length>=4)return;
+    const next=pin+d;
+    setPin(next);
+    if(next.length===4)submit(next);
+  };
+  const onBackspace=()=>{if(!busy)setPin(p=>p.slice(0,-1));};
+
+  const submit=async four=>{
+    setBusy(true);
+    if(mode==="setup"){setFirstPin(four);setPin("");setMode("confirm");setBusy(false);return;}
+    if(four!==firstPin){
+      setError(true);setPin("");setTimeout(()=>setError(false),500);
+      setMode("setup");setFirstPin("");setBusy(false);return;
+    }
+    const hash=await hashPin(four,user.uid);
+    try{localStorage.setItem(pinHashKey(user.uid),hash);}catch(e){}
+    setHasPin(true);setMode(null);setPin("");setFirstPin("");setBusy(false);
+  };
+  const removePin=()=>{
+    if(!confirm("Remove your lock PIN?\n\nLocking the session will ask you to set a new one next time."))return;
+    try{localStorage.removeItem(pinHashKey(user.uid));}catch(e){}
+    setHasPin(false);
+  };
+
+  return(<div className="card">
+    <div className="slabel">🔒 Lock Screen PIN</div>
+    <div style={{fontSize:"0.72rem",color:T.textMuted,marginBottom:8,lineHeight:1.5}}>
+      {hasPin?"A PIN is set — required to unlock a locked session.":"No PIN set yet — Lock session will ask you to set one the first time you use it."}
+    </div>
+    {!mode&&<div style={{display:"flex",gap:6}}>
+      <button onClick={startSetup} style={{flex:1,padding:"7px 4px",borderRadius:8,border:`1px solid ${T.border}`,background:T.cardBg,color:T.text,fontSize:"0.78rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>{hasPin?"Change PIN":"Set PIN now"}</button>
+      {hasPin&&<button onClick={removePin} style={{flex:1,padding:"7px 4px",borderRadius:8,border:`1px solid ${T.danger}`,background:"transparent",color:T.danger,fontSize:"0.78rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Remove PIN</button>}
+    </div>}
+    {mode&&<div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"10px 0"}}>
+      <div style={{fontSize:"0.78rem",color:error?T.danger:T.textSub,marginBottom:10}}>
+        {error?"PIN didn't match — try again":mode==="setup"?"Enter a new 4-digit PIN":"Confirm your PIN"}
+      </div>
+      <PinPad T={T} onDigit={onDigit} onBackspace={onBackspace} filled={pin.length} error={error} disabled={busy}/>
+      <button onClick={cancel} style={{marginTop:14,padding:"6px 14px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontSize:"0.76rem",cursor:"pointer",fontFamily:"inherit"}}>Cancel</button>
+    </div>}
+  </div>);
+}
+
 function SettingsPage({settings,theme,setSettings,setTheme,dayRolloverMin,setDayRolloverMin,user,entries,deletedEntries,onRestoreEntry,onExportJSON,onImportJSON,onImport,onImportConfig,onClearEntries,onClearConfig,onClearAll,onRestore,onRename,onRepairEmoji,offlineAuth,isAdminUser,pendingRequests,adminsMap,allowlistMap,approvedUsersMap,onApproveRequest,onDenyRequest,onPromoteAdmin,onDemoteAdmin,onAddAllowlist,onRemoveAllowlist,T}){
   const[stab,setStab]=useState("general");const[ctab,setCtab]=useState("food");const[newItem,setNewItem]=useState("");
   // C1: `active` was the `defaults` draft node and edits only reached entry
@@ -3204,6 +3446,7 @@ function SettingsPage({settings,theme,setSettings,setTheme,dayRolloverMin,setDay
       </div>
       <div className="card"><div className="slabel">🎨 Theme</div><div style={{display:"flex",gap:6}}>{[["dark","🌙 Dark"],["light","☀️ Light"],["system","💻 System"]].map(([m,l])=><button key={m} onClick={()=>setTheme(m)} style={{flex:1,padding:"7px 4px",borderRadius:8,border:"1px solid",fontSize:"0.78rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit",borderColor:theme===m?T.accentBtn:T.border,background:theme===m?T.accentBg:T.cardBg,color:theme===m?T.accent:T.textMuted}}>{l}</button>)}</div></div>
       <div className="card"><div className="slabel">🌙 Day Rollover</div><div style={{fontSize:"0.72rem",color:T.textMuted,marginBottom:8,lineHeight:1.5}}>Entries logged before this time still count toward the previous day — useful on nights you're up late.</div><select value={dayRolloverMin} onChange={e=>setDayRolloverMin(parseInt(e.target.value,10))} style={{width:"100%",padding:"9px 10px",borderRadius:8,border:`1px solid ${T.border}`,background:T.inputBg,color:T.text,fontFamily:"inherit",fontSize:"0.85rem"}}>{[[0,"Midnight (12:00 AM)"],[30,"12:30 AM"],[60,"1:00 AM"],[90,"1:30 AM"],[120,"2:00 AM"],[150,"2:30 AM"],[180,"3:00 AM"],[240,"4:00 AM"]].map(([m,l])=><option key={m} value={m}>{l}</option>)}</select></div>
+      <LockPinCard user={user} T={T}/>
       {isAdminUser&&<AdminPanel pendingRequests={pendingRequests} adminsMap={adminsMap} allowlistMap={allowlistMap} approvedUsersMap={approvedUsersMap} onApproveRequest={onApproveRequest} onDenyRequest={onDenyRequest} onPromoteAdmin={onPromoteAdmin} onDemoteAdmin={onDemoteAdmin} onAddAllowlist={onAddAllowlist} onRemoveAllowlist={onRemoveAllowlist} T={T}/>}
     </>}
 
