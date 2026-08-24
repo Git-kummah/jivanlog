@@ -18,8 +18,18 @@
        blocks loading a script from any THIRD origin, restricts where the app
        can send network requests (connect-src), and closes off several other
        attack classes (object-src, base-uri, frame-ancestors) — meaningful
-       defense in depth, just not a complete XSS barrier on its own. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebasedatabase.app wss://*.firebasedatabase.app https://*.firebaseapp.com; frame-src https://*.firebaseapp.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self';"/>
+       defense in depth, just not a complete XSS barrier on its own.
+
+       apis.google.com / accounts.google.com: the FIRST deployed version of
+       this policy omitted these and broke Google sign-in entirely
+       (auth/internal-error) — signInWithPopup loads a helper script from
+       apis.google.com and opens its popup at accounts.google.com; Firebase's
+       own docs list apis.google.com as required for exactly this flow
+       (https://firebase.google.com/docs/auth/web/chrome-extension). Caught
+       via a real device report, not something a sandboxed test could have
+       exercised — there's no way to drive an actual Google OAuth popup
+       outside a real browser. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://cdnjs.cloudflare.com https://apis.google.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebasedatabase.app wss://*.firebasedatabase.app https://*.firebaseapp.com https://apis.google.com; frame-src https://*.firebaseapp.com https://accounts.google.com https://apis.google.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'self';"/>
   <link rel="manifest" href="manifest.json"/>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" integrity="sha384-AQ3POAMqIhwS81FrUH95ekxqBZHeP5tG2JfEL3+7GuTtfRLWnrRh32UxwzM+//A9" crossorigin="anonymous"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" integrity="sha384-TnlRYaR4JYz/lpaGuaiU61PjNberSA4vjLjtF+oRC/IkohkJqnWxw5EmDSOt1vA1" crossorigin="anonymous"></script>
@@ -56,7 +66,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v5.15";
+const APP_VERSION="v5.16";
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -995,7 +1005,7 @@ function TimeDurationInput({value,onChange,T}){
   return(<div style={{display:"flex",flexDirection:"column"}}>
     <input value={local} onChange={e=>handleChange(e.target.value)} placeholder="mm:ss" inputMode="numeric"
       style={{width:64,textAlign:"center",fontFamily:"'DM Mono',monospace",borderColor:err?T.danger:undefined}}/>
-    {err&&<span style={{fontSize:"0.62rem",color:T.danger,marginTop:1}}>{mmErr?"mm":"ss"}&gt;59</span>}
+    {err&&<span style={{fontSize:"0.72rem",color:T.danger,marginTop:1}}>{mmErr?"mm":"ss"}&gt;59</span>}
   </div>);
 }
 
@@ -1091,6 +1101,16 @@ function App(){
   const[approvedUsersMap,setApprovedUsersMap]=useState({});
 
   const T=theme==="system"?THEMES[sysDark()?"dark":"light"]:(THEMES[theme]||THEMES.dark);
+  // E13: the theme-color meta tag was a static #0a1628 (dark) in the HTML —
+  // a light-theme user's Android status bar never matched. This keeps it in
+  // sync with whatever T actually resolves to (including System mode, which
+  // itself already tracks the OS preference).
+  useEffect(()=>{
+    try{
+      const meta=document.querySelector('meta[name="theme-color"]');
+      if(meta)meta.setAttribute("content",T.bg);
+    }catch(e){}
+  },[T.bg]);
 
   // Keep the synchronous snapshot used by the entries listener's anti-wipe guard
   // in step with what's actually rendered.
@@ -1099,16 +1119,23 @@ function App(){
   // Surface storage failures (quota, IndexedDB errors) instead of swallowing them.
   useEffect(()=>{setStorageProblemHandler(p=>setStorageWarn(p));return()=>setStorageProblemHandler(null);},[]);
 
-  // ── Auto-backup: once per calendar day on first open ─────────────────────
+  // ── Auto-backup: once per WEEK on first open ──────────────────────────────
+  // E9: was once per CALENDAR DAY, downloading both a CSV and a JSON every
+  // time — 730 files a year in Downloads, pure noise for something meant as
+  // a safety net, not a daily ritual. Now weekly, and JSON only: it's the
+  // lossless format (includes tombstones), matching the "full backup"
+  // download already offered elsewhere in Settings, so nothing about
+  // recovery capability is lost by dropping the CSV half.
   useEffect(()=>{
     if(!dataLoaded||!user||!entries.length)return;
     try{
       const key=`jivanlog-lastBackup-${user.uid}`;
       const last=localStorage.getItem(key);
-      if(last===today())return;          // already backed up today
+      if(last){
+        const daysSince=(new Date(today()+"T00:00:00")-new Date(last+"T00:00:00"))/86400000;
+        if(daysSince<7)return; // already backed up within the last week
+      }
       const all=[...entries,...deletedEntries];
-      downloadCSV(buildAllCSV(all),`jivanlog-autobackup-${today()}.csv`);
-      // Also drop a lossless JSON alongside the CSV (full fidelity, incl. tombstones).
       try{const blob=new Blob([buildFullJSON(all)],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=`jivanlog-autobackup-${today()}.json`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},1200);}catch(e){}
       localStorage.setItem(key,today());
     }catch(e){console.warn("Auto-backup failed:",e);}
@@ -1185,13 +1212,19 @@ function App(){
   // blind spot. (2) it meant a slow-but-fine connection could flash to a
   // "signed out" screen while waiting.
   //
-  // Now: if we have a cached identity from a previous sign-in, render the app
-  // immediately from it — the local mirror already has the data, so there is
-  // nothing to wait for. The real onAuthStateChanged listener still runs in
-  // the background and replaces the optimistic user the moment it resolves,
-  // which also flips offlineAuth off and lets the offline queue flush. Only a
-  // genuine "no session, anywhere" result (a real remote sign-out or an
-  // invalidated token) clears the cache and shows the sign-in screen.
+  // Single, shared way to accept a confirmed Firebase user — whether that
+  // confirmation comes from onAuthStateChanged's own callback or from the
+  // catch-up check below. Before this, each path independently decided "this
+  // counts as confirmed" with slightly different logic, which is exactly how
+  // offlineAuth and isOnline drifted out of sync (the banner bug, the stuck
+  // queue). One function, called from both places, closes that gap by
+  // construction rather than by patching each divergence as it's found.
+  const confirmUser=useCallback(u=>{
+    setOfflineAuth(false);
+    saveCachedAuthUser(u);
+    setUser(u);
+  },[]);
+
   useEffect(()=>{
     let resolved=false;
     const cached=getCachedAuthUser();
@@ -1203,9 +1236,8 @@ function App(){
     const unsub=fbAuth.onAuthStateChanged(u=>{
       resolved=true;
       if(u){
-        setOfflineAuth(false);
-        saveCachedAuthUser(u);
-        setUser(u);setAuthState("in");
+        confirmUser(u);
+        setAuthState("in");
       }else{
         // A null callback while genuinely offline is exactly the ambiguous case:
         // it can mean "no session" OR "couldn't verify one without a network".
@@ -1230,30 +1262,26 @@ function App(){
     // showing the app, so it needs no timeout.
     const t=cached?null:setTimeout(()=>{if(!resolved)setAuthState(prev=>prev==="checking"?"out":prev);},4000);
     return()=>{unsub();if(t)clearTimeout(t);};
-  },[]);
+  },[confirmUser]);
 
-  // N: isOnline confirms a genuinely live Firebase connection (.info/connected,
+  // isOnline confirms a genuinely live Firebase connection (.info/connected,
   // with its own v4.70 watchdog against staleness) — a stronger, more direct
   // signal than waiting on onAuthStateChanged's listener, which was observed
   // to sometimes lag well behind actual connectivity for reasons not fully
   // understood (possibly IndexedDB read latency in this PWA's persistence
-  // layer). Two real symptoms traced to this: the "you're offline" banner
-  // showing while genuinely connected, AND the offline queue staying stuck —
-  // a live SOCKET (.info/connected) is not the same as a live AUTH TOKEN, and
+  // layer). A live SOCKET is not the same as a live AUTH TOKEN, and
   // Firebase's security rules need the latter to accept a write. So rather
   // than only waiting passively for the listener, actively check
   // fbAuth.currentUser (synchronously available the moment Firebase Auth has
   // internally resolved, even if the listener callback itself hasn't
-  // separately fired yet) once we have independent proof we're online.
+  // separately fired yet) once we have independent proof we're online — and
+  // hand off to the SAME confirmUser used above, rather than a second,
+  // separately-written acceptance path.
   useEffect(()=>{
     if(!isOnline||!offlineAuth)return;
     const cur=fbAuth.currentUser;
-    if(cur){
-      setOfflineAuth(false);
-      saveCachedAuthUser(cur);
-      setUser(cur);
-    }
-  },[isOnline,offlineAuth]);
+    if(cur)confirmUser(cur);
+  },[isOnline,offlineAuth,confirmUser]);
 
   // ── Resolve access state ──────────────────────────────────────────────────
   // Superadmin bypasses entirely (hardcoded, never depends on a DB read).
@@ -1655,25 +1683,42 @@ function App(){
     }catch(e){console.warn("Flush deferred, queue intact:",e&&e.message||e);setSyncStatus("idle");}
   },[user]);
 
-  // Flush when .info/connected becomes true
-  useEffect(()=>{if(isOnline&&user)flushOfflineQueue();},[isOnline,user,flushOfflineQueue]);
-  // Secondary trigger: the browser's network-change events (online, and app
-  // resuming to foreground) fire independently of Firebase's own socket
-  // state and often catch a network handoff before .info/connected does.
-  // Force-bounce the Firebase connection here too, not just flush — a stale
-  // socket from before the handoff won't self-heal just because the browser
-  // says we're online again.
+  // N: this used to be THREE independent triggers all responsible for the
+  // same job (flushing the offline queue) — isOnline transitioning, browser
+  // online/visibility events, and this poll. Three overlapping code paths
+  // for one question turned out to be exactly where the bugs kept showing
+  // up (the queue staying stuck for 7+ hours on a stable connection, since
+  // none of the event-driven ones ever re-fired). This poll is now the ONLY
+  // flush trigger — simpler, and given what's actually broken so far, more
+  // reliable than the event-driven approach it replaced. Trade-off, stated
+  // plainly: recovery is slower in the best case (up to 20s instead of
+  // near-instant) in exchange for one code path instead of three. It's a
+  // no-op whenever the queue is empty, which is nearly always, so this
+  // costs nothing the rest of the time.
+  useEffect(()=>{
+    if(!user)return;
+    const id=setInterval(()=>{if(queueSize>0&&isOnlineRef.current)flushOfflineQueue();},20000);
+    return()=>clearInterval(id);
+  },[user,queueSize,flushOfflineQueue]);
+
+  // The browser's network-change events (online, and app resuming to
+  // foreground) fire independently of Firebase's own socket state and often
+  // catch a network handoff before .info/connected does. This still
+  // force-bounces the Firebase connection when needed — a stale socket from
+  // before a handoff won't self-heal just because the browser says we're
+  // online again — but no longer ALSO calls flushOfflineQueue directly; the
+  // poll above picks that up within 20s once the bounce (if any) resolves
+  // isOnlineRef, which is simpler than duplicating the flush call here too.
   useEffect(()=>{
     const nudge=()=>{
       if(!navigator.onLine)return;
       if(!isOnlineRef.current){try{fbDb.goOffline();fbDb.goOnline();}catch(e){}}
-      if(user)flushOfflineQueue();
     };
     const onVisible=()=>{if(document.visibilityState==="visible")nudge();};
     window.addEventListener("online",nudge);
     document.addEventListener("visibilitychange",onVisible);
     return()=>{window.removeEventListener("online",nudge);document.removeEventListener("visibilitychange",onVisible);};
-  },[user,flushOfflineQueue]);
+  },[]);
 
   // Persist helpers
   const persistEntries=useCallback(async arr=>{
@@ -2072,7 +2117,7 @@ function App(){
         .tbtn.on{background:${T.accentBg};color:${T.accent};border-color:${T.accentBtn};font-weight:600}
         .wbtn{background:${T.waterBtn};color:${T.waterBtnText};border:1px solid ${T.border};padding:7px 12px;border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer}
         .wbtn:hover{background:${T.accentBtn};color:#fff}
-        .ibtn{background:none;border:none;padding:3px 5px;border-radius:6px;color:${T.textMuted};font-size:0.82rem;cursor:pointer}
+        .ibtn{background:none;border:none;padding:8px 9px;border-radius:8px;color:${T.textMuted};font-size:0.82rem;cursor:pointer;min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center}
         .ibtn:hover{background:${T.border};color:${T.text}}
         .ctbl{width:100%;border-collapse:collapse;font-size:0.73rem}
         .ctbl th{background:${T.navBg};color:${T.textMuted};padding:5px 6px;text-align:left;border:1px solid ${T.border};font-weight:600;white-space:nowrap}
@@ -2098,11 +2143,11 @@ function App(){
         <img src={LOGO_SVG} style={{width:32,height:32,borderRadius:8}} alt="logo"/>
         <div style={{flex:1}}>
           <div style={{fontWeight:700,fontSize:"0.95rem",color:T.accent,lineHeight:1.1}}>JivanLog</div>
-          <div style={{fontSize:"0.68rem",color:T.textMuted,fontFamily:"'DM Mono',monospace"}}>{dayStr}<span style={{opacity:0.45,marginLeft:5}}>{APP_VERSION}</span></div>
+          <div style={{fontSize:"0.72rem",color:T.textMuted,fontFamily:"'DM Mono',monospace"}}>{dayStr}<span style={{opacity:0.45,marginLeft:5}}>{APP_VERSION}</span></div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           <span title={displaySync==="offline"?"Offline — entries saved locally":displaySync==="reconnecting"?"Reconnecting… entries saved locally, will sync automatically":displaySync==="pending"?`${queueSize} pending — tap to sync`:displaySync==="saving"?"Syncing…":displaySync==="synced"?"Synced ✓":"Synced"} style={{fontSize:"1rem",color:syncColor,transition:"color 0.3s",cursor:queueSize>0?"pointer":"default"}} onClick={queueSize>0?flushOfflineQueue:undefined}>{syncIcon}</span>
-          {queueSize>0&&<button onClick={flushOfflineQueue} title="Sync pending entries now" style={{fontSize:"0.62rem",padding:"2px 5px",borderRadius:5,border:`1px solid ${T.border}`,background:T.cardBg,color:T.waterBtnText,cursor:"pointer",fontFamily:"inherit",fontWeight:600,flexShrink:0}}>Sync {queueSize}</button>}
+          {queueSize>0&&<button onClick={flushOfflineQueue} title="Sync pending entries now" style={{fontSize:"0.72rem",padding:"2px 5px",borderRadius:5,border:`1px solid ${T.border}`,background:T.cardBg,color:T.waterBtnText,cursor:"pointer",fontFamily:"inherit",fontWeight:600,flexShrink:0}}>Sync {queueSize}</button>}
           <Clock T={T}/>
         </div>
       </div>
@@ -2155,7 +2200,7 @@ function App(){
           {showUserMenu&&<div style={{position:"absolute",bottom:"100%",right:0,background:T.cardBg,border:`1px solid ${T.border}`,borderRadius:12,padding:8,minWidth:180,boxShadow:"0 -4px 16px #0004",zIndex:200}}>
             <div style={{padding:"6px 10px 8px",borderBottom:`1px solid ${T.border}`,marginBottom:6}}>
               <div style={{fontWeight:600,fontSize:"0.82rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.displayName||"User"}</div>
-              <div style={{fontSize:"0.68rem",color:T.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.email}</div>
+              <div style={{fontSize:"0.72rem",color:T.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user.email}</div>
             </div>
             <button onClick={()=>{setShowUserMenu(false);if(confirm("Lock JivanLog?\nYour data is saved.")){try{localStorage.setItem(lockedFlagKey(user.uid),"1");}catch(e){}setLocked(true);}}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",background:"none",border:"none",borderRadius:8,cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem",color:T.text}}>🔒 Lock session</button>
             <button onClick={()=>{setShowUserMenu(false);signOut();}} style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"7px 10px",background:"none",border:"none",borderRadius:8,cursor:"pointer",fontFamily:"inherit",fontSize:"0.82rem",color:T.danger}}>↩ Sign out</button>
@@ -2211,7 +2256,7 @@ function HomePage({entries,settings,onAdd,onUpdate,onDelete,entryTime,setEntryTi
       {active==="medical"   &&<MedicalEntry settings={settings} entries={entries} onAdd={onAdd} entryTime={entryTime} setEntryTime={onTimeEdit} refreshTime={refreshTime} T={T}/>}
       {active==="medication"&&<MedEntry settings={settings} entries={entries} onAdd={onAdd} entryTime={entryTime} setEntryTime={onTimeEdit} refreshTime={refreshTime} T={T}/>}
       <div style={{marginTop:14}}>
-        <div className="slabel">Today's Log</div>
+        <div className="slabel" style={{position:"sticky",top:0,zIndex:2,background:T.bg,padding:"4px 0"}}>Today's Log</div>
         {todayE.length===0?<div style={{color:T.textMuted,fontSize:"0.8rem",textAlign:"center",padding:"18px 0"}}>No entries yet today</div>:<div className="card" style={{padding:"8px 11px"}}>
           {todayE.map(e=>editingId===e.id
             ?<EditEntry key={e.id} entry={e} settings={settings} T={T} label="✏️ Editing" onSave={d=>{onUpdate&&onUpdate(e.id,d);setEditingId(null);}} onCancel={()=>setEditingId(null)} onDelete={()=>{onDelete&&onDelete(e.id);setEditingId(null);}}/>
@@ -2501,7 +2546,7 @@ function TLE({e,settings,onEdit,T}){
       lastTapPos.current={x:p.clientX,y:p.clientY};
     }
   };
-  return(<div className="tle" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} onDoubleClick={()=>onEdit&&onEdit()}><span style={{fontSize:"0.68rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:40,flexShrink:0}}>{fmt24(e.timestamp)}</span><span style={{flexShrink:0}}>{ic[e.type]||"•"}</span><div style={{flex:1,fontSize:"0.83rem",lineHeight:1.45}}>{m}{e.notes&&<span style={{fontSize:"0.74rem",color:T.textSub,fontStyle:"italic"}}> ({e.notes})</span>}</div></div>);
+  return(<div className="tle" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd} onDoubleClick={()=>onEdit&&onEdit()}><span style={{fontSize:"0.72rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:40,flexShrink:0}}>{fmt24(e.timestamp)}</span><span style={{flexShrink:0}}>{ic[e.type]||"•"}</span><div style={{flex:1,fontSize:"0.83rem",lineHeight:1.45}}>{m}{e.notes&&<span style={{fontSize:"0.74rem",color:T.textSub,fontStyle:"italic"}}> ({e.notes})</span>}</div></div>);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -2627,7 +2672,7 @@ function ManageRow({e,settings,onEdit,onDuplicate,onDelete,T}){
   if(e.type==="water")     {const _wt=e.waterTemp||e.liquidType||"Water";const _wi=(settings?.liquidIcons||{})[_wt]||"";m=`${pickIcon(_wt,"drink",_wi)} ${_wt}${e.ml?" · "+e.ml+"ml":""}`;};
   if(e.type==="medical")    {const _mp=(settings?.medicalPresets||FD.medicalPresets||[]).find(p=>(p.name||p)===e.readingType)||{};m=`${pickIcon(e.readingType,"medical",_mp.icon||"")} ${e.readingType} · ${e.value}${e.unit?" "+e.unit:""}`;};
   if(e.type==="medication") {const _mi=(settings?.medicationIcons||{})[e.med]||"";m=`${pickIcon(e.med,"medication",_mi)} ${e.med} · ${e.timing}`;};
-  return(<div className="card" style={{display:"flex",alignItems:"flex-start",gap:8,padding:"9px 11px",marginBottom:6}}><span style={{fontSize:"0.66rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:40,paddingTop:2,flexShrink:0}}>{fmt24(e.timestamp)}</span><span style={{flexShrink:0}}>{ic[e.type]||"•"}</span><div style={{flex:1,fontSize:"0.82rem",lineHeight:1.4}}>{m}{e.notes&&<span style={{fontSize:"0.74rem",color:T.textSub,fontStyle:"italic"}}> ({e.notes})</span>}</div><div style={{display:"flex",gap:3,flexShrink:0}}><button className="ibtn" onClick={onEdit} title="Edit" aria-label="Edit entry">✏️</button><button className="ibtn" onClick={onDuplicate} title="Duplicate" aria-label="Duplicate entry">📋</button><button className="ibtn" style={{color:T.danger}} onClick={onDelete} title="Delete" aria-label="Delete entry">🗑️</button></div></div>);
+  return(<div className="card" style={{display:"flex",alignItems:"flex-start",gap:8,padding:"9px 11px",marginBottom:6}}><span style={{fontSize:"0.72rem",color:T.textMuted,fontFamily:"'DM Mono',monospace",minWidth:40,paddingTop:2,flexShrink:0}}>{fmt24(e.timestamp)}</span><span style={{flexShrink:0}}>{ic[e.type]||"•"}</span><div style={{flex:1,fontSize:"0.82rem",lineHeight:1.4}}>{m}{e.notes&&<span style={{fontSize:"0.74rem",color:T.textSub,fontStyle:"italic"}}> ({e.notes})</span>}</div><div style={{display:"flex",gap:3,flexShrink:0}}><button className="ibtn" onClick={onEdit} title="Edit" aria-label="Edit entry">✏️</button><button className="ibtn" onClick={onDuplicate} title="Duplicate" aria-label="Duplicate entry">📋</button><button className="ibtn" style={{color:T.danger}} onClick={onDelete} title="Delete" aria-label="Delete entry">🗑️</button></div></div>);
 }
 function EditEntry({entry,settings,onSave,onCancel,onDelete,label,T}){
   const[d,setD]=useState(deepClone(entry));
@@ -2958,14 +3003,14 @@ function TrendsPanel({entries,settings,T}){
             className={`tbtn${agg===a.key?" on":""}`}
             style={{fontSize:"0.75rem",padding:"4px 10px"}}>{a.label}</button>
         ))}
-        <span style={{fontSize:"0.7rem",color:T.textMuted,marginLeft:"auto"}}>{dataCount} readings</span>
+        <span style={{fontSize:"0.72rem",color:T.textMuted,marginLeft:"auto"}}>{dataCount} readings</span>
       </div>
     </div>
     <div className="card" style={{padding:"8px 4px"}}>
       <div style={{position:"relative",height:280}}>
         <canvas ref={canvasRef} style={{width:"100%",height:"100%"}}/>
       </div>
-      <div style={{fontSize:"0.68rem",color:T.textMuted,textAlign:"center",marginTop:6}}>
+      <div style={{fontSize:"0.72rem",color:T.textMuted,textAlign:"center",marginTop:6}}>
         {agg==="avg"?"Average of all readings in period"
           :agg==="first"?"First (earliest) reading in period"
           :"Last (most recent) reading in period"}
@@ -3078,7 +3123,7 @@ function ReportsPage({entries,deletedEntries,settings,isOnline,T}){
         <button className={`tbtn${rMode==="summary"?" on":""}`} onClick={()=>setRMode("summary")} style={{flex:1}}>Summary</button>
         <button className={`tbtn${rMode==="full"?" on":""}`} onClick={()=>setRMode("full")} style={{flex:1}}>Full detail</button>
       </div>
-      <div style={{fontSize:"0.68rem",color:T.textMuted,lineHeight:1.5,marginBottom:9}}>
+      <div style={{fontSize:"0.72rem",color:T.textMuted,lineHeight:1.5,marginBottom:9}}>
         {rMode==="summary"
           ? "One column per date, same layout as View/Compare. Best for a handful of dates."
           : "Every logged entry in the range as its own row (like a Data export, but scoped to these dates). Includes Trash."}
@@ -3347,7 +3392,7 @@ function DataSafetyCard({entries,deletedEntries,onRestoreEntry,onExportJSON,onIm
             <div key={e.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"7px 9px",borderBottom:`1px solid ${T.border}`}}>
               <div style={{minWidth:0}}>
                 <div style={{fontSize:"0.78rem",color:T.text,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{label(e)}</div>
-                <div style={{fontSize:"0.66rem",color:T.textMuted}}>{normDate(e.date)} · deleted {e.deletedAt?new Date(e.deletedAt).toLocaleString():""}</div>
+                <div style={{fontSize:"0.72rem",color:T.textMuted}}>{normDate(e.date)} · deleted {e.deletedAt?new Date(e.deletedAt).toLocaleString():""}</div>
               </div>
               <button onClick={()=>onRestoreEntry(e.id)} disabled={offlineAuth} style={{flexShrink:0,padding:"4px 10px",borderRadius:6,border:"none",background:offlineAuth?T.cardBg:T.accentBtn,color:offlineAuth?T.textMuted:"#fff",fontFamily:"inherit",fontWeight:600,fontSize:"0.72rem",cursor:offlineAuth?"not-allowed":"pointer"}}>Restore</button>
             </div>
@@ -3355,7 +3400,7 @@ function DataSafetyCard({entries,deletedEntries,onRestoreEntry,onExportJSON,onIm
         </div>
         :<div style={{fontSize:"0.72rem",color:T.textMuted,marginTop:8,padding:"6px 2px"}}>Trash is empty.</div>
       )}
-      {offlineAuth&&<div style={{fontSize:"0.68rem",color:T.textMuted,marginTop:8}}>Cloud restore/import needs an internet connection. (Download backup works offline.)</div>}
+      {offlineAuth&&<div style={{fontSize:"0.72rem",color:T.textMuted,marginTop:8}}>Cloud restore/import needs an internet connection. (Download backup works offline.)</div>}
     </div>
   );
 }
@@ -3442,7 +3487,7 @@ function SettingsPage({settings,theme,setSettings,setTheme,dayRolloverMin,setDay
       <div className="card" style={{display:"flex",alignItems:"center",gap:12,padding:"10px 13px"}}>
         {user.photoURL&&<img src={user.photoURL} style={{width:38,height:38,borderRadius:"50%",border:`2px solid ${T.accentBtn}`}} alt="avatar"/>}
         <div style={{flex:1}}><div style={{fontWeight:600,fontSize:"0.88rem"}}>{user.displayName||"User"}</div><div style={{fontSize:"0.72rem",color:T.textMuted}}>{user.email}</div></div>
-        <div style={{fontSize:"0.62rem",color:T.border,fontFamily:"'DM Mono',monospace",marginLeft:4,alignSelf:"flex-end"}}>{APP_VERSION}</div>
+        <div style={{fontSize:"0.72rem",color:T.border,fontFamily:"'DM Mono',monospace",marginLeft:4,alignSelf:"flex-end"}}>{APP_VERSION}</div>
       </div>
       <div className="card"><div className="slabel">🎨 Theme</div><div style={{display:"flex",gap:6}}>{[["dark","🌙 Dark"],["light","☀️ Light"],["system","💻 System"]].map(([m,l])=><button key={m} onClick={()=>setTheme(m)} style={{flex:1,padding:"7px 4px",borderRadius:8,border:"1px solid",fontSize:"0.78rem",fontWeight:600,cursor:"pointer",fontFamily:"inherit",borderColor:theme===m?T.accentBtn:T.border,background:theme===m?T.accentBg:T.cardBg,color:theme===m?T.accent:T.textMuted}}>{l}</button>)}</div></div>
       <div className="card"><div className="slabel">🌙 Day Rollover</div><div style={{fontSize:"0.72rem",color:T.textMuted,marginBottom:8,lineHeight:1.5}}>Entries logged before this time still count toward the previous day — useful on nights you're up late.</div><select value={dayRolloverMin} onChange={e=>setDayRolloverMin(parseInt(e.target.value,10))} style={{width:"100%",padding:"9px 10px",borderRadius:8,border:`1px solid ${T.border}`,background:T.inputBg,color:T.text,fontFamily:"inherit",fontSize:"0.85rem"}}>{[[0,"Midnight (12:00 AM)"],[30,"12:30 AM"],[60,"1:00 AM"],[90,"1:30 AM"],[120,"2:00 AM"],[150,"2:30 AM"],[180,"3:00 AM"],[240,"4:00 AM"]].map(([m,l])=><option key={m} value={m}>{l}</option>)}</select></div>
@@ -3453,7 +3498,7 @@ function SettingsPage({settings,theme,setSettings,setTheme,dayRolloverMin,setDay
     {stab==="config"&&<>
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",margin:"4px 0 8px"}}>
         <div className="slabel" style={{marginBottom:0}}>🗂️ Config Lists</div>
-        <div style={{fontSize:"0.68rem",color:T.textMuted}}>Changes save automatically</div>
+        <div style={{fontSize:"0.72rem",color:T.textMuted}}>Changes save automatically</div>
       </div>
       <div style={{display:"flex",gap:4,marginBottom:9,overflowX:"auto"}}>
         {CTABS.map(([k,l])=><button key={k} onClick={()=>{setCtab(k);setNewItem("");}} className={`tbtn${ctab===k?" on":""}`} style={{flexShrink:0,fontSize:"0.75rem"}}>{l}</button>)}
@@ -3496,7 +3541,7 @@ function AdminPanel({pendingRequests,adminsMap,allowlistMap,approvedUsersMap,onA
           {r.photoURL?<img src={r.photoURL} style={{width:32,height:32,borderRadius:"50%",flexShrink:0}} alt=""/>:<div style={{width:32,height:32,borderRadius:"50%",background:T.accentBtn,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.8rem",fontWeight:700,flexShrink:0}}>{(r.name||r.email||"?")[0].toUpperCase()}</div>}
           <div style={{flex:1,minWidth:0}}>
             <div style={{fontSize:"0.82rem",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.name||"(no name)"}</div>
-            <div style={{fontSize:"0.68rem",color:T.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.email} · {relTime(r.requestedAt)}</div>
+            <div style={{fontSize:"0.72rem",color:T.textMuted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.email} · {relTime(r.requestedAt)}</div>
             {r.message&&<div style={{fontSize:"0.74rem",color:T.textSub,fontStyle:"italic",marginTop:2}}>"{r.message}"</div>}
           </div>
           <button onClick={()=>onApproveRequest(uid,r)} style={{padding:"5px 9px",borderRadius:7,border:"none",background:"#2e7d32",color:"#fff",fontSize:"0.75rem",fontWeight:600,cursor:"pointer",flexShrink:0}}>✅</button>
@@ -3531,7 +3576,7 @@ function AdminPanel({pendingRequests,adminsMap,allowlistMap,approvedUsersMap,onA
         </div>
       ))}
       {approvedNotAdmin.length>0&&<>
-        <div style={{fontSize:"0.7rem",color:T.textMuted,margin:"9px 0 5px"}}>Promote an approved user:</div>
+        <div style={{fontSize:"0.72rem",color:T.textMuted,margin:"9px 0 5px"}}>Promote an approved user:</div>
         {approvedNotAdmin.map(([uid,p])=>(
           <div key={uid} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 0"}}>
             <div style={{flex:1,minWidth:0,fontSize:"0.8rem",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name||p.email||uid}</div>
@@ -3579,9 +3624,9 @@ function ConfigTools({ctab,settings,onImportConfig,onClearConfig,onFactorySectio
             lists in the same format as a normal export — useful for diffing
             your config against the defaults without overwriting anything. */}
         <button onClick={()=>downloadCSV(exportConfigCSV(FD,"all"),`jivanlog-factory-defaults-${APP_VERSION}-${today()}.csv`)} style={btn}>⬇️ Export FACTORY defaults CSV (reference)</button>
-        <div style={{fontSize:"0.68rem",color:T.textMuted,margin:"2px 0 8px",lineHeight:1.5}}>Factory export is read-only reference — downloading it changes nothing.</div>
+        <div style={{fontSize:"0.72rem",color:T.textMuted,margin:"2px 0 8px",lineHeight:1.5}}>Factory export is read-only reference — downloading it changes nothing.</div>
         <button onClick={()=>cfgRef.current&&cfgRef.current.click()} style={btn}>⬆️ Import config CSV…</button>
-        <div style={{fontSize:"0.68rem",color:T.textMuted,margin:"2px 0 8px",lineHeight:1.5}}>Import replaces whichever sections the file contains. Other sections are untouched.</div>
+        <div style={{fontSize:"0.72rem",color:T.textMuted,margin:"2px 0 8px",lineHeight:1.5}}>Import replaces whichever sections the file contains. Other sections are untouched.</div>
         <button onClick={()=>{if(!confirm(`Reset ${label} to factory defaults?\n\nThis restores the built-in ${label} list. Your logged entries are unaffected.`))return;onFactorySection(ctab);}} style={btn}>↺ Reset {label} to factory</button>
         <button onClick={()=>{if(!confirm(`Empty the ${label} list?\n\nThe list becomes blank until you re-add or re-import. Your logged entries are unaffected.`))return;onClearConfig(ctab);}} style={{...btn,color:T.danger,borderColor:T.danger}}>⚠️ Clear {label} list</button>
         <div style={{borderTop:`1px solid ${T.border}`,marginTop:6,paddingTop:8}}>
@@ -3701,7 +3746,7 @@ function DataPanel({entries,deletedEntries,settings,onRepairEmoji,onImport,onCle
         </div>
         {localBk&&<>
           <div style={{borderTop:`1px solid ${T.border}`,marginTop:6,paddingTop:6}}>
-            <div style={{fontSize:"0.7rem",color:T.textMuted}}>📱 Last device backup</div>
+            <div style={{fontSize:"0.72rem",color:T.textMuted}}>📱 Last device backup</div>
             <div style={{fontSize:"0.72rem",color:T.text,marginTop:2}}>
               {localBk.date} · {(localBk.entries||[]).length} today's entries · saved {localBk.savedAt?new Date(localBk.savedAt).toLocaleTimeString():""}
             </div>
@@ -3749,7 +3794,7 @@ function DataPanel({entries,deletedEntries,settings,onRepairEmoji,onImport,onCle
             :<div style={{display:"flex",flexDirection:"column",gap:6}}>
               {CLEAR_OPTS.filter(o=>o.key==="entries"||o.key==="all").map(o=>(
                 <button key={o.key} onClick={()=>doClear(o.key)} style={{width:"100%",padding:"8px",borderRadius:8,border:`1px solid ${o.danger?"#ef4444":T.border}`,background:"transparent",color:o.danger?"#ef4444":T.text,fontFamily:"inherit",fontWeight:600,fontSize:"0.78rem",cursor:"pointer",textAlign:"left"}}>
-                  {o.label}<div style={{fontSize:"0.66rem",fontWeight:400,color:T.textMuted,marginTop:2}}>{o.desc}</div>
+                  {o.label}<div style={{fontSize:"0.72rem",fontWeight:400,color:T.textMuted,marginTop:2}}>{o.desc}</div>
                 </button>
               ))}
               <button onClick={()=>setShowClear(false)} style={{padding:"6px",borderRadius:8,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,fontFamily:"inherit",fontSize:"0.78rem",cursor:"pointer"}}>Cancel</button>
@@ -3880,7 +3925,7 @@ function MetricToggleRow({metrics,onToggle,onReorder,T}){
     })}
   </div>);
 }
-const ReorderBtns=({i,total,onMove,T})=>(<div style={{display:"flex",flexDirection:"column",gap:1,marginRight:4,flexShrink:0}}><button className="ibtn" onClick={()=>onMove(i,-1)} disabled={i===0} style={{padding:"0 3px",fontSize:"0.65rem",opacity:i===0?0.2:1,lineHeight:1.3}}>▲</button><button className="ibtn" onClick={()=>onMove(i,1)} disabled={i===total-1} style={{padding:"0 3px",fontSize:"0.65rem",opacity:i===total-1?0.2:1,lineHeight:1.3}}>▼</button></div>);
+const ReorderBtns=({i,total,onMove,T})=>(<div style={{display:"flex",flexDirection:"column",gap:2,marginRight:4,flexShrink:0}}><button className="ibtn" onClick={()=>onMove(i,-1)} disabled={i===0} style={{padding:"2px 6px",minWidth:32,minHeight:22,fontSize:"0.72rem",opacity:i===0?0.2:1,lineHeight:1.3}}>▲</button><button className="ibtn" onClick={()=>onMove(i,1)} disabled={i===total-1} style={{padding:"2px 6px",minWidth:32,minHeight:22,fontSize:"0.72rem",opacity:i===total-1?0.2:1,lineHeight:1.3}}>▼</button></div>);
 
 
 // ── Item icon system ──────────────────────────────────────────────────────────
@@ -4163,7 +4208,7 @@ function FoodSetting({items,onRemove,onUpdate,newItem,setNew,onAdd,entries,onRen
           <ReorderBtns i={i} total={fi.length} onMove={move} T={T}/>
           <IconBtn name={item.name} category="food" stored={item.icon||""} onSet={ic=>upd(item.name,{icon:ic})} T={T}/>
           <span style={{fontWeight:600,fontSize:"0.85rem",flex:1,marginLeft:5}}>{item.name}</span>
-          {item.diet&&<span title="Diet classification" style={{fontSize:"0.68rem",padding:"1px 6px",borderRadius:10,marginRight:4,background:item.diet==="nonveg"?T.dangerBg||T.accentBg:T.accentBg,color:item.diet==="nonveg"?T.danger:T.accent}}>{item.diet==="nonveg"?"Non-Veg":"Veg"}</span>}
+          {item.diet&&<span title="Diet classification" style={{fontSize:"0.72rem",padding:"1px 6px",borderRadius:10,marginRight:4,background:item.diet==="nonveg"?T.dangerBg||T.accentBg:T.accentBg,color:item.diet==="nonveg"?T.danger:T.accent}}>{item.diet==="nonveg"?"Non-Veg":"Veg"}</span>}
           <button className="ibtn" onClick={()=>setEi(ei===item.name?null:item.name)}>{ei===item.name?"✖️":"✏️"}</button>
           <button className="ibtn" style={{color:T.danger}} onClick={()=>onRemove(item.name)}>🗑️</button>
         </div>
@@ -4276,7 +4321,7 @@ function ExerciseSetting({types,onChange,entries,onRename,T}){
   const moveSub=(i,si,dir)=>onChange(types.map((t,x)=>x===i?{...t,subTypes:moveItem(t.subTypes||[],si,dir)}:t));
   const updSubNote=(i,sName,note)=>onChange(types.map((t,x)=>x===i?{...t,subTypes:(t.subTypes||[]).map(v=>subName(v)===sName?{name:sName,note}:v)}:t));
   const togM=(i,m)=>onChange(types.map((t,x)=>{if(x!==i)return t;const cur=normalizeMetrics(t.metrics)||[];const h=cur.includes(m);const next=h?cur.filter(v=>v!==m):[...cur,m];return{...t,metrics:encodeMetrics(next)};}));
-  return(<div><div className="card" style={{marginBottom:7}}><div style={{display:"flex",gap:7}}><input placeholder="New exercise type…" value={nn} onChange={e=>setNn(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button onClick={add} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div><div style={{fontSize:"0.7rem",color:T.textMuted,marginTop:5}}>New types default to time metric. Toggle below to change.</div></div>
+  return(<div><div className="card" style={{marginBottom:7}}><div style={{display:"flex",gap:7}}><input placeholder="New exercise type…" value={nn} onChange={e=>setNn(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/><button onClick={add} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",cursor:"pointer",fontFamily:"inherit",fontWeight:600}}>Add</button></div><div style={{fontSize:"0.72rem",color:T.textMuted,marginTop:5}}>New types default to time metric. Toggle below to change.</div></div>
   <div style={{display:"flex",gap:5,marginBottom:6,alignItems:"center"}}>
     <span style={{fontSize:"0.72rem",color:T.textMuted}}>Sort:</span>
     <button onClick={()=>onChange([...types].sort((a,b)=>a.name.localeCompare(b.name)))} style={{padding:"2px 9px",borderRadius:6,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontSize:"0.72rem",fontFamily:"inherit"}}>A→Z</button>
@@ -4325,7 +4370,7 @@ function RenameBox({label,current,hits,onRename,T}){
   const[val,setVal]=useState(current);
   useEffect(()=>{setVal(current);},[current]);
   if(!open)return(
-    <button onClick={()=>setOpen(true)} style={{padding:"3px 8px",borderRadius:6,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontSize:"0.7rem",fontFamily:"inherit"}}>✏️ Rename</button>
+    <button onClick={()=>setOpen(true)} style={{padding:"3px 8px",borderRadius:6,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontSize:"0.72rem",fontFamily:"inherit"}}>✏️ Rename</button>
   );
   const changed=val.trim()&&val.trim()!==current;
   return(
@@ -4336,7 +4381,7 @@ function RenameBox({label,current,hits,onRename,T}){
         <button disabled={!changed} onClick={()=>{onRename(val.trim());setOpen(false);}} style={{flexShrink:0,padding:"4px 10px",borderRadius:7,border:"none",background:changed?T.accentBtn:T.border,color:"#fff",cursor:changed?"pointer":"not-allowed",fontFamily:"inherit",fontWeight:600,fontSize:"0.75rem"}}>Rename</button>
         <button onClick={()=>{setVal(current);setOpen(false);}} style={{flexShrink:0,padding:"4px 8px",borderRadius:7,border:`1px solid ${T.border}`,background:"transparent",color:T.textMuted,cursor:"pointer",fontSize:"0.75rem",fontFamily:"inherit"}}>✖</button>
       </div>
-      <div style={{fontSize:"0.66rem",color:hits>0?T.waterBtnText:T.textMuted,lineHeight:1.4}}>
+      <div style={{fontSize:"0.72rem",color:hits>0?T.waterBtnText:T.textMuted,lineHeight:1.4}}>
         {hits>0?`Also updates ${hits} past ${hits===1?"entry":"entries"} so history stays consistent.`:"No past entries use this name."}
       </div>
     </div>
