@@ -84,7 +84,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v5.21";
+const APP_VERSION="v5.22";
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -123,6 +123,15 @@ const genId   =()=>Date.now().toString(36)+Math.random().toString(36).slice(2);
 let DAY_ROLLOVER_MIN=(()=>{try{const v=localStorage.getItem("jivanlog-rolloverMin");return v!==null?parseInt(v,10):90;}catch{return 90;}})();
 const setDayRolloverCache=min=>{DAY_ROLLOVER_MIN=min;try{localStorage.setItem("jivanlog-rolloverMin",String(min));}catch(e){}};
 const today   =()=>{const d=new Date();d.setMinutes(d.getMinutes()-DAY_ROLLOVER_MIN);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;}; // local date, NOT toISOString (UTC) — UTC midnight = 05:30 IST, was misdating early-morning entries to the previous day
+// E4: the day immediately before today()'s own logical date — computed from
+// today()'s result, not a naive "now minus 24 hours", so it stays correct
+// right at the rollover boundary the same way today() already is.
+const yesterday=()=>{
+  const[y,mo,d]=today().split("-").map(Number);
+  const dt=new Date(y,mo-1,d);
+  dt.setDate(dt.getDate()-1);
+  return`${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`;
+};
 const normDate=s=>{if(!s)return s;const a=s.match(/^(\d{2})-(\d{2})-(\d{2})$/);if(a)return`20${a[3]}-${a[2]}-${a[1]}`;const b=s.match(/^(\d{2})-(\d{2})-(\d{4})$/);if(b)return`${b[3]}-${b[2]}-${b[1]}`;return s;};
 const fmt24   =dt=>new Date(dt).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",hour12:false});
 const nowTime =()=>new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false});
@@ -884,6 +893,61 @@ function NoteSuggestChips({suggestions,onPick,T}){
   </div>);
 }
 
+// E4: a short, human-readable label for one entry, used by the "repeat
+// yesterday" chips below. Deliberately separate from the fuller TLE/
+// ManageRow formatting (subType, notes, etc. all included there) — this is
+// meant to fit on a small chip, just enough to recognize which entry it is.
+function repeatChipLabel(e,settings){
+  switch(e.type){
+    case"meal":return[e.food,e.foodSubType].filter(Boolean).join(" · ")+(e.qty?` · ${e.qty}${e.unit||""}`:"");
+    case"liquid":case"water":return[e.liquidType,e.liquidSubType].filter(Boolean).join(" · ")+(e.ml?` · ${e.ml}ml`:"");
+    case"exercise":{
+      const parts=exerciseMetricParts(e,settings?.exerciseTypes||FD.exerciseTypes);
+      return[e.exType,e.subType,...parts].filter(Boolean).join(" · ");
+    }
+    case"medical":return[e.readingType,e.value?`${e.value}${e.unit?" "+e.unit:""}`:null].filter(Boolean).join(" · ");
+    case"medication":return[e.med,e.timing].filter(Boolean).join(" · ");
+    default:return"";
+  }
+}
+
+// E4: up to 4 of yesterday's entries for this module, closest to the
+// CURRENT time first — "what did I log around now, yesterday" is the whole
+// point, not strict chronological order. Tapping one re-adds it immediately
+// with today's date and the current time (onAdd/addEntry always overwrites
+// id/timestamp/date regardless of what's passed in, so the rest of the
+// entry can be handed through unchanged).
+function RepeatYesterdayChips({entries,type,settings,onAdd,T}){
+  const yList=useMemo(()=>{
+    const yd=yesterday();
+    const nowMin=(()=>{const d=new Date();return d.getHours()*60+d.getMinutes();})();
+    const minsOf=ts=>{const d=new Date(ts);return d.getHours()*60+d.getMinutes();};
+    // Liquids historically also used the type string "water" for some
+    // entries — matched here the same way usageCounts/pastNoteSuggestions
+    // already do elsewhere, so a legacy-typed entry from yesterday isn't
+    // silently missed from the chips.
+    const matches=e=>e.type===type||(type==="liquid"&&e.type==="water");
+    return entries
+      .filter(e=>e.date===yd&&!e.deleted&&matches(e))
+      .sort((a,b)=>Math.abs(minsOf(a.timestamp)-nowMin)-Math.abs(minsOf(b.timestamp)-nowMin))
+      .slice(0,4);
+  },[entries,type]);
+  if(!yList.length)return null;
+  return(<div style={{marginBottom:6}}>
+    <div style={{fontSize:"0.66rem",color:T.textMuted,marginBottom:3}}>🔁 Repeat from yesterday</div>
+    <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+      {yList.map(e=>{
+        const label=repeatChipLabel(e,settings);
+        if(!label)return null;
+        return<button key={e.id} type="button" onClick={()=>onAdd({...e})} title={label}
+          style={{padding:"3px 9px",borderRadius:20,border:`1px solid ${T.accentBtn}`,background:T.accentBg,
+            color:T.accent,cursor:"pointer",fontSize:"0.71rem",fontFamily:"inherit",fontWeight:600,maxWidth:200,
+            overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{label}</button>;
+      })}
+    </div>
+  </div>);
+}
+
 // ── Exercise metrics catalog ──────────────────────────────────────────────
 // "count" was renamed "Floors" (global, per user decision — it's the term
 // already used historically for Stairs; the stored field key stays `count`
@@ -1470,8 +1534,19 @@ function App(){
   // now owned solely by addEntry (push) and flushOfflineQueue (remove on a
   // CONFIRMED server write). This listener only reads, merges the queue for
   // display, and refreshes the durable local mirror.
-  useEffect(()=>{
-    if(!user||user._offline){if(entriesRef.current){entriesRef.current();entriesRef.current=null;}return;}
+  //
+  // Extracted to a callable function rather than inline in the effect below:
+  // this listener previously had NO recovery path if it got stuck, distinct
+  // from every isOnline-based fix so far. isOnline reflects .info/connected,
+  // a single trivial boolean — this listener carries the FULL entries node
+  // (thousands of records for a long-running account). A degraded mobile
+  // connection can deliver the tiny boolean fine while silently stalling
+  // the much larger snapshot, so isOnline reporting "connected" is no
+  // guarantee this specific listener is actually current. Making the attach
+  // logic re-callable lets it be periodically and event-triggered refreshed
+  // below, the same self-healing principle already applied to the queue.
+  const attachEntriesListener=useCallback(()=>{
+    if(!user||user._offline)return;
     const uid=user.uid;
     const ref=fbDb.ref(`users/${uid}/entries`);
     const handler=snap=>{
@@ -1510,8 +1585,36 @@ function App(){
     };
     ref.on("value",handler);
     entriesRef.current=()=>ref.off("value",handler);
-    return()=>{ref.off("value",handler);entriesRef.current=null;};
   },[user]);
+
+  useEffect(()=>{
+    if(!user||user._offline){if(entriesRef.current){entriesRef.current();entriesRef.current=null;}return;}
+    attachEntriesListener();
+    return()=>{if(entriesRef.current){entriesRef.current();entriesRef.current=null;}};
+  },[user,attachEntriesListener]);
+
+  // Periodically detach and re-attach the entries listener — the same
+  // recovery this listener never had before. Deliberately a much longer
+  // interval than the queue's 20s poll: re-attaching re-downloads the FULL
+  // entries node, which is expensive to do often for an account with
+  // thousands of records. 3 minutes balances that cost against how long
+  // stale, silently-incomplete data should be tolerated in a health app —
+  // also re-attaches immediately on the same online/foreground events
+  // already used for the stale-socket bounce, since a network handoff is
+  // exactly when a large listener is most likely to have gotten stuck.
+  useEffect(()=>{
+    if(!user||user._offline)return;
+    const refresh=()=>{
+      if(entriesRef.current){entriesRef.current();entriesRef.current=null;}
+      attachEntriesListener();
+    };
+    const id=setInterval(refresh,180000);
+    const onOnline=()=>{if(navigator.onLine)refresh();};
+    const onVisible=()=>{if(document.visibilityState==="visible")refresh();};
+    window.addEventListener("online",onOnline);
+    document.addEventListener("visibilitychange",onVisible);
+    return()=>{clearInterval(id);window.removeEventListener("online",onOnline);document.removeEventListener("visibilitychange",onVisible);};
+  },[user,attachEntriesListener]);
 
   // Load settings/templates once on sign-in
   useEffect(()=>{
@@ -2417,6 +2520,7 @@ function MealEntry({settings,entries,onAdd,entryTime,setEntryTime,refreshTime,T}
   const noteSuggestions=useMemo(()=>food?pastNoteSuggestions(entries,e=>e.type==="meal"&&e.food===food&&(foodSub?e.foodSubType===foodSub:true)):[],[entries,food,foodSub]);
   const save=()=>{if(!food||!qty)return;onAdd({type:"meal",mealType:mt,food,foodSubType:foodSub,qty,unit,notes});setFood("");setFoodSub("");setQty("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
   return(<div className="card"><div className="slabel">🍽️ Meal</div>
+    <RepeatYesterdayChips entries={entries} type="meal" settings={settings} onAdd={onAdd} T={T}/>
     <div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={mt} onChange={e=>{refreshTime&&refreshTime();setMt(e.target.value);}} style={{flex:"0 0 95px"}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select><select value={food} onChange={e=>onFoodChange(e.target.value)} style={{flex:"2 1 80px",minWidth:0}}><option value="">Food item…</option>{rankedFoods.map(f=><option key={f.name} value={f.name}>{pickIcon(f.name,"food",f.icon||"")} {f.name}</option>)}</select>{hasFoodSub&&<select value={foodSub} onChange={e=>onSubChange(e.target.value)} style={{flex:"1 1 90px",minWidth:0}}><option value="">Sub-type…</option>{rankedSubs.map(s=><option key={s}>{s}</option>)}</select>}<input type="number" inputMode="decimal" placeholder="Qty" value={qty} onChange={e=>setQty(e.target.value)} style={{flex:"0 0 54px",width:54}}/><select value={unit} onChange={e=>setUnit(e.target.value)} style={{flex:"0 0 60px",width:60}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select></div>
     <NoteSuggestChips suggestions={noteSuggestions} onPick={setNotes} T={T}/>
     <div style={{display:"flex",gap:6,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
@@ -2449,6 +2553,7 @@ function LiquidEntry({settings,entries,onAdd,entryTime,setEntryTime,refreshTime,
   const noteSuggestions=useMemo(()=>liqType?pastNoteSuggestions(entries,e=>(e.type==="liquid"||e.type==="water")&&(e.liquidType||e.waterTemp)===liqType&&(liqSub?e.liquidSubType===liqSub:true)):[],[entries,liqType,liqSub]);
   const save=()=>{if(!ml||+ml<=0)return;onAdd({type:"liquid",liquidType:liqType,liquidSubType:liqSub,ml:+ml,notes});setMl("");setLiqSub("");setNotes(noteFor(liqType,""));setFl(true);setTimeout(()=>setFl(false),1200);};
   return(<div className="card"><div className="slabel">💧 Liquids</div>
+    <RepeatYesterdayChips entries={entries} type="liquid" settings={settings} onAdd={onAdd} T={T}/>
     {/* Row 1: dropdown | quick-add buttons | qty */}
     <div style={{display:"flex",gap:5,marginBottom:7,alignItems:"center",flexWrap:"wrap"}}>
       <select value={liqType} onChange={e=>onTypeChange(e.target.value)} style={{flex:"2 1 110px",minWidth:0}}>
@@ -2499,7 +2604,9 @@ function ExerciseEntry({settings,entries,onAdd,entryTime,setEntryTime,refreshTim
     onAdd({type:"exercise",exType:et,subType:sub,dist:vals.dist,time:vals.time,count:vals.count,hr:vals.hr,steps:vals.steps,speed:vals.speed,notes});
     setSub("");setVals({dist:"",time:"",count:"",hr:"",steps:"",speed:""});setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);
   };
-  return(<div className="card"><div className="slabel">🏃 Exercise</div><div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}>
+  return(<div className="card"><div className="slabel">🏃 Exercise</div>
+    <RepeatYesterdayChips entries={entries} type="exercise" settings={settings} onAdd={onAdd} T={T}/>
+    <div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}>
     <select value={et} onChange={e=>onTypeChange(e.target.value)} style={{flex:"1 1 100px",minWidth:0}}><option value="">Type…</option>{rankedExTypes.map(e=><option key={e.name} value={e.name}>{pickIcon(e.name,"exercise",e.icon||"")} {e.name}</option>)}</select>
     {hasSub&&<select value={sub} onChange={e=>onSubChange(e.target.value)} style={{flex:"1 1 110px",minWidth:0}}><option value="">Sub-type…</option>{rankedExSubs.map(s=><option key={s}>{s}</option>)}</select>}
     {etMetrics.map(mk=>{
@@ -2521,6 +2628,7 @@ function MedicalEntry({settings,entries,onAdd,entryTime,setEntryTime,refreshTime
   const noteSuggestions=useMemo(()=>rt?pastNoteSuggestions(entries,e=>e.type==="medical"&&e.readingType===rt):[],[entries,rt]);
   const save=()=>{if(!rt||!val)return;onAdd({type:"medical",readingType:rt,value:val,unit,notes});setVal("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
   return(<div className="card"><div className="slabel">🩺 Medical Reading</div>
+    <RepeatYesterdayChips entries={entries} type="medical" settings={settings} onAdd={onAdd} T={T}/>
     <div style={{display:"flex",gap:5,marginBottom:6}}>
       <select value={rt} onChange={e=>{refreshTime&&refreshTime();setRt(e.target.value);setVal("");}} style={{flex:"1 1 118px",minWidth:0}}><option value="">Type...</option>{rankedPresets.map(p=>{const n=p.name||p;const ic=typeof p==="object"?p.icon||"":"";return<option key={n} value={n}>{pickIcon(n,"medical",ic)} {n}</option>;})}</select>
       {unit==="Sys/Dia"
@@ -2558,6 +2666,7 @@ function MedEntry({settings,entries,onAdd,entryTime,setEntryTime,refreshTime,T})
   const noteSuggestions=useMemo(()=>med?pastNoteSuggestions(entries,e=>e.type==="medication"&&e.med===med):[],[entries,med]);
   const save=()=>{if(!med)return;onAdd({type:"medication",med,timing,notes});setMed("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
   return(<div className="card"><div className="slabel">💊 Medication</div>
+    <RepeatYesterdayChips entries={entries} type="medication" settings={settings} onAdd={onAdd} T={T}/>
     <div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6}}>
       <select value={med} onChange={e=>{refreshTime&&refreshTime();setMed(e.target.value);}} style={{flex:"1 1 140px",minWidth:0}}><option value="">Medication…</option>{rankedMeds.map(m=><option key={m} value={m}>{pickIcon(m,"medication",medIcons[m]||"")} {m}</option>)}</select>
       <select value={timing} onChange={e=>setTiming(e.target.value)} style={{flex:"1 1 120px",minWidth:0}}>{MED_TIMES.map(t=><option key={t}>{t}</option>)}</select>
