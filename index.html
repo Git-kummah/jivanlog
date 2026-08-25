@@ -84,7 +84,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v5.23";
+const APP_VERSION="v5.24";
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -1831,16 +1831,29 @@ function App(){
   // (the .update() promise resolves only on server ack while online). Entries
   // added during the flush are preserved (we remove by exact id, not clear-all).
   const flushOfflineQueue=useCallback(async()=>{
-    if(!user||user._offline)return"not-confirmed"; // offline session can't write to Firebase
-    if(!isOnlineRef.current)return"not-connected"; // don't attempt while disconnected
+    if(!user||user._offline)return"not-confirmed"; // offline session has no real auth token to write with
     const uid=user.uid;
     const queued=getOfflineQ(uid);
     if(!queued.length)return null;
+    // NO .info/connected GATE. That gate — "don't attempt while disconnected"
+    // — was the root cause of every stuck-sync report: on mobile,
+    // .info/connected gets stuck reading false while the network is
+    // genuinely fine, so this function used to bail out and never even TRY
+    // the write. The entry then sat in the durable queue for hours.
+    // Firebase's own SDK already manages the connection and internally
+    // queues/retries writes; we just attempt the write and let its result
+    // decide. If genuinely offline, the .update() below won't resolve within
+    // the timeout and the queue is kept (no data lost). If actually online —
+    // even when .info/connected wrongly claims otherwise — it lands. We no
+    // longer ask an unreliable boolean for permission to save data.
     setSyncStatus("saving");
     try{
       const updates={};const ids=[];
       queued.forEach(e=>{const k=e.id.replace(/[\s.#$\[\]/]/g,"_");const{_queuedAt,...clean}=e;updates[k]={...clean,id:k};ids.push(e.id);});
-      // Race the write against a timeout so a mid-flush disconnect can't hang it.
+      // Race against a timeout: if the write can't confirm within 12s (genuinely
+      // offline, or a stalled connection), we DON'T dequeue — the entry stays
+      // safe in the queue for the next attempt. Only a CONFIRMED server write
+      // removes it. This is the original data-loss lesson, preserved exactly.
       await Promise.race([
         fbDb.ref(`users/${uid}/entries`).update(updates),
         new Promise((_,rej)=>setTimeout(()=>rej(new Error("flush-timeout")),12000))
@@ -1850,8 +1863,14 @@ function App(){
       setSyncStatus("synced");setTimeout(()=>setSyncStatus("idle"),1500);
       return null;
     }catch(e){
-      console.warn("Flush deferred, queue intact:",e&&e.message||e);setSyncStatus("idle");
-      return"error:"+(e&&e.message||String(e));
+      // Distinguish a PERMANENT rejection (bad permissions / App Check) from a
+      // transient failure (offline, timeout). A permission error will NEVER
+      // succeed by retrying, so surface it loudly rather than spinning silently
+      // for hours; a transient one just keeps the queue for the next attempt.
+      const msg=(e&&e.message||String(e));
+      const permanent=/permission|denied|PERMISSION_DENIED|app.?check|unauthorized/i.test(msg);
+      console.warn("Flush deferred, queue intact:",msg);setSyncStatus("idle");
+      return permanent?"rejected:"+msg:"error:"+msg;
     }
   },[user]);
 
@@ -1895,32 +1914,32 @@ function App(){
         const cur=fbAuth.currentUser;
         if(cur)confirmUser(cur);
       }
-      if(queueSize>0){
-        if(isOnlineRef.current)flushOfflineQueue();
-        else{try{fbDb.goOffline();fbDb.goOnline();}catch(e){}}
-      }
+      // Always attempt the flush if anything is queued — no isOnlineRef gate.
+      // The flush handles genuine offline gracefully (times out, keeps the
+      // queue). We no longer try to force .info/connected true with a bounce
+      // here, because we no longer depend on that signal being correct.
+      if(queueSize>0)flushOfflineQueue();
     },20000);
     return()=>clearInterval(id);
   },[user,queueSize,flushOfflineQueue,confirmUser]);
 
-  // The browser's network-change events (online, and app resuming to
-  // foreground) fire independently of Firebase's own socket state and often
-  // catch a network handoff before .info/connected does. This still
-  // force-bounces the Firebase connection when needed — a stale socket from
-  // before a handoff won't self-heal just because the browser says we're
-  // online again — but no longer ALSO calls flushOfflineQueue directly; the
-  // poll above picks that up within 20s once the bounce (if any) resolves
-  // isOnlineRef, which is simpler than duplicating the flush call here too.
+  // Browser network-change / foreground events: attempt an immediate flush
+  // rather than waiting up to 20s for the next poll. A single connection
+  // bounce on a real handoff can still help the SDK notice a changed network
+  // faster, but it is no longer load-bearing — even if it does nothing, the
+  // flush attempt itself is what actually moves data now.
   useEffect(()=>{
-    const nudge=()=>{
+    if(!user)return;
+    const kick=()=>{
       if(!navigator.onLine)return;
-      if(!isOnlineRef.current){try{fbDb.goOffline();fbDb.goOnline();}catch(e){}}
+      try{fbDb.goOffline();setTimeout(()=>{try{fbDb.goOnline();}catch(e){}},300);}catch(e){}
+      flushOfflineQueue();
     };
-    const onVisible=()=>{if(document.visibilityState==="visible")nudge();};
-    window.addEventListener("online",nudge);
+    const onVisible=()=>{if(document.visibilityState==="visible")kick();};
+    window.addEventListener("online",kick);
     document.addEventListener("visibilitychange",onVisible);
-    return()=>{window.removeEventListener("online",nudge);document.removeEventListener("visibilitychange",onVisible);};
-  },[]);
+    return()=>{window.removeEventListener("online",kick);document.removeEventListener("visibilitychange",onVisible);};
+  },[user,flushOfflineQueue]);
 
   const persistKey=useCallback(async(key,val)=>{
     if(!user)return;
@@ -1961,9 +1980,11 @@ function App(){
       saveDailyBackupLocal(uid,next);
       // 2. Push to offline queue — the authoritative pending-write store
       const q=queueUpsert(uid,newEntry);setQueueSize(q.length);
-      // 3. If online, flush queue via .update() (safe, additive, not .set())
-      //    flushOfflineQueue is a no-op if offline — queue persists for later
-      if(isOnlineRef.current)flushOfflineQueue();
+      // 3. Always ATTEMPT the flush — no connectivity gate. The entry is
+      //    already in the durable queue above, so a failed attempt loses
+      //    nothing; a successful one (even when .info/connected wrongly reads
+      //    offline) syncs immediately instead of waiting for a poll.
+      flushOfflineQueue();
     }
   },[entries,flushOfflineQueue,entryTime,user]);
 
@@ -1974,7 +1995,7 @@ function App(){
       const uid=user.uid;
       mirrorPut(uid,[entry]);saveTodayCache(uid,next);saveDailyBackupLocal(uid,next);
       const q=queueUpsert(uid,entry);setQueueSize(q.length);
-      if(isOnlineRef.current)flushOfflineQueue();
+      flushOfflineQueue();
     }
   },[entries,flushOfflineQueue,user]);
 
@@ -1985,17 +2006,15 @@ function App(){
     if(user){
       const uid=user.uid;
       mirrorPut(uid,changed?[changed]:[]);saveTodayCache(uid,next);saveDailyBackupLocal(uid,next);
-      if(user._offline){
-        // Offline session: queue the edited entry so it flushes on reconnect.
-        const q=queueUpsert(uid,changed);setQueueSize(q.length);
-      }else if(isOnlineRef.current){
-        const k=id.replace(/[\s.#$\[\]/]/g,"_");
-        fbDb.ref(`users/${uid}/entries/${k}`).update({...changed,id:k}).catch(e=>console.warn("updateEntry remote:",e));
-      }else{
-        const q=queueUpsert(uid,changed);setQueueSize(q.length);
-      }
+      // Unified with addEntry's durable pattern: queue the edit (so a failed
+      // write is RETRIED, not silently lost — the old direct-write branch had
+      // only a .catch that logged and dropped it), then attempt the flush with
+      // no connectivity gate. queueUpsert replaces any earlier queued copy of
+      // the same id, so an edit supersedes a still-pending add cleanly.
+      const q=queueUpsert(uid,changed);setQueueSize(q.length);
+      if(!user._offline)flushOfflineQueue();
     }
-  },[entries,user]);
+  },[entries,user,flushOfflineQueue]);
 
   // SOFT DELETE — never hard-deletes. Writes a tombstone {deleted,deletedAt}.
   // The entry stays in /entries (append-only) and in the mirror; it's just
@@ -2366,14 +2385,16 @@ function App(){
           <span title={displaySync==="offline"?"Offline — entries saved locally":displaySync==="reconnecting"?"Reconnecting… entries saved locally, will sync automatically":displaySync==="pending"?`${queueSize} pending — tap to sync`:displaySync==="saving"?"Syncing…":displaySync==="synced"?"Synced ✓":"Synced"} style={{fontSize:"1rem",color:syncColor,transition:"color 0.3s",cursor:queueSize>0?"pointer":"default"}} onClick={queueSize>0?async()=>{
             const reason=await flushOfflineQueue();
             if(reason==="not-confirmed")showToast("Still confirming your sign-in — this should resolve on its own shortly. If it doesn't, try signing out and back in.","error");
-            else if(reason==="not-connected")showToast("Not connected to the server yet — will retry automatically once connected.","error");
-            else if(reason&&reason.startsWith("error:"))showToast("Sync failed: "+reason.slice(6),"error");
+            else if(reason&&reason.startsWith("rejected:"))showToast("These entries were rejected by the server (a permissions issue), so retrying won't help. Your data is still safe on this device. Please report this.","error");
+            else if(reason&&reason.startsWith("error:"))showToast("Couldn't reach the server just now — your entries are safe on this device and will keep retrying automatically.","info");
+            else if(reason===null)showToast("Synced ✓","success");
           }:undefined}>{syncIcon}</span>
           {queueSize>0&&<button onClick={async()=>{
             const reason=await flushOfflineQueue();
             if(reason==="not-confirmed")showToast("Still confirming your sign-in — this should resolve on its own shortly. If it doesn't, try signing out and back in.","error");
-            else if(reason==="not-connected")showToast("Not connected to the server yet — will retry automatically once connected.","error");
-            else if(reason&&reason.startsWith("error:"))showToast("Sync failed: "+reason.slice(6),"error");
+            else if(reason&&reason.startsWith("rejected:"))showToast("These entries were rejected by the server (a permissions issue), so retrying won't help. Your data is still safe on this device. Please report this.","error");
+            else if(reason&&reason.startsWith("error:"))showToast("Couldn't reach the server just now — your entries are safe on this device and will keep retrying automatically.","info");
+            else if(reason===null)showToast("Synced ✓","success");
           }} title="Sync pending entries now" style={{fontSize:"0.72rem",padding:"2px 5px",borderRadius:5,border:`1px solid ${T.border}`,background:T.cardBg,color:T.waterBtnText,cursor:"pointer",fontFamily:"inherit",fontWeight:600,flexShrink:0}}>Sync {queueSize}</button>}
           <Clock T={T}/>
         </div>
