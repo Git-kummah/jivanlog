@@ -84,7 +84,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v5.22";
+const APP_VERSION="v5.23";
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -948,6 +948,31 @@ function RepeatYesterdayChips({entries,type,settings,onAdd,T}){
   </div>);
 }
 
+// E5: meal templates — a named, reusable bundle of items (built via
+// HomePage's "select from today's log" flow, not a separate form). Tapping
+// applies every item as its own meal entry under whichever meal type is
+// currently selected in the form — the same onAdd path used everywhere
+// else, just called once per item.
+function MealTemplateChips({settings,mt,onAdd,T}){
+  const templates=settings.mealTemplates||[];
+  if(!templates.length)return null;
+  const applyTemplate=tpl=>{
+    tpl.items.forEach(it=>{
+      onAdd({type:"meal",mealType:mt,food:it.food,foodSubType:it.foodSubType||"",qty:it.qty,unit:it.unit,notes:""});
+    });
+  };
+  return(<div style={{marginBottom:6}}>
+    <div style={{fontSize:"0.66rem",color:T.textMuted,marginBottom:3}}>📋 Templates</div>
+    <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+      {templates.map(t=>(
+        <button key={t.id} type="button" onClick={()=>applyTemplate(t)} title={t.items.map(it=>[it.food,it.foodSubType].filter(Boolean).join(" · ")+(it.qty?` · ${it.qty}${it.unit||""}`:"")).join(", ")}
+          style={{padding:"3px 9px",borderRadius:20,border:`1px solid ${T.accentBtn}`,background:T.accentBg,
+            color:T.accent,cursor:"pointer",fontSize:"0.71rem",fontFamily:"inherit",fontWeight:600,maxWidth:200,
+            overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>📋 {t.name} ({t.items.length})</button>
+      ))}
+    </div>
+  </div>);
+}
 // ── Exercise metrics catalog ──────────────────────────────────────────────
 // "count" was renamed "Floors" (global, per user decision — it's the term
 // already used historically for Stairs; the stored field key stays `count`
@@ -1007,7 +1032,7 @@ const decodeEmptyMap=obj=>(obj&&typeof obj==="object"&&!Array.isArray(obj)&&Obje
 // than three separate call sites drifting out of sync.
 const encodeSettingsForFirebase=obj=>{
   const out={...obj};
-  ["foodCategories","liquidTypes","exerciseTypes","medicalPresets","medications"].forEach(k=>{
+  ["foodCategories","liquidTypes","exerciseTypes","medicalPresets","medications","mealTemplates"].forEach(k=>{
     if(out[k]!==undefined)out[k]=encodeEmptyList(out[k]);
   });
   ["liquidNotes","liquidSubTypes"].forEach(k=>{
@@ -1635,7 +1660,7 @@ function App(){
             // per-item logic below runs — otherwise the sentinel marker
             // string would get processed as if it were a real item name
             // (e.g. a food literally called "__empty__").
-            ["foodCategories","liquidTypes","exerciseTypes","medicalPresets","medications"].forEach(k=>{
+            ["foodCategories","liquidTypes","exerciseTypes","medicalPresets","medications","mealTemplates"].forEach(k=>{
               if(o[k]!==undefined)o[k]=decodeEmptyList(o[k]);
             });
             ["liquidNotes","liquidSubTypes"].forEach(k=>{
@@ -2080,6 +2105,35 @@ function App(){
     }catch(e){}}
   },[settings,user]);
 
+  // E5: meal templates — a named, reusable bundle of {food,foodSubType,qty,
+  // unit} items, applied in one tap instead of re-entering each item. Every
+  // mutation here follows onClearConfig's pattern above: real shape set
+  // locally for immediate UI, encoded shape written to Firebase separately
+  // — deleting the last template is exactly the "now empty" case the
+  // sentinel encoding exists to protect against.
+  const persistTemplates=useCallback(async newSet=>{
+    setSettings(newSet);
+    if(user){try{await dbSet(user.uid,"settings",encodeSettingsForFirebase(newSet));}catch(e){}}
+  },[user]);
+  const onSaveMealTemplate=useCallback((name,items)=>{
+    const tpl={id:genId(),name,items};
+    persistTemplates({...settings,mealTemplates:[...(settings.mealTemplates||[]),tpl]});
+  },[settings,persistTemplates]);
+  const onRenameMealTemplate=useCallback((id,name)=>{
+    persistTemplates({...settings,mealTemplates:(settings.mealTemplates||[]).map(t=>t.id===id?{...t,name}:t)});
+  },[settings,persistTemplates]);
+  const onDeleteMealTemplate=useCallback(id=>{
+    persistTemplates({...settings,mealTemplates:(settings.mealTemplates||[]).filter(t=>t.id!==id)});
+  },[settings,persistTemplates]);
+  const onReorderMealTemplate=useCallback((id,dir)=>{
+    const list=[...(settings.mealTemplates||[])];
+    const i=list.findIndex(t=>t.id===id);
+    const j=i+dir;
+    if(i<0||j<0||j>=list.length)return;
+    [list[i],list[j]]=[list[j],list[i]];
+    persistTemplates({...settings,mealTemplates:list});
+  },[settings,persistTemplates]);
+
   // ── N6: rename a config item and cascade it across all history ────────────
   // Writes are chunked multi-path `.update()` calls scoped to individual entry
   // fields (`{entryId}/{field}`), so no other field of any entry is touched and
@@ -2345,10 +2399,10 @@ function App(){
       {offlineAuth&&!isOnline&&<div style={{display:"flex",alignItems:"center",gap:7,padding:"6px 13px",background:T.accentBg,borderBottom:`1px solid ${T.border}`,fontSize:"0.72rem",color:T.accent,flexShrink:0}}>📵 Offline mode — you're signed in from saved data. New entries are stored on this device and will sync automatically when you're back online.</div>}
 
       <div style={{flex:1,overflowY:"auto",padding:"12px 13px"}} onClick={()=>showUserMenu&&setShowUserMenu(false)}>
-        {page==="home"    &&<HomePage entries={entries} settings={settings} onAdd={addEntry} onUpdate={updateEntry} onDelete={deleteEntry} entryTime={entryTime} setEntryTime={setEntryTime} T={T}/>}
+        {page==="home"    &&<HomePage entries={entries} settings={settings} onAdd={addEntry} onUpdate={updateEntry} onDelete={deleteEntry} entryTime={entryTime} setEntryTime={setEntryTime} onSaveMealTemplate={onSaveMealTemplate} showToast={showToast} T={T}/>}
         {page==="manage"  &&<ManagePage entries={entries} settings={settings} onAddDirect={addEntryDirect} onUpdate={updateEntry} onDelete={deleteEntry} isOnline={isOnline} T={T}/>}
         {page==="reports" &&<ReportsPage entries={entries} deletedEntries={deletedEntries} settings={settings} isOnline={isOnline} showToast={showToast} T={T}/>}
-        {page==="settings"&&<SettingsPage settings={settings} theme={theme} setSettings={saveSettings} setTheme={saveTheme} dayRolloverMin={dayRolloverMin} setDayRolloverMin={saveDayRollover} user={user} entries={entries} deletedEntries={deletedEntries} onRestoreEntry={restoreEntry} onExportJSON={exportFullBackup} onImportJSON={importFullBackup} onImport={handleImport} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} onRestore={restoreFromBackup} onRename={renameConfigItem} onRepairEmoji={repairEmojiNames} offlineAuth={offlineAuth} showToast={showToast}
+        {page==="settings"&&<SettingsPage settings={settings} theme={theme} setSettings={saveSettings} setTheme={saveTheme} dayRolloverMin={dayRolloverMin} setDayRolloverMin={saveDayRollover} user={user} entries={entries} deletedEntries={deletedEntries} onRestoreEntry={restoreEntry} onExportJSON={exportFullBackup} onImportJSON={importFullBackup} onImport={handleImport} onImportConfig={onImportConfig} onClearEntries={onClearEntries} onClearConfig={onClearConfig} onClearAll={onClearAll} onRestore={restoreFromBackup} onRename={renameConfigItem} onRepairEmoji={repairEmojiNames} offlineAuth={offlineAuth} showToast={showToast} onRenameMealTemplate={onRenameMealTemplate} onDeleteMealTemplate={onDeleteMealTemplate} onReorderMealTemplate={onReorderMealTemplate}
           isAdminUser={isAdminUser} pendingRequests={pendingRequests} adminsMap={adminsMap} allowlistMap={allowlistMap} approvedUsersMap={approvedUsersMap}
           onApproveRequest={approveRequest} onDenyRequest={denyRequest} onPromoteAdmin={promoteToAdmin} onDemoteAdmin={demoteAdmin} onAddAllowlist={addAllowlistEntry} onRemoveAllowlist={removeAllowlistEntry}
           T={T}/>}
@@ -2392,7 +2446,7 @@ function App(){
 // ═══════════════════════════════════════════════════════════════════════════════
 // HOME
 // ═══════════════════════════════════════════════════════════════════════════════
-function HomePage({entries,settings,onAdd,onUpdate,onDelete,entryTime,setEntryTime,T}){
+function HomePage({entries,settings,onAdd,onUpdate,onDelete,entryTime,setEntryTime,onSaveMealTemplate,showToast,T}){
   const[active,setActive]=useState("meal");
   const todayE=entries.filter(e=>e.date===today()).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
   // N: entry time previously refreshed to "now" only on switching the top-level
@@ -2413,6 +2467,25 @@ function HomePage({entries,settings,onAdd,onUpdate,onDelete,entryTime,setEntryTi
   // Long-press alone is undiscoverable, so every row also gets an explicit
   // ✏️/🗑️ affordance — three ways in, not one hidden gesture.
   const[editingId,setEditingId]=useState(null);
+  // E5: meal templates — select from today's ALREADY-typed meal entries
+  // rather than building a template through a separate mini-form, matching
+  // the app's established "reuse what's already typed" pattern (N1b, E4).
+  const[selectMode,setSelectMode]=useState(false);
+  const[selectedIds,setSelectedIds]=useState([]);
+  const[namingTemplate,setNamingTemplate]=useState(false);
+  const[templateName,setTemplateName]=useState("");
+  const todayMeals=todayE.filter(e=>e.type==="meal");
+  const toggleSelect=id=>setSelectedIds(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
+  const exitSelectMode=()=>{setSelectMode(false);setSelectedIds([]);setNamingTemplate(false);setTemplateName("");};
+  const confirmSaveTemplate=()=>{
+    const nm=templateName.trim();
+    if(!nm){showToast&&showToast("Enter a name for the template.","error");return;}
+    const items=todayMeals.filter(e=>selectedIds.includes(e.id))
+      .map(e=>({food:e.food,foodSubType:e.foodSubType,qty:e.qty,unit:e.unit}));
+    onSaveMealTemplate&&onSaveMealTemplate(nm,items);
+    showToast&&showToast(`Saved "${nm}" (${items.length} item${items.length===1?"":"s"}).`,"success");
+    exitSelectMode();
+  };
   return(
     <div>
       <div style={{display:"flex",gap:5,marginBottom:10,alignItems:"center"}}>
@@ -2429,12 +2502,33 @@ function HomePage({entries,settings,onAdd,onUpdate,onDelete,entryTime,setEntryTi
       {active==="medical"   &&<MedicalEntry settings={settings} entries={entries} onAdd={onAdd} entryTime={entryTime} setEntryTime={onTimeEdit} refreshTime={refreshTime} T={T}/>}
       {active==="medication"&&<MedEntry settings={settings} entries={entries} onAdd={onAdd} entryTime={entryTime} setEntryTime={onTimeEdit} refreshTime={refreshTime} T={T}/>}
       <div style={{marginTop:14}}>
-        <div className="slabel" style={{position:"sticky",top:0,zIndex:2,background:T.bg,padding:"4px 0"}}>Today's Log</div>
+        <div style={{position:"sticky",top:0,zIndex:2,background:T.bg,padding:"4px 0",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div className="slabel" style={{marginBottom:0}}>Today's Log</div>
+          {!selectMode&&todayMeals.length>0&&
+            <button onClick={()=>setSelectMode(true)} title="Select meal entries to save as a template" aria-label="Select meal entries to save as a template"
+              style={{background:"none",border:"none",color:T.textMuted,cursor:"pointer",fontSize:"0.72rem",fontWeight:600,padding:"3px 6px"}}>📋 Save as template</button>}
+          {selectMode&&
+            <button onClick={exitSelectMode} style={{background:"none",border:"none",color:T.textMuted,cursor:"pointer",fontSize:"0.72rem",fontWeight:600,padding:"3px 6px"}}>Cancel</button>}
+        </div>
+        {selectMode&&<div style={{fontSize:"0.68rem",color:T.textMuted,margin:"0 0 6px"}}>Tap meal entries below to select, then save them as a reusable template.</div>}
         {todayE.length===0?<div style={{color:T.textMuted,fontSize:"0.8rem",textAlign:"center",padding:"18px 0"}}>No entries yet today</div>:<div className="card" style={{padding:"8px 11px"}}>
-          {todayE.map(e=>editingId===e.id
-            ?<EditEntry key={e.id} entry={e} settings={settings} T={T} label="✏️ Editing" onSave={d=>{onUpdate&&onUpdate(e.id,d);setEditingId(null);}} onCancel={()=>setEditingId(null)} onDelete={()=>{onDelete&&onDelete(e.id);setEditingId(null);}}/>
-            :<TLE key={e.id} e={e} settings={settings} onEdit={()=>setEditingId(e.id)} T={T}/>
-          )}
+          {todayE.map(e=>{
+            if(editingId===e.id)return<EditEntry key={e.id} entry={e} settings={settings} T={T} label="✏️ Editing" onSave={d=>{onUpdate&&onUpdate(e.id,d);setEditingId(null);}} onCancel={()=>setEditingId(null)} onDelete={()=>{onDelete&&onDelete(e.id);setEditingId(null);}}/>;
+            if(selectMode&&e.type==="meal"){
+              const checked=selectedIds.includes(e.id);
+              return(<div key={e.id} onClick={()=>toggleSelect(e.id)} style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>
+                <input type="checkbox" checked={checked} readOnly style={{flexShrink:0,pointerEvents:"none"}}/>
+                <div style={{flex:1,opacity:checked?1:0.85}}><TLE e={e} settings={settings} onEdit={()=>{}} T={T}/></div>
+              </div>);
+            }
+            return<div key={e.id} style={selectMode?{opacity:0.4}:undefined}><TLE e={e} settings={settings} onEdit={()=>setEditingId(e.id)} T={T}/></div>;
+          })}
+        </div>}
+        {selectMode&&selectedIds.length>0&&!namingTemplate&&
+          <button onClick={()=>setNamingTemplate(true)} style={{width:"100%",marginTop:8,padding:"8px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:700,fontSize:"0.8rem",cursor:"pointer"}}>💾 Save {selectedIds.length} as template</button>}
+        {namingTemplate&&<div style={{display:"flex",gap:6,marginTop:8}}>
+          <input autoFocus placeholder="Template name…" value={templateName} onChange={e=>setTemplateName(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")confirmSaveTemplate();}} style={{flex:1}}/>
+          <button onClick={confirmSaveTemplate} style={{padding:"6px 14px",borderRadius:8,border:"none",background:T.accentBtn,color:"#fff",fontFamily:"inherit",fontWeight:700,fontSize:"0.8rem",cursor:"pointer"}}>Save Template</button>
         </div>}
       </div>
     </div>
@@ -2521,6 +2615,7 @@ function MealEntry({settings,entries,onAdd,entryTime,setEntryTime,refreshTime,T}
   const save=()=>{if(!food||!qty)return;onAdd({type:"meal",mealType:mt,food,foodSubType:foodSub,qty,unit,notes});setFood("");setFoodSub("");setQty("");setNotes("");setFl(true);setTimeout(()=>setFl(false),1200);};
   return(<div className="card"><div className="slabel">🍽️ Meal</div>
     <RepeatYesterdayChips entries={entries} type="meal" settings={settings} onAdd={onAdd} T={T}/>
+    <MealTemplateChips settings={settings} mt={mt} onAdd={onAdd} T={T}/>
     <div style={{display:"flex",gap:5,alignItems:"center",marginBottom:6,flexWrap:"wrap"}}><select value={mt} onChange={e=>{refreshTime&&refreshTime();setMt(e.target.value);}} style={{flex:"0 0 95px"}}>{MEAL_TYPES.map(m=><option key={m}>{m}</option>)}</select><select value={food} onChange={e=>onFoodChange(e.target.value)} style={{flex:"2 1 80px",minWidth:0}}><option value="">Food item…</option>{rankedFoods.map(f=><option key={f.name} value={f.name}>{pickIcon(f.name,"food",f.icon||"")} {f.name}</option>)}</select>{hasFoodSub&&<select value={foodSub} onChange={e=>onSubChange(e.target.value)} style={{flex:"1 1 90px",minWidth:0}}><option value="">Sub-type…</option>{rankedSubs.map(s=><option key={s}>{s}</option>)}</select>}<input type="number" inputMode="decimal" placeholder="Qty" value={qty} onChange={e=>setQty(e.target.value)} style={{flex:"0 0 54px",width:54}}/><select value={unit} onChange={e=>setUnit(e.target.value)} style={{flex:"0 0 60px",width:60}}>{FOOD_UNITS.map(u=><option key={u}>{u}</option>)}</select></div>
     <NoteSuggestChips suggestions={noteSuggestions} onPick={setNotes} T={T}/>
     <div style={{display:"flex",gap:6,alignItems:"center"}}><TimeInput value={entryTime} onChange={setEntryTime}/><input placeholder="Notes (optional)" value={notes} onChange={e=>setNotes(e.target.value)} style={{flex:1}}/><Saver flash={fl} onClick={save} T={T}/></div></div>);
@@ -3640,7 +3735,7 @@ function LockPinCard({user,T}){
   </div>);
 }
 
-function SettingsPage({settings,theme,setSettings,setTheme,dayRolloverMin,setDayRolloverMin,user,entries,deletedEntries,onRestoreEntry,onExportJSON,onImportJSON,onImport,onImportConfig,onClearEntries,onClearConfig,onClearAll,onRestore,onRename,onRepairEmoji,offlineAuth,showToast,isAdminUser,pendingRequests,adminsMap,allowlistMap,approvedUsersMap,onApproveRequest,onDenyRequest,onPromoteAdmin,onDemoteAdmin,onAddAllowlist,onRemoveAllowlist,T}){
+function SettingsPage({settings,theme,setSettings,setTheme,dayRolloverMin,setDayRolloverMin,user,entries,deletedEntries,onRestoreEntry,onExportJSON,onImportJSON,onImport,onImportConfig,onClearEntries,onClearConfig,onClearAll,onRestore,onRename,onRepairEmoji,offlineAuth,showToast,onRenameMealTemplate,onDeleteMealTemplate,onReorderMealTemplate,isAdminUser,pendingRequests,adminsMap,allowlistMap,approvedUsersMap,onApproveRequest,onDenyRequest,onPromoteAdmin,onDemoteAdmin,onAddAllowlist,onRemoveAllowlist,T}){
   const[stab,setStab]=useState("general");const[ctab,setCtab]=useState("food");const[newItem,setNewItem]=useState("");
   // C1: `active` was the `defaults` draft node and edits only reached entry
   // forms via Apply ▶. There is no draft any more — edits are the live config,
@@ -3682,6 +3777,7 @@ function SettingsPage({settings,theme,setSettings,setTheme,dayRolloverMin,setDay
         {CTABS.map(([k,l])=><button key={k} onClick={()=>{setCtab(k);setNewItem("");}} className={`tbtn${ctab===k?" on":""}`} style={{flexShrink:0,fontSize:"0.75rem"}}>{l}</button>)}
       </div>
       {ctab==="food"&&<FoodSetting entries={entries} onRename={onRename} items={active.foodCategories||FD.foodCategories} onRemove={name=>removeItem("foodCategories",name)} onUpdate={updateFood} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("foodCategories")} T={T}/>}
+      {ctab==="food"&&<MealTemplatesSettings templates={settings.mealTemplates||[]} onRename={onRenameMealTemplate} onDelete={onDeleteMealTemplate} onReorder={onReorderMealTemplate} T={T}/>}
       {ctab==="drinks"&&<DrinkSetting entries={entries} onRename={onRename} types={active.liquidTypes||FD.liquidTypes} notes={active.liquidNotes||FD.liquidNotes||{}} subTypes={active.liquidSubTypes||FD.liquidSubTypes||{}} icons={active.liquidIcons||{}} onRemove={item=>removeItem("liquidTypes",item)} onUpdate={updateDrink} onIconUpdate={(name,ic)=>updateDrink("icons",{...(active.liquidIcons||{}),[name]:ic})} newItem={newItem} setNew={setNewItem} onAdd={()=>addItem("liquidTypes")} T={T}/>}
       {ctab==="exercise"&&<ExerciseSetting entries={entries} onRename={onRename} types={active.exerciseTypes||FD.exerciseTypes} onChange={v=>updateActive(p=>({...p,exerciseTypes:v}))} T={T}/>}
       {ctab==="medical"&&<MedicalPresetSetting entries={entries} onRename={onRename} presets={active.medicalPresets||FD.medicalPresets} onAdd={addMedPreset} onRemove={removeMedPreset} onReorder={arr=>updateActive(p=>({...p,medicalPresets:arr}))} onUpdate={arr=>updateActive(p=>({...p,medicalPresets:arr}))} T={T}/>}
@@ -4356,6 +4452,34 @@ function IconBtn({name, category, stored, onSet, T}){
       {open&&<EmojiPicker current={stored||""} onSelect={onSet} onClose={()=>setOpen(false)} T={T}/>}
     </div>
   );
+}
+// E5: rename/delete/reorder for saved meal templates. Templates themselves
+// are only ever CREATED from Home's "select from today's log" flow — this
+// section is purely management of what already exists, matching how other
+// config lists separate "add" (where the data actually comes from) from
+// "manage" (rename/reorder/remove).
+function MealTemplatesSettings({templates,onRename,onDelete,onReorder,T}){
+  const[ei,setEi]=useState(null);
+  const[nameDraft,setNameDraft]=useState("");
+  if(!templates||!templates.length)return null;
+  return(<div className="card" style={{marginTop:10}}>
+    <div className="slabel">📋 Meal Templates</div>
+    <div style={{fontSize:"0.72rem",color:T.textMuted,margin:"0 0 8px",lineHeight:1.5}}>Created from Home — select meal entries in Today's Log, then "Save as template". Manage them here.</div>
+    {templates.map((t,i)=>(
+      <div key={t.id} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 0",borderBottom:i<templates.length-1?`1px solid ${T.border}`:"none"}}>
+        <ReorderBtns i={i} total={templates.length} onMove={(idx,dir)=>onReorder(templates[idx].id,dir)} T={T}/>
+        {ei===t.id
+          ?<input autoFocus value={nameDraft} onChange={e=>setNameDraft(e.target.value)}
+              onKeyDown={e=>{if(e.key==="Enter"){onRename(t.id,nameDraft.trim()||t.name);setEi(null);}if(e.key==="Escape")setEi(null);}}
+              onBlur={()=>{onRename(t.id,nameDraft.trim()||t.name);setEi(null);}}
+              style={{flex:1}}/>
+          :<div style={{flex:1,fontSize:"0.82rem",cursor:"pointer"}} onClick={()=>{setEi(t.id);setNameDraft(t.name);}}>
+              {t.name} <span style={{color:T.textMuted,fontSize:"0.72rem"}}>({t.items.length} item{t.items.length===1?"":"s"})</span>
+            </div>}
+        <button className="ibtn" onClick={()=>{if(confirm(`Delete template "${t.name}"?`))onDelete(t.id);}} style={{color:T.danger}}>🗑️</button>
+      </div>
+    ))}
+  </div>);
 }
 function FoodSetting({items,onRemove,onUpdate,newItem,setNew,onAdd,entries,onRename,T}){
   const[ei,setEi]=useState(null);
