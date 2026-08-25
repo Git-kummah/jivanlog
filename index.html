@@ -84,7 +84,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script type="text/babel">
-const APP_VERSION="v5.20";
+const APP_VERSION="v5.21";
 const{useState,useEffect,useRef,useCallback,useMemo}=React;
 
 // ── LOGO ──────────────────────────────────────────────────────────────────────
@@ -1703,11 +1703,11 @@ function App(){
   // (the .update() promise resolves only on server ack while online). Entries
   // added during the flush are preserved (we remove by exact id, not clear-all).
   const flushOfflineQueue=useCallback(async()=>{
-    if(!user||user._offline)return;          // offline session can't write to Firebase
-    if(!isOnlineRef.current)return;          // don't attempt while disconnected
+    if(!user||user._offline)return"not-confirmed"; // offline session can't write to Firebase
+    if(!isOnlineRef.current)return"not-connected"; // don't attempt while disconnected
     const uid=user.uid;
     const queued=getOfflineQ(uid);
-    if(!queued.length)return;
+    if(!queued.length)return null;
     setSyncStatus("saving");
     try{
       const updates={};const ids=[];
@@ -1720,7 +1720,11 @@ function App(){
       // Confirmed by server — remove exactly these ids; keep anything added since.
       const left=removeFromQueue(uid,ids);setQueueSize(left.length);
       setSyncStatus("synced");setTimeout(()=>setSyncStatus("idle"),1500);
-    }catch(e){console.warn("Flush deferred, queue intact:",e&&e.message||e);setSyncStatus("idle");}
+      return null;
+    }catch(e){
+      console.warn("Flush deferred, queue intact:",e&&e.message||e);setSyncStatus("idle");
+      return"error:"+(e&&e.message||String(e));
+    }
   },[user]);
 
   // N: this used to be THREE independent triggers all responsible for the
@@ -1744,16 +1748,32 @@ function App(){
   // non-empty while isOnlineRef reports false is now itself the signal to
   // bounce the connection, on the same timer, rather than waiting on a
   // browser event that may never come.
+  // Extended again: everything above assumes the DATABASE socket
+  // (isOnlineRef) is the only thing that can get stuck. But flushOfflineQueue
+  // ALSO bails out silently, before ever checking connectivity, if
+  // user._offline is still true — meaning Firebase Auth's own session never
+  // separately confirmed, even if the database socket is perfectly fine.
+  // That promotion normally happens in the standalone catch-up effect above,
+  // but it's a REACTION to isOnline/offlineAuth changing — if those specific
+  // transitions don't fire reliably (exactly the class of issue this
+  // session has repeatedly found), nothing else ever re-checks it. This is
+  // very likely what a queue stuck for 26+ minutes on live connectivity
+  // actually is, given neither the retry nor the bounce touches this path
+  // at all. Re-checking fbAuth.currentUser on the same timer closes it.
   useEffect(()=>{
     if(!user)return;
     const id=setInterval(()=>{
+      if(user._offline){
+        const cur=fbAuth.currentUser;
+        if(cur)confirmUser(cur);
+      }
       if(queueSize>0){
         if(isOnlineRef.current)flushOfflineQueue();
         else{try{fbDb.goOffline();fbDb.goOnline();}catch(e){}}
       }
     },20000);
     return()=>clearInterval(id);
-  },[user,queueSize,flushOfflineQueue]);
+  },[user,queueSize,flushOfflineQueue,confirmUser]);
 
   // The browser's network-change events (online, and app resuming to
   // foreground) fire independently of Firebase's own socket state and often
@@ -2186,8 +2206,18 @@ function App(){
           <div style={{fontSize:"0.72rem",color:T.textMuted,fontFamily:"'DM Mono',monospace"}}>{dayStr}<span style={{opacity:0.45,marginLeft:5}}>{APP_VERSION}</span></div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
-          <span title={displaySync==="offline"?"Offline — entries saved locally":displaySync==="reconnecting"?"Reconnecting… entries saved locally, will sync automatically":displaySync==="pending"?`${queueSize} pending — tap to sync`:displaySync==="saving"?"Syncing…":displaySync==="synced"?"Synced ✓":"Synced"} style={{fontSize:"1rem",color:syncColor,transition:"color 0.3s",cursor:queueSize>0?"pointer":"default"}} onClick={queueSize>0?flushOfflineQueue:undefined}>{syncIcon}</span>
-          {queueSize>0&&<button onClick={flushOfflineQueue} title="Sync pending entries now" style={{fontSize:"0.72rem",padding:"2px 5px",borderRadius:5,border:`1px solid ${T.border}`,background:T.cardBg,color:T.waterBtnText,cursor:"pointer",fontFamily:"inherit",fontWeight:600,flexShrink:0}}>Sync {queueSize}</button>}
+          <span title={displaySync==="offline"?"Offline — entries saved locally":displaySync==="reconnecting"?"Reconnecting… entries saved locally, will sync automatically":displaySync==="pending"?`${queueSize} pending — tap to sync`:displaySync==="saving"?"Syncing…":displaySync==="synced"?"Synced ✓":"Synced"} style={{fontSize:"1rem",color:syncColor,transition:"color 0.3s",cursor:queueSize>0?"pointer":"default"}} onClick={queueSize>0?async()=>{
+            const reason=await flushOfflineQueue();
+            if(reason==="not-confirmed")showToast("Still confirming your sign-in — this should resolve on its own shortly. If it doesn't, try signing out and back in.","error");
+            else if(reason==="not-connected")showToast("Not connected to the server yet — will retry automatically once connected.","error");
+            else if(reason&&reason.startsWith("error:"))showToast("Sync failed: "+reason.slice(6),"error");
+          }:undefined}>{syncIcon}</span>
+          {queueSize>0&&<button onClick={async()=>{
+            const reason=await flushOfflineQueue();
+            if(reason==="not-confirmed")showToast("Still confirming your sign-in — this should resolve on its own shortly. If it doesn't, try signing out and back in.","error");
+            else if(reason==="not-connected")showToast("Not connected to the server yet — will retry automatically once connected.","error");
+            else if(reason&&reason.startsWith("error:"))showToast("Sync failed: "+reason.slice(6),"error");
+          }} title="Sync pending entries now" style={{fontSize:"0.72rem",padding:"2px 5px",borderRadius:5,border:`1px solid ${T.border}`,background:T.cardBg,color:T.waterBtnText,cursor:"pointer",fontFamily:"inherit",fontWeight:600,flexShrink:0}}>Sync {queueSize}</button>}
           <Clock T={T}/>
         </div>
       </div>
