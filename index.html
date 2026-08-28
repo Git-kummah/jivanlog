@@ -34,18 +34,28 @@
        (auth/internal-error) — signInWithPopup loads a helper script from
        apis.google.com and opens its popup at accounts.google.com.
 
-       www.google.com (script-src/connect-src/frame-src): the SECOND deployed
-       version still broke — App Check's ReCaptchaV3Provider loads
-       https://www.google.com/recaptcha/api.js, which was never allowed, so
-       App Check could never get a token and RTDB (App Check-enforced)
-       rejected everything, including plain data loads — this is what looked
-       like "the app isn't updating." Sourced from Google's own official
-       reCAPTCHA FAQ (developers.google.com/recaptcha/docs/faq), which lists
-       script-src/frame-src/connect-src all needing www.google.com — cross-
-       checked against several independent integration guides that all state
-       the same three directives, not just one source. reCAPTCHA v3 has no
-       visible challenge UI, but still uses an invisible iframe internally,
-       hence frame-src needs it too, not just script-src.
+       www.google.com / recaptcha.google.com (REMOVED): these existed only
+       for App Check's ReCaptchaV3Provider, which loaded
+       https://www.google.com/recaptcha/api.js and used an invisible iframe
+       at recaptcha.google.com. App Check enforcement on Realtime Database
+       was turned off after confirming the rules-level validation on
+       pendingRequests/$uid (email must match the caller's own signed-in
+       token, fields capped, unknown fields rejected — see the rules file
+       comment, R3) already closed the one write path App Check was the
+       primary mitigation for. The client-side activate() call is gone too,
+       so neither domain is loaded anymore. Historical note, kept because it
+       explains a real outage: the SECOND deployed version of this policy
+       omitted www.google.com and broke App Check entirely (it could never
+       get a token, so RTDB — App Check-enforced at the time — rejected
+       every request, including plain reads, which looked like "the app
+       isn't updating"). That whole class of fragility — a third-party
+       token service sitting in front of every database call — is gone now
+       along with the domains.
+
+       apis.google.com / accounts.google.com stay: signInWithPopup still
+       loads a helper script from apis.google.com and opens its popup at
+       accounts.google.com — this is Google Sign-In itself, unrelated to
+       App Check, and still required.
 
        *.firebasedatabase.app / *.firebaseio.com in SCRIPT-SRC (critical —
        do not remove): THE fix for the long-running stuck-sync bug. Firebase
@@ -71,16 +81,16 @@
        header, which GitHub Pages can't send. Keeping it was dead weight
        that implied protection this policy was never actually providing.
 
-       None of this — either break — was something a sandboxed test could
-       have caught. There's no way to drive an actual Google OAuth popup or
-       a real reCAPTCHA token exchange outside a real browser against the
-       real Firebase project. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdnjs.cloudflare.com https://apis.google.com https://www.google.com https://*.firebasedatabase.app https://*.firebaseio.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebasedatabase.app wss://*.firebasedatabase.app https://*.firebaseapp.com https://apis.google.com https://www.google.com https://www.gstatic.com https://cdnjs.cloudflare.com; frame-src https://*.firebaseapp.com https://accounts.google.com https://apis.google.com https://www.google.com https://recaptcha.google.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self';"/>
+       Historical note only — the two breaks documented above (Google
+       sign-in, App Check) were never reproducible in a sandboxed test.
+       There's no way to drive an actual Google OAuth popup or a real
+       reCAPTCHA token exchange outside a real browser against the real
+       Firebase project. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdnjs.cloudflare.com https://apis.google.com https://*.firebasedatabase.app https://*.firebaseio.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebasedatabase.app wss://*.firebasedatabase.app https://*.firebaseapp.com https://apis.google.com https://www.gstatic.com https://cdnjs.cloudflare.com; frame-src https://*.firebaseapp.com https://accounts.google.com https://apis.google.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self';"/>
   <link rel="manifest" href="manifest.json"/>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" integrity="sha384-AQ3POAMqIhwS81FrUH95ekxqBZHeP5tG2JfEL3+7GuTtfRLWnrRh32UxwzM+//A9" crossorigin="anonymous"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" integrity="sha384-TnlRYaR4JYz/lpaGuaiU61PjNberSA4vjLjtF+oRC/IkohkJqnWxw5EmDSOt1vA1" crossorigin="anonymous"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js" integrity="sha384-1/m+A1jVWbD3yiK3/vtFvm1+LjK1WLpSoDY+Kaxppwn/yP9BVSgdHTNQVOjrzUO5" crossorigin="anonymous"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-check-compat.js" integrity="sha384-E3vxFxXu8FhW5kvqdQJ5Yf8ugrV7iCJP8jgnItRH2Rk8Q08cJzJGTi/oMC3FEp3j" crossorigin="anonymous"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" integrity="sha384-tMH8h3BGESGckSAVGZ82T9n90ztNXxvdwvdM6UoR56cYcf+0iGXBliJ29D+wZ/x8" crossorigin="anonymous"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js" integrity="sha384-bm7MnzvK++ykSwVJ2tynSE5TRdN+xL418osEVF2DE/L/gfWHj91J2Sphe582B1Bh" crossorigin="anonymous"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" integrity="sha384-bs/nf9FbdNouRbMiFcrcZfLXYPKiPaGVGplVbv7dLGECccEXDW+S3zjqSKR5ZEaD" crossorigin="anonymous"></script>
@@ -99,19 +109,22 @@ firebase.initializeApp({
   messagingSenderId:"533310222939",
   appId:"1:533310222939:web:9cd1c33ad05556d162057e"
 });
-// ── App Check (reCAPTCHA v3) ─────────────────────────────────────────────────
-const appCheck=firebase.appCheck();
-appCheck.activate(
-  new firebase.appCheck.ReCaptchaV3Provider("6LfzzHwsAAAAAMlpWVfHtwXSJwo2IrzKVT4lIbSd"),
-  true // auto-refresh tokens
-);
+// App Check (reCAPTCHA v3) removed — enforcement was turned off on Realtime
+// Database after the pendingRequests/$uid rules-level validation (email must
+// match the caller's own signed-in token, fields capped, unknown fields
+// rejected) was confirmed to already close the one write path App Check was
+// covering. Keeping the client-side activation with enforcement off would
+// only retain the reCAPTCHA script load and token-fetch as a dependency in
+// the boot path for no security benefit — this was also the direct cause of
+// one full outage earlier (a CSP gap blocked the reCAPTCHA script entirely,
+// so App Check could never get a token and RTDB rejected every request).
 const fbAuth=firebase.auth();
 const fbDb=firebase.database();
 const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script>
-const APP_VERSION = "v5.26";
+const APP_VERSION = "v5.27";
 const {
   useState,
   useEffect,
