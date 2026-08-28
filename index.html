@@ -124,7 +124,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script>
-const APP_VERSION = "v5.28";
+const APP_VERSION = "v5.29";
 const {
   useState,
   useEffect,
@@ -5175,18 +5175,7 @@ function MealEntry({
     className: "card"
   }, /*#__PURE__*/React.createElement("div", {
     className: "slabel"
-  }, "\uD83C\uDF7D\uFE0F Meal"), /*#__PURE__*/React.createElement(RepeatYesterdayChips, {
-    entries: entries,
-    type: "meal",
-    settings: settings,
-    onAdd: onAdd,
-    T: T
-  }), /*#__PURE__*/React.createElement(MealTemplateChips, {
-    settings: settings,
-    mt: mt,
-    onAdd: onAdd,
-    T: T
-  }), /*#__PURE__*/React.createElement("div", {
+  }, "\uD83C\uDF7D\uFE0F Meal"), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 5,
@@ -5247,9 +5236,16 @@ function MealEntry({
     }
   }, FOOD_UNITS.map(u => /*#__PURE__*/React.createElement("option", {
     key: u
-  }, u)))), /*#__PURE__*/React.createElement(NoteSuggestChips, {
-    suggestions: noteSuggestions,
-    onPick: setNotes,
+  }, u)))), /*#__PURE__*/React.createElement(RepeatYesterdayChips, {
+    entries: entries,
+    type: "meal",
+    settings: settings,
+    onAdd: onAdd,
+    T: T
+  }), /*#__PURE__*/React.createElement(MealTemplateChips, {
+    settings: settings,
+    mt: mt,
+    onAdd: onAdd,
     T: T
   }), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -5271,7 +5267,11 @@ function MealEntry({
     flash: fl,
     onClick: save,
     T: T
-  })));
+  })), /*#__PURE__*/React.createElement(NoteSuggestChips, {
+    suggestions: noteSuggestions,
+    onPick: setNotes,
+    T: T
+  }));
 }
 function LiquidEntry({
   settings,
@@ -5336,13 +5336,7 @@ function LiquidEntry({
     className: "card"
   }, /*#__PURE__*/React.createElement("div", {
     className: "slabel"
-  }, "\uD83D\uDCA7 Liquids"), /*#__PURE__*/React.createElement(RepeatYesterdayChips, {
-    entries: entries,
-    type: "liquid",
-    settings: settings,
-    onAdd: onAdd,
-    T: T
-  }), /*#__PURE__*/React.createElement("div", {
+  }, "\uD83D\uDCA7 Liquids"), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 5,
@@ -5393,9 +5387,11 @@ function LiquidEntry({
       flex: "0 0 58px",
       textAlign: "center"
     }
-  })), /*#__PURE__*/React.createElement(NoteSuggestChips, {
-    suggestions: noteSuggestions,
-    onPick: setNotes,
+  })), /*#__PURE__*/React.createElement(RepeatYesterdayChips, {
+    entries: entries,
+    type: "liquid",
+    settings: settings,
+    onAdd: onAdd,
     T: T
   }), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -5427,7 +5423,11 @@ function LiquidEntry({
       background: fl ? T.ok : T.accentBtn,
       color: "#fff"
     }
-  }, fl ? "✔" : "Save")));
+  }, fl ? "✔" : "Save")), /*#__PURE__*/React.createElement(NoteSuggestChips, {
+    suggestions: noteSuggestions,
+    onPick: setNotes,
+    T: T
+  }));
 }
 function ExerciseEntry({
   settings,
@@ -5522,13 +5522,7 @@ function ExerciseEntry({
     className: "card"
   }, /*#__PURE__*/React.createElement("div", {
     className: "slabel"
-  }, "\uD83C\uDFC3 Exercise"), /*#__PURE__*/React.createElement(RepeatYesterdayChips, {
-    entries: entries,
-    type: "exercise",
-    settings: settings,
-    onAdd: onAdd,
-    T: T
-  }), /*#__PURE__*/React.createElement("div", {
+  }, "\uD83C\uDFC3 Exercise"), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 5,
@@ -5579,9 +5573,11 @@ function ExerciseEntry({
         width: d.width
       }
     });
-  })), /*#__PURE__*/React.createElement(NoteSuggestChips, {
-    suggestions: noteSuggestions,
-    onPick: setNotes,
+  })), /*#__PURE__*/React.createElement(RepeatYesterdayChips, {
+    entries: entries,
+    type: "exercise",
+    settings: settings,
+    onAdd: onAdd,
     T: T
   }), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -5603,7 +5599,11 @@ function ExerciseEntry({
     flash: fl,
     onClick: save,
     T: T
-  })));
+  })), /*#__PURE__*/React.createElement(NoteSuggestChips, {
+    suggestions: noteSuggestions,
+    onPick: setNotes,
+    T: T
+  }));
 }
 function MedicalEntry({
   settings,
@@ -5641,13 +5641,7 @@ function MedicalEntry({
     className: "card"
   }, /*#__PURE__*/React.createElement("div", {
     className: "slabel"
-  }, "\uD83E\uDE7A Medical Reading"), /*#__PURE__*/React.createElement(RepeatYesterdayChips, {
-    entries: entries,
-    type: "medical",
-    settings: settings,
-    onAdd: onAdd,
-    T: T
-  }), /*#__PURE__*/React.createElement("div", {
+  }, "\uD83E\uDE7A Medical Reading"), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 5,
@@ -5706,9 +5700,11 @@ function MedicalEntry({
       pointerEvents: "none",
       fontFamily: "'DM Mono',monospace"
     }
-  }, unit))), /*#__PURE__*/React.createElement(NoteSuggestChips, {
-    suggestions: noteSuggestions,
-    onPick: setNotes,
+  }, unit))), /*#__PURE__*/React.createElement(RepeatYesterdayChips, {
+    entries: entries,
+    type: "medical",
+    settings: settings,
+    onAdd: onAdd,
     T: T
   }), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -5740,7 +5736,11 @@ function MedicalEntry({
       color: "#fff",
       minWidth: 52
     }
-  }, fl ? "✔" : "Save")));
+  }, fl ? "✔" : "Save")), /*#__PURE__*/React.createElement(NoteSuggestChips, {
+    suggestions: noteSuggestions,
+    onPick: setNotes,
+    T: T
+  }));
 }
 
 // ── Auto-derive medication timing from current time ─────────────────────────
@@ -5792,13 +5792,7 @@ function MedEntry({
     className: "card"
   }, /*#__PURE__*/React.createElement("div", {
     className: "slabel"
-  }, "\uD83D\uDC8A Medication"), /*#__PURE__*/React.createElement(RepeatYesterdayChips, {
-    entries: entries,
-    type: "medication",
-    settings: settings,
-    onAdd: onAdd,
-    T: T
-  }), /*#__PURE__*/React.createElement("div", {
+  }, "\uD83D\uDC8A Medication"), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 5,
@@ -5829,9 +5823,11 @@ function MedEntry({
     }
   }, MED_TIMES.map(t => /*#__PURE__*/React.createElement("option", {
     key: t
-  }, t)))), /*#__PURE__*/React.createElement(NoteSuggestChips, {
-    suggestions: noteSuggestions,
-    onPick: setNotes,
+  }, t)))), /*#__PURE__*/React.createElement(RepeatYesterdayChips, {
+    entries: entries,
+    type: "medication",
+    settings: settings,
+    onAdd: onAdd,
     T: T
   }), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -5852,7 +5848,11 @@ function MedEntry({
     flash: fl,
     onClick: save,
     T: T
-  })));
+  })), /*#__PURE__*/React.createElement(NoteSuggestChips, {
+    suggestions: noteSuggestions,
+    onPick: setNotes,
+    T: T
+  }));
 }
 function TLE({
   e,
