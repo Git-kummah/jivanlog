@@ -124,7 +124,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script>
-const APP_VERSION = "v5.27";
+const APP_VERSION = "v5.28";
 const {
   useState,
   useEffect,
@@ -1232,6 +1232,36 @@ function buildViewCSV(entries, dates, medPresets, exerciseTypesConfig) {
 }
 
 // ── CSV IMPORT ────────────────────────────────────────────────────────────────
+// C4: a natural key for dedup across CSV re-imports of rows with no
+// explicit ID column (e.g. externally-prepared diary-format files, like
+// sugar_diary_import.csv). Unlike an ID, this key is derived purely from
+// the entry's own content, so the SAME logical entry re-imported from the
+// SAME (or a re-exported) file produces the SAME key every time, letting
+// it be recognized as a duplicate instead of appended again.
+//
+// Deliberately does NOT include `notes` — two otherwise-identical entries
+// that only differ by a note are still the same logical event for dedup
+// purposes, and notes are the field most likely to shift slightly between
+// re-exports (whitespace, the S8 formula-injection guard's leading `'`,
+// etc), which would silently defeat the dedup if included.
+//
+// Known, accepted limitation: two GENUINELY separate entries of the exact
+// same type/time/values (e.g. deliberately logging the identical meal
+// twice within the same minute) will collide on this key and the second
+// will be treated as a duplicate. Accepted trade-off against the
+// alternative, which is every re-import duplicating every ID-less row
+// unconditionally — the previous behavior this fixes.
+function naturalKey(e) {
+  const base = `${e.date}|${e.timestamp}|${e.type}`;
+  switch (e.type) {
+    case "meal": return `${base}|${e.mealType||""}|${e.food||""}|${e.qty||""}|${e.unit||""}`;
+    case "liquid": return `${base}|${e.liquidType||""}|${e.liquidSubType||""}|${e.ml||""}`;
+    case "exercise": return `${base}|${e.exType||""}|${e.subType||""}|${e.dist||""}|${e.time||""}|${e.count||""}`;
+    case "medical": return `${base}|${e.readingType||""}|${e.value||""}|${e.unit||""}`;
+    case "medication": return `${base}|${e.med||""}|${e.timing||""}`;
+    default: return `${base}|${JSON.stringify(e)}`;
+  }
+}
 function parseAndMergeCSV(csvText, existingEntries) {
   const lines = csvText.split("\n").map(l => l.trim()).filter(Boolean);
   if (lines.length < 2) throw new Error("Empty file");
@@ -1251,6 +1281,13 @@ function parseAndMergeCSV(csvText, existingEntries) {
     return s;
   };
   const existingIds = new Set(existingEntries.map(e => e.id));
+  // C4: index existing (live, non-deleted) entries by natural key too, so
+  // ID-less rows can be recognized as duplicates on re-import, not just
+  // rows that happen to carry the same explicit ID. seenThisImport also
+  // catches an accidental duplicate row within the SAME file being
+  // imported, not just duplicates against what was already there.
+  const existingKeys = new Set(existingEntries.filter(e => !e.deleted).map(naturalKey));
+  const seenThisImport = new Set();
   const imported = [];
   for (let i = 1; i < lines.length; i++) {
     const row = [];
@@ -1268,13 +1305,9 @@ function parseAndMergeCSV(csvText, existingEntries) {
     const id = rawId || [cell(row, "Date"), cell(row, "Time"), cell(row, "Type"), cell(row, "SubType"), cell(row, "Detail1"), String(i)].join("|").replace(/[\s.#$\[\]/]/g, "_");
     if (!cell(row, "Date") || !cell(row, "Type")) continue;
     if (rawId && existingIds.has(id)) continue;
-    // C4 (still open): ID-less rows have no dedup mechanism on re-import — a
-    // natural key was computed here but never actually used for anything,
-    // going all the way back to the original audit. Re-importing the same
-    // ID-less CSV (e.g. the sugar diary format) will duplicate every row.
-    // Removing the dead computation rather than building the fix into this
-    // cleanup pass — implementing dedup properly deserves its own attention,
-    // not to be rushed in here.
+    // C4 (done): ID-less rows now dedup via naturalKey() below, checked
+    // against both existing entries and the rest of this same import — see
+    // the dedup check right before imported.push().
     const dateStr = cell(row, "Date");
     const timeStr = cell(row, "Time") || "00:00";
     const type = cell(row, "Type").toLowerCase();
@@ -1342,6 +1375,16 @@ function parseAndMergeCSV(csvText, existingEntries) {
       med: subType,
       timing: d1
     };else continue;
+    // C4: for ID-less rows, dedup by content against both existing entries
+    // and anything already accepted earlier in THIS SAME import — rows that
+    // carry an explicit ID already have their own dedup above and don't
+    // need this (an exact ID match is a stronger signal than a natural-key
+    // match, no need to layer both).
+    if (!rawId) {
+      const nk = naturalKey(entry);
+      if (existingKeys.has(nk) || seenThisImport.has(nk)) continue;
+      seenThisImport.add(nk);
+    }
     imported.push(entry);
   }
   return imported;
