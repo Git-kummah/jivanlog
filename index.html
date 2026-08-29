@@ -88,6 +88,17 @@
        Firebase project. -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://cdnjs.cloudflare.com https://apis.google.com https://*.firebasedatabase.app https://*.firebaseio.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://*.firebasedatabase.app wss://*.firebasedatabase.app https://*.firebaseapp.com https://apis.google.com https://www.gstatic.com https://cdnjs.cloudflare.com; frame-src https://*.firebaseapp.com https://accounts.google.com https://apis.google.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self';"/>
   <link rel="manifest" href="manifest.json"/>
+  <!-- O8: fonts previously loaded via @import inside a React-rendered <style>
+       tag — that blocks on React mounting before the browser even starts the
+       font request, costs an extra round trip, and was never in the SW cache
+       so offline sessions silently fell back to system-ui. Moving it here
+       lets the browser start the font fetch in parallel with everything
+       else, as early as possible. preconnect to fonts.gstatic.com (where the
+       actual woff2 files are served from) saves a DNS+TLS round trip on top
+       of the stylesheet fetch itself. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap"/>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js" integrity="sha384-AQ3POAMqIhwS81FrUH95ekxqBZHeP5tG2JfEL3+7GuTtfRLWnrRh32UxwzM+//A9" crossorigin="anonymous"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js" integrity="sha384-TnlRYaR4JYz/lpaGuaiU61PjNberSA4vjLjtF+oRC/IkohkJqnWxw5EmDSOt1vA1" crossorigin="anonymous"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js" integrity="sha384-1/m+A1jVWbD3yiK3/vtFvm1+LjK1WLpSoDY+Kaxppwn/yP9BVSgdHTNQVOjrzUO5" crossorigin="anonymous"></script>
@@ -124,7 +135,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script>
-const APP_VERSION = "v5.29";
+const APP_VERSION = "v5.30";
 const {
   useState,
   useEffect,
@@ -1098,6 +1109,26 @@ const dbSet = (uid, key, val) => dbRef(uid, key).set(val);
 const dbDel = (uid, key) => dbRef(uid, key).remove();
 
 // ── REPORT HELPERS ────────────────────────────────────────────────────────────
+// E7: out-of-range check for Sugar/BP. Deliberately a rough VISUAL cue, not a
+// clinical judgement — generic adult reference bands, matched by name
+// substring (like pickIcon) so a rename via N6 doesn't silently break it.
+// Top-level (not inside ReportsPage) so WeeklySummaryPanel can share the exact
+// same thresholds rather than risk two copies drifting apart.
+function isOutOfRange(presetName, value) {
+  const nm = (presetName || "").toLowerCase();
+  if (nm.includes("sugar")) {
+    const n = parseFloat(value);
+    return !isNaN(n) && (n < 70 || n > 140);
+  }
+  if (nm === "bp" || nm.includes("blood pressure") || nm.includes("pressure")) {
+    const m = String(value).match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/);
+    if (!m) return false;
+    const sys = parseFloat(m[1]),
+      dia = parseFloat(m[2]);
+    return sys < 90 || sys > 130 || dia < 60 || dia > 85;
+  }
+  return false;
+}
 function dayReport(dayEntries, medPresets, exerciseTypesConfig) {
   const mp = medPresets || FD.medicalPresets || [];
   const WTYP = ["Warm Water", "Plain Water", "Cold Water"];
@@ -1638,7 +1669,7 @@ function LockScreen({
       border: `1px solid ${T.border}`,
       background: "transparent",
       color: T.textSub,
-      fontSize: "0.78rem",
+      fontSize: "0.8rem",
       cursor: "pointer",
       fontFamily: "inherit"
     }
@@ -1756,7 +1787,7 @@ function LoginScreen({
     style: {
       color: T.textMuted,
       opacity: 0.6,
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       textAlign: "center",
       maxWidth: 260,
       lineHeight: 1.6
@@ -2008,7 +2039,7 @@ function NoteSuggestChips({
       background: T.inputBg,
       color: T.textSub,
       cursor: "pointer",
-      fontSize: "0.71rem",
+      fontSize: "0.8rem",
       fontFamily: "inherit",
       maxWidth: 180,
       overflow: "hidden",
@@ -2080,7 +2111,7 @@ function RepeatYesterdayChips({
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.66rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       marginBottom: 3
     }
@@ -2107,7 +2138,7 @@ function RepeatYesterdayChips({
         background: T.accentBg,
         color: T.accent,
         cursor: "pointer",
-        fontSize: "0.71rem",
+        fontSize: "0.8rem",
         fontFamily: "inherit",
         fontWeight: 600,
         maxWidth: 200,
@@ -2151,7 +2182,7 @@ function MealTemplateChips({
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.66rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       marginBottom: 3
     }
@@ -2173,7 +2204,7 @@ function MealTemplateChips({
       background: T.accentBg,
       color: T.accent,
       cursor: "pointer",
-      fontSize: "0.71rem",
+      fontSize: "0.8rem",
       fontFamily: "inherit",
       fontWeight: 600,
       maxWidth: 200,
@@ -2396,7 +2427,7 @@ function TimeDurationInput({
     }
   }), err && /*#__PURE__*/React.createElement("span", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.danger,
       marginTop: 1
     }
@@ -4171,7 +4202,9 @@ function App() {
       position: "relative"
     }
   }, /*#__PURE__*/React.createElement("style", null, `
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;1,400&family=DM+Mono:wght@400;500&display=swap');
+        /* O8: font @import removed — now loaded via <link> in index.html's
+           <head>, which starts the fetch immediately instead of waiting for
+           this style tag to render. See index.html for the full rationale. */
         *{box-sizing:border-box;margin:0;padding:0}
         ::-webkit-scrollbar{width:3px}::-webkit-scrollbar-thumb{background:${T.border};border-radius:2px}
         input,select,textarea{background:${T.inputBg};color:${T.text};border:1px solid ${T.border};border-radius:8px;padding:7px 9px;font-family:inherit;font-size:0.83rem;outline:none;width:100%}
@@ -4179,16 +4212,16 @@ function App() {
         select option{background:${T.inputBg}}
         button{cursor:pointer;font-family:inherit}
         .card{background:${T.cardBg};border:1px solid ${T.border};border-radius:12px;padding:11px;margin-bottom:8px}
-        .slabel{font-size:0.67rem;text-transform:uppercase;letter-spacing:0.09em;color:${T.textMuted};margin-bottom:5px;font-weight:600}
+        .slabel{font-size:0.8rem;text-transform:uppercase;letter-spacing:0.09em;color:${T.textMuted};margin-bottom:5px;font-weight:600}
         .tle{display:flex;align-items:baseline;gap:8px;padding:5px 0;border-bottom:1px solid ${T.border}22}
         .tle:last-child{border-bottom:none}
-        .tbtn{padding:5px 10px;font-size:0.79rem;border-radius:8px;background:${T.cardBg};color:${T.textMuted};border:1px solid ${T.border};white-space:nowrap;cursor:pointer;font-family:inherit;font-weight:500}
+        .tbtn{padding:5px 10px;font-size:0.8rem;border-radius:8px;background:${T.cardBg};color:${T.textMuted};border:1px solid ${T.border};white-space:nowrap;cursor:pointer;font-family:inherit;font-weight:500}
         .tbtn.on{background:${T.accentBg};color:${T.accent};border-color:${T.accentBtn};font-weight:600}
         .wbtn{background:${T.waterBtn};color:${T.waterBtnText};border:1px solid ${T.border};padding:7px 12px;border-radius:8px;font-size:0.85rem;font-weight:600;cursor:pointer}
         .wbtn:hover{background:${T.accentBtn};color:#fff}
-        .ibtn{background:none;border:none;padding:8px 9px;border-radius:8px;color:${T.textMuted};font-size:0.82rem;cursor:pointer;min-width:36px;min-height:36px;display:inline-flex;align-items:center;justify-content:center}
+        .ibtn{background:none;border:none;padding:8px 9px;border-radius:8px;color:${T.textMuted};font-size:0.82rem;cursor:pointer;min-width:44px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
         .ibtn:hover{background:${T.border};color:${T.text}}
-        .ctbl{width:100%;border-collapse:collapse;font-size:0.73rem}
+        .ctbl{width:100%;border-collapse:collapse;font-size:0.8rem}
         .ctbl th{background:${T.navBg};color:${T.textMuted};padding:5px 6px;text-align:left;border:1px solid ${T.border};font-weight:600;white-space:nowrap}
         .ctbl td{padding:5px 6px;border:1px solid ${T.border};vertical-align:top;word-break:break-word}
         .ctbl tr:nth-child(even) td{background:${T.even}}
@@ -4319,7 +4352,7 @@ function App() {
     }
   }, "JivanLog"), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       fontFamily: "'DM Mono',monospace"
     }
@@ -4353,7 +4386,7 @@ function App() {
     },
     title: "Sync pending entries now",
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       padding: "2px 5px",
       borderRadius: 5,
       border: `1px solid ${T.border}`,
@@ -4378,7 +4411,7 @@ function App() {
       padding: "7px 13px",
       background: T.dangerBg || T.accentBg,
       borderBottom: `1px solid ${T.danger}`,
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.danger,
       flexShrink: 0
     }
@@ -4407,7 +4440,7 @@ function App() {
       padding: "6px 13px",
       background: T.accentBg,
       borderBottom: `1px solid ${T.border}`,
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.accent,
       flexShrink: 0
     }
@@ -4608,7 +4641,7 @@ function App() {
     }
   }, user.displayName || "User"), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       overflow: "hidden",
       textOverflow: "ellipsis",
@@ -4793,6 +4826,7 @@ function HomePage({
     entryTime: entryTime,
     setEntryTime: onTimeEdit,
     refreshTime: refreshTime,
+    showToast: showToast,
     T: T
   }), active === "liquid" && /*#__PURE__*/React.createElement(LiquidEntry, {
     settings: settings,
@@ -4801,6 +4835,7 @@ function HomePage({
     entryTime: entryTime,
     setEntryTime: onTimeEdit,
     refreshTime: refreshTime,
+    showToast: showToast,
     T: T
   }), active === "exercise" && /*#__PURE__*/React.createElement(ExerciseEntry, {
     settings: settings,
@@ -4809,6 +4844,7 @@ function HomePage({
     entryTime: entryTime,
     setEntryTime: onTimeEdit,
     refreshTime: refreshTime,
+    showToast: showToast,
     T: T
   }), active === "medical" && /*#__PURE__*/React.createElement(MedicalEntry, {
     settings: settings,
@@ -4817,6 +4853,7 @@ function HomePage({
     entryTime: entryTime,
     setEntryTime: onTimeEdit,
     refreshTime: refreshTime,
+    showToast: showToast,
     T: T
   }), active === "medication" && /*#__PURE__*/React.createElement(MedEntry, {
     settings: settings,
@@ -4825,6 +4862,7 @@ function HomePage({
     entryTime: entryTime,
     setEntryTime: onTimeEdit,
     refreshTime: refreshTime,
+    showToast: showToast,
     T: T
   }), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -4855,7 +4893,7 @@ function HomePage({
       border: "none",
       color: T.textMuted,
       cursor: "pointer",
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       fontWeight: 600,
       padding: "3px 6px"
     }
@@ -4866,13 +4904,13 @@ function HomePage({
       border: "none",
       color: T.textMuted,
       cursor: "pointer",
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       fontWeight: 600,
       padding: "3px 6px"
     }
   }, "Cancel")), selectMode && /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.68rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       margin: "0 0 6px"
     }
@@ -5048,7 +5086,7 @@ function QueueAgeBadge({
       padding: "7px 13px",
       background: T.dangerBg || T.accentBg,
       borderBottom: `1px solid ${T.danger}`,
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.danger,
       flexShrink: 0
     }
@@ -5062,7 +5100,7 @@ function QueueAgeBadge({
     style: {
       flexShrink: 0,
       padding: "4px 9px",
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       borderRadius: 6,
       border: `1px solid ${T.danger}`,
       background: "none",
@@ -5108,6 +5146,7 @@ function MealEntry({
   entryTime,
   setEntryTime,
   refreshTime,
+  showToast,
   T
 }) {
   const [mt, setMt] = useState(autoMeal);
@@ -5154,7 +5193,12 @@ function MealEntry({
   }, [settings]);
   const noteSuggestions = useMemo(() => food ? pastNoteSuggestions(entries, e => e.type === "meal" && e.food === food && (foodSub ? e.foodSubType === foodSub : true)) : [], [entries, food, foodSub]);
   const save = () => {
-    if (!food || !qty) return;
+    // B8: was a bare silent return — tapping Save with a field missing did
+    // nothing visible at all. Now names the specific missing field.
+    if (!food || !qty) {
+      showToast(!food ? "Pick a food item first" : "Enter a quantity", "error");
+      return;
+    }
     onAdd({
       type: "meal",
       mealType: mt,
@@ -5219,6 +5263,7 @@ function MealEntry({
     key: s
   }, s))), /*#__PURE__*/React.createElement("input", {
     type: "number",
+    min: "0",
     inputMode: "decimal",
     placeholder: "Qty",
     value: qty,
@@ -5280,6 +5325,7 @@ function LiquidEntry({
   entryTime,
   setEntryTime,
   refreshTime,
+  showToast,
   T
 }) {
   const allTypes = settings.liquidTypes || FD.liquidTypes || [];
@@ -5318,7 +5364,11 @@ function LiquidEntry({
   }, [settings, liqType]);
   const noteSuggestions = useMemo(() => liqType ? pastNoteSuggestions(entries, e => (e.type === "liquid" || e.type === "water") && (e.liquidType || e.waterTemp) === liqType && (liqSub ? e.liquidSubType === liqSub : true)) : [], [entries, liqType, liqSub]);
   const save = () => {
-    if (!ml || +ml <= 0) return;
+    // B8: was a bare silent return.
+    if (!ml || +ml <= 0) {
+      showToast("Enter an amount (ml)", "error");
+      return;
+    }
     onAdd({
       type: "liquid",
       liquidType: liqType,
@@ -5374,11 +5424,12 @@ function LiquidEntry({
     onClick: () => add(amt),
     style: {
       padding: "5px 7px",
-      fontSize: "0.78rem",
+      fontSize: "0.8rem",
       flex: "0 0 auto"
     }
   }, "+" + amt)), /*#__PURE__*/React.createElement("input", {
     type: "number",
+    min: "0",
     inputMode: "decimal",
     placeholder: "ml",
     value: ml,
@@ -5436,6 +5487,7 @@ function ExerciseEntry({
   entryTime,
   setEntryTime,
   refreshTime,
+  showToast,
   T
 }) {
   const [et, setEt] = useState("");
@@ -5492,7 +5544,11 @@ function ExerciseEntry({
   }, [settings]);
   const noteSuggestions = useMemo(() => et ? pastNoteSuggestions(entries, e => e.type === "exercise" && e.exType === et && (sub ? e.subType === sub : true)) : [], [entries, et, sub]);
   const save = () => {
-    if (!et || hasSub && !sub) return;
+    // B8: was a bare silent return.
+    if (!et || hasSub && !sub) {
+      showToast(!et ? "Pick an exercise type first" : "Pick a sub-type", "error");
+      return;
+    }
     onAdd({
       type: "exercise",
       exType: et,
@@ -5564,6 +5620,7 @@ function ExerciseEntry({
     return /*#__PURE__*/React.createElement("input", {
       key: mk,
       type: "number",
+    min: "0",
       inputMode: d.kind === "decimal" ? "decimal" : "numeric",
       placeholder: d.placeholder,
       value: vals[d.field],
@@ -5612,6 +5669,7 @@ function MedicalEntry({
   entryTime,
   setEntryTime,
   refreshTime,
+  showToast,
   T
 }) {
   const [rt, setRt] = useState("");
@@ -5624,7 +5682,11 @@ function MedicalEntry({
   const unit = (presets.find(p => (p.name || p) === rt) || {}).unit || "";
   const noteSuggestions = useMemo(() => rt ? pastNoteSuggestions(entries, e => e.type === "medical" && e.readingType === rt) : [], [entries, rt]);
   const save = () => {
-    if (!rt || !val) return;
+    // B8: was a bare silent return.
+    if (!rt || !val) {
+      showToast(!rt ? "Pick a reading type first" : "Enter a value", "error");
+      return;
+    }
     onAdd({
       type: "medical",
       readingType: rt,
@@ -5695,7 +5757,7 @@ function MedicalEntry({
       right: 9,
       top: "50%",
       transform: "translateY(-50%)",
-      fontSize: "0.74rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       pointerEvents: "none",
       fontFamily: "'DM Mono',monospace"
@@ -5762,6 +5824,7 @@ function MedEntry({
   entryTime,
   setEntryTime,
   refreshTime,
+  showToast,
   T
 }) {
   const [med, setMed] = useState("");
@@ -5776,7 +5839,11 @@ function MedEntry({
   useEffect(() => setTiming(autoMedTiming(entryTime)), [entryTime]);
   const noteSuggestions = useMemo(() => med ? pastNoteSuggestions(entries, e => e.type === "medication" && e.med === med) : [], [entries, med]);
   const save = () => {
-    if (!med) return;
+    // B8: was a bare silent return.
+    if (!med) {
+      showToast("Pick a medication first", "error");
+      return;
+    }
     onAdd({
       type: "medication",
       med,
@@ -5959,7 +6026,7 @@ function TLE({
     onDoubleClick: () => onEdit && onEdit()
   }, /*#__PURE__*/React.createElement("span", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       fontFamily: "'DM Mono',monospace",
       minWidth: 40,
@@ -5977,7 +6044,7 @@ function TLE({
     }
   }, m, e.notes && /*#__PURE__*/React.createElement("span", {
     style: {
-      fontSize: "0.74rem",
+      fontSize: "0.8rem",
       color: T.textSub,
       fontStyle: "italic"
     }
@@ -6103,12 +6170,12 @@ function ManagePage({
     }
   }, "\uD83D\uDCCB Manage Records"), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted
     }
   }, entries.length, " entries \xB7 ", allDates.length, " dates")), !isOnline && /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.73rem",
+      fontSize: "0.8rem",
       color: T.waterBtnText,
       background: T.waterBtn,
       borderRadius: 8,
@@ -6307,7 +6374,7 @@ function ManageRow({
     }
   }, /*#__PURE__*/React.createElement("span", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       fontFamily: "'DM Mono',monospace",
       minWidth: 40,
@@ -6326,7 +6393,7 @@ function ManageRow({
     }
   }, m, e.notes && /*#__PURE__*/React.createElement("span", {
     style: {
-      fontSize: "0.74rem",
+      fontSize: "0.8rem",
       color: T.textSub,
       fontStyle: "italic"
     }
@@ -6473,6 +6540,7 @@ function EditEntry({
       key: s
     }, s))), /*#__PURE__*/React.createElement("input", {
       type: "number",
+    min: "0",
       inputMode: "decimal",
       value: d.qty,
       onChange: e => set("qty", e.target.value),
@@ -6528,6 +6596,7 @@ function EditEntry({
       key: s
     }, s))), /*#__PURE__*/React.createElement("input", {
       type: "number",
+    min: "0",
       inputMode: "decimal",
       placeholder: "ml",
       value: d.ml || "",
@@ -6583,6 +6652,7 @@ function EditEntry({
     return /*#__PURE__*/React.createElement("input", {
       key: mk,
       type: "number",
+    min: "0",
       inputMode: md.kind === "decimal" ? "decimal" : "numeric",
       placeholder: md.placeholder,
       value: d[md.field] || "",
@@ -6881,6 +6951,166 @@ const AGG_MODES = [{
   label: "Last"
 }];
 const TREND_METRICS = ["Sugar", "BP", "Weight"];
+function WeeklySummaryPanel({
+  entries,
+  settings,
+  T
+}) {
+  const mp = settings?.medicalPresets || FD.medicalPresets || [];
+
+  // Trailing 7 days including today, respecting the configurable day-rollover
+  // — same logic as ReportsPage's own localDateOffset, duplicated here rather
+  // than shared since this panel is a self-contained sibling to TrendsPanel
+  // (same pattern TrendsPanel itself already follows: entries/settings/T in,
+  // compute everything internally).
+  const weekDates = useMemo(() => {
+    const out = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date();
+      d.setMinutes(d.getMinutes() - DAY_ROLLOVER_MIN);
+      d.setDate(d.getDate() - i);
+      out.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+    }
+    return out;
+  }, []);
+  const weekEntries = useMemo(() => entries.filter(e => weekDates.includes(e.date)), [entries, weekDates]);
+
+  // E7: per medical preset, average the readings and count how many were
+  // flagged by the SAME isOutOfRange() the daily view highlights with —
+  // reusing it here (rather than a second copy of the thresholds) means this
+  // can never silently disagree with the daily highlighting.
+  const medicalSummary = useMemo(() => mp.map(p => {
+    const nm = p.name || p;
+    const readings = weekEntries.filter(e => e.type === "medical" && e.readingType === nm);
+    if (!readings.length) return {
+      name: nm,
+      count: 0
+    };
+    const flaggedCount = readings.filter(e => isOutOfRange(nm, e.value)).length;
+    const isBP = readings.some(e => /\d+\s*\/\s*\d+/.test(String(e.value)));
+    if (isBP) {
+      const pairs = readings.map(e => String(e.value).match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/)).filter(Boolean);
+      const avgSys = pairs.reduce((s, m) => s + parseFloat(m[1]), 0) / (pairs.length || 1);
+      const avgDia = pairs.reduce((s, m) => s + parseFloat(m[2]), 0) / (pairs.length || 1);
+      return {
+        name: nm,
+        count: readings.length,
+        avgLabel: `${avgSys.toFixed(0)}/${avgDia.toFixed(0)}`,
+        flaggedCount,
+        unit: readings[0].unit || ""
+      };
+    }
+    const nums = readings.map(e => parseFloat(e.value)).filter(n => !isNaN(n));
+    const avg = nums.length ? nums.reduce((s, n) => s + n, 0) / nums.length : 0;
+    return {
+      name: nm,
+      count: readings.length,
+      avgLabel: avg.toFixed(1),
+      flaggedCount,
+      unit: readings[0].unit || ""
+    };
+  }), [mp, weekEntries]);
+  const exEntries = useMemo(() => weekEntries.filter(e => e.type === "exercise"), [weekEntries]);
+  const totalExMinutes = useMemo(() => exEntries.reduce((s, e) => s + (parseFloat(e.time) || 0), 0), [exEntries]);
+  const totalExDist = useMemo(() => exEntries.reduce((s, e) => s + (parseFloat(e.dist) || 0), 0), [exEntries]);
+  const WTYP = ["Warm Water", "Plain Water", "Cold Water"];
+  const avgWater = useMemo(() => {
+    const byDay = {};
+    weekEntries.filter(e => e.type === "liquid" && WTYP.includes(e.liquidType)).forEach(e => {
+      byDay[e.date] = (byDay[e.date] || 0) + (parseFloat(e.ml) || 0);
+    });
+    const days = Object.keys(byDay);
+    return days.length ? Math.round(days.reduce((s, d) => s + byDay[d], 0) / days.length) : 0;
+  }, [weekEntries]);
+  const daysWithMeals = useMemo(() => new Set(weekEntries.filter(e => e.type === "meal").map(e => e.date)).size, [weekEntries]);
+  const cardStyle = {
+    padding: "10px 12px",
+    background: T.cardBg,
+    border: `1px solid ${T.border}`,
+    borderRadius: 10
+  };
+  const rowStyle = {
+    ...cardStyle,
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center"
+  };
+  const nonEmptyMedical = medicalSummary.filter(m => m.count > 0);
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: "0.8rem",
+      color: T.textMuted
+    }
+  }, "Trailing 7 days (", weekDates[6], " to ", weekDates[0], ")"), nonEmptyMedical.length === 0 && exEntries.length === 0 && avgWater === 0 && daysWithMeals === 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      ...cardStyle,
+      textAlign: "center",
+      color: T.textMuted
+    }
+  }, "No entries in the last 7 days yet."), nonEmptyMedical.map(m => /*#__PURE__*/React.createElement("div", {
+    key: m.name,
+    style: rowStyle
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontWeight: 600
+    }
+  }, pickIcon(m.name, "medical"), " ", m.name), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: "0.8rem",
+      color: T.textMuted
+    }
+  }, m.count, " reading", m.count === 1 ? "" : "s", " this week")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: "right"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontWeight: 700,
+      fontSize: "1.1rem",
+      color: m.flaggedCount > 0 ? T.danger : T.text
+    }
+  }, m.avgLabel, m.unit ? " " + m.unit : ""), m.flaggedCount > 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: "0.8rem",
+      color: T.danger
+    }
+  }, m.flaggedCount, " out of range")))), exEntries.length > 0 && /*#__PURE__*/React.createElement("div", {
+    style: cardStyle
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontWeight: 600
+    }
+  }, "\uD83C\uDFC3 Exercise"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: "0.8rem",
+      color: T.textMuted
+    }
+  }, exEntries.length, " session", exEntries.length === 1 ? "" : "s", totalExMinutes > 0 ? `, ${totalExMinutes.toFixed(0)} min total` : "", totalExDist > 0 ? `, ${totalExDist.toFixed(1)} km total` : "")), avgWater > 0 && /*#__PURE__*/React.createElement("div", {
+    style: cardStyle
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontWeight: 600
+    }
+  }, "\uD83D\uDCA7 Water"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: "0.8rem",
+      color: T.textMuted
+    }
+  }, avgWater, "ml/day average")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      ...cardStyle,
+      textAlign: "center",
+      color: T.textMuted,
+      fontSize: "0.8rem"
+    }
+  }, "\uD83C\uDF7D\uFE0F Meals logged on ", daysWithMeals, "/7 days"));
+}
 function TrendsPanel({
   entries,
   settings,
@@ -7063,7 +7293,7 @@ function TrendsPanel({
     onClick: () => setMetric(m),
     className: `tbtn${metric === m ? " on" : ""}`,
     style: {
-      fontSize: "0.78rem"
+      fontSize: "0.8rem"
     }
   }, m))), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -7077,7 +7307,7 @@ function TrendsPanel({
     onClick: () => setRange(r.key),
     className: `tbtn${range === r.key ? " on" : ""}`,
     style: {
-      fontSize: "0.75rem",
+      fontSize: "0.8rem",
       padding: "4px 8px"
     }
   }, r.label))), /*#__PURE__*/React.createElement("div", {
@@ -7089,7 +7319,7 @@ function TrendsPanel({
     }
   }, /*#__PURE__*/React.createElement("span", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted
     }
   }, "Reading:"), AGG_MODES.map(a => /*#__PURE__*/React.createElement("button", {
@@ -7097,12 +7327,12 @@ function TrendsPanel({
     onClick: () => setAgg(a.key),
     className: `tbtn${agg === a.key ? " on" : ""}`,
     style: {
-      fontSize: "0.75rem",
+      fontSize: "0.8rem",
       padding: "4px 10px"
     }
   }, a.label)), /*#__PURE__*/React.createElement("span", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       marginLeft: "auto"
     }
@@ -7124,7 +7354,7 @@ function TrendsPanel({
     }
   })), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       textAlign: "center",
       marginTop: 6
@@ -7165,26 +7395,8 @@ function ReportsPage({
   })();
   const medPresets = settings.medicalPresets || FD.medicalPresets;
   const medNames = medPresets.map(p => typeof p === "string" ? p : p.name);
-  // E7: out-of-range highlighting for Sugar/BP. Deliberately a rough VISUAL cue,
-  // not a clinical judgement — generic adult reference bands, matched by name
-  // substring (like pickIcon) so a rename via N6 doesn't silently break it.
-  // Purely additive to rendering: dayReport()/rpt()/CSV export are untouched,
-  // so this cannot affect O2's memoization or any exported file.
-  const isOutOfRange = (presetName, value) => {
-    const nm = (presetName || "").toLowerCase();
-    if (nm.includes("sugar")) {
-      const n = parseFloat(value);
-      return !isNaN(n) && (n < 70 || n > 140);
-    }
-    if (nm === "bp" || nm.includes("blood pressure") || nm.includes("pressure")) {
-      const m = String(value).match(/^(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/);
-      if (!m) return false;
-      const sys = parseFloat(m[1]),
-        dia = parseFloat(m[2]);
-      return sys < 90 || sys > 130 || dia < 60 || dia > 85;
-    }
-    return false;
-  };
+  // E7: isOutOfRange is now shared at top-level scope (also used by
+  // WeeklySummaryPanel) -- see its definition above dayReport().
   // Splits a joined medical-row string ("115/75 Sys/Dia, 95 mg/dL") back into
   // its individual readings for per-reading highlighting, without touching the
   // joined string dayReport()/CSV rely on.
@@ -7268,7 +7480,7 @@ function ReportsPage({
   // A small note replaces the block; nothing below it is disabled.
   return /*#__PURE__*/React.createElement("div", null, !isOnline && /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.73rem",
+      fontSize: "0.8rem",
       color: T.waterBtnText,
       background: T.waterBtn,
       borderRadius: 8,
@@ -7293,14 +7505,14 @@ function ReportsPage({
   }, "\uD83D\uDCCA Reports"), /*#__PURE__*/React.createElement("button", {
     className: "tbtn",
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       padding: "4px 7px"
     },
     onClick: () => doExport(buildViewCSV(entries, tab === "view" ? [vd] : cd, medPresets, settings?.exerciseTypes || FD.exerciseTypes), `jivanlog-view-${today()}.csv`)
   }, "\u2B07\uFE0F Export view"), /*#__PURE__*/React.createElement("button", {
     className: "tbtn",
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       padding: "4px 7px"
     },
     onClick: () => setShowRangeExport(v => !v)
@@ -7335,7 +7547,7 @@ function ReportsPage({
   }), /*#__PURE__*/React.createElement("span", {
     style: {
       color: T.textMuted,
-      fontSize: "0.78rem"
+      fontSize: "0.8rem"
     }
   }, "to"), /*#__PURE__*/React.createElement("input", {
     type: "date",
@@ -7370,7 +7582,7 @@ function ReportsPage({
     }
   }, "Full detail")), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       lineHeight: 1.5,
       marginBottom: 9
@@ -7423,7 +7635,10 @@ function ReportsPage({
   }, "Compare"), /*#__PURE__*/React.createElement("button", {
     className: `tbtn${tab === "trends" ? " on" : ""}`,
     onClick: () => setTab("trends")
-  }, "\uD83D\uDCC8 Trends"), tab === "view" && /*#__PURE__*/React.createElement("input", {
+  }, "\uD83D\uDCC8 Trends"), /*#__PURE__*/React.createElement("button", {
+    className: `tbtn${tab === "weekly" ? " on" : ""}`,
+    onClick: () => setTab("weekly")
+  }, "\uD83D\uDCC5 Weekly"), tab === "view" && /*#__PURE__*/React.createElement("input", {
     type: "date",
     value: vd,
     onChange: e => {
@@ -7446,7 +7661,7 @@ function ReportsPage({
     onChange: e => applyQr(e.target.value),
     style: {
       flex: "0 0 auto",
-      fontSize: "0.79rem",
+      fontSize: "0.8rem",
       padding: "5px 6px",
       width: 110
     }
@@ -7507,7 +7722,7 @@ function ReportsPage({
       background: T.border,
       borderRadius: 20,
       padding: "2px 9px",
-      fontSize: "0.73rem"
+      fontSize: "0.8rem"
     }
   }, /*#__PURE__*/React.createElement("span", null, fmtShort(d)), cd.length > 1 && /*#__PURE__*/React.createElement("button", {
     onClick: () => {
@@ -7526,7 +7741,7 @@ function ReportsPage({
     className: "tbtn",
     style: {
       padding: "2px 9px",
-      fontSize: "0.72rem"
+      fontSize: "0.8rem"
     },
     onClick: () => {
       setQr("");
@@ -7561,7 +7776,7 @@ function ReportsPage({
     }, /*#__PURE__*/React.createElement("span", {
       style: {
         color: T.textMuted,
-        fontSize: "0.76rem",
+        fontSize: "0.8rem",
         minWidth: 100,
         flexShrink: 0
       }
@@ -7623,6 +7838,10 @@ function ReportsPage({
       }, p.text, p.flagged ? " ⚠️" : ""))) : v);
     }));
   })))), tab === "trends" && /*#__PURE__*/React.createElement(TrendsPanel, {
+    entries: entries,
+    settings: settings,
+    T: T
+  }), tab === "weekly" && /*#__PURE__*/React.createElement(WeeklySummaryPanel, {
     entries: entries,
     settings: settings,
     T: T
@@ -7883,7 +8102,7 @@ function DataSafetyCard({
     className: "slabel"
   }, "\uD83D\uDEDF Data Safety"), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       marginBottom: 4,
       lineHeight: 1.5
@@ -7956,7 +8175,7 @@ function DataSafetyCard({
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.78rem",
+      fontSize: "0.8rem",
       color: T.text,
       whiteSpace: "nowrap",
       overflow: "hidden",
@@ -7964,7 +8183,7 @@ function DataSafetyCard({
     }
   }, label(e)), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted
     }
   }, normDate(e.date), " \xB7 deleted ", e.deletedAt ? new Date(e.deletedAt).toLocaleString() : "")), /*#__PURE__*/React.createElement("button", {
@@ -7979,19 +8198,19 @@ function DataSafetyCard({
       color: offlineAuth ? T.textMuted : "#fff",
       fontFamily: "inherit",
       fontWeight: 600,
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       cursor: offlineAuth ? "not-allowed" : "pointer"
     }
   }, "Restore")))) : /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       marginTop: 8,
       padding: "6px 2px"
     }
   }, "Trash is empty.")), offlineAuth && /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       marginTop: 8
     }
@@ -8079,7 +8298,7 @@ function LockPinCard({
     className: "slabel"
   }, "\uD83D\uDD12 Lock Screen PIN"), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       marginBottom: 8,
       lineHeight: 1.5
@@ -8098,7 +8317,7 @@ function LockPinCard({
       border: `1px solid ${T.border}`,
       background: T.cardBg,
       color: T.text,
-      fontSize: "0.78rem",
+      fontSize: "0.8rem",
       fontWeight: 600,
       cursor: "pointer",
       fontFamily: "inherit"
@@ -8112,7 +8331,7 @@ function LockPinCard({
       border: `1px solid ${T.danger}`,
       background: "transparent",
       color: T.danger,
-      fontSize: "0.78rem",
+      fontSize: "0.8rem",
       fontWeight: 600,
       cursor: "pointer",
       fontFamily: "inherit"
@@ -8126,7 +8345,7 @@ function LockPinCard({
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.78rem",
+      fontSize: "0.8rem",
       color: error ? T.danger : T.textSub,
       marginBottom: 10
     }
@@ -8146,7 +8365,7 @@ function LockPinCard({
       border: `1px solid ${T.border}`,
       background: "transparent",
       color: T.textMuted,
-      fontSize: "0.76rem",
+      fontSize: "0.8rem",
       cursor: "pointer",
       fontFamily: "inherit"
     }
@@ -8277,7 +8496,7 @@ function SettingsPage({
     className: `tbtn${stab === k ? " on" : ""}`,
     style: {
       flexShrink: 0,
-      fontSize: "0.75rem"
+      fontSize: "0.8rem"
     }
   }, l))), stab === "general" && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     className: "card",
@@ -8307,12 +8526,12 @@ function SettingsPage({
     }
   }, user.displayName || "User"), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted
     }
   }, user.email)), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.border,
       fontFamily: "'DM Mono',monospace",
       marginLeft: 4,
@@ -8335,7 +8554,7 @@ function SettingsPage({
       padding: "7px 4px",
       borderRadius: 8,
       border: "1px solid",
-      fontSize: "0.78rem",
+      fontSize: "0.8rem",
       fontWeight: 600,
       cursor: "pointer",
       fontFamily: "inherit",
@@ -8349,7 +8568,7 @@ function SettingsPage({
     className: "slabel"
   }, "\uD83C\uDF19 Day Rollover"), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       marginBottom: 8,
       lineHeight: 1.5
@@ -8400,7 +8619,7 @@ function SettingsPage({
     }
   }, "\uD83D\uDDC2\uFE0F Config Lists"), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted
     }
   }, "Changes save automatically")), /*#__PURE__*/React.createElement("div", {
@@ -8419,7 +8638,7 @@ function SettingsPage({
     className: `tbtn${ctab === k ? " on" : ""}`,
     style: {
       flexShrink: 0,
-      fontSize: "0.75rem"
+      fontSize: "0.8rem"
     }
   }, l))), ctab === "food" && /*#__PURE__*/React.createElement(FoodSetting, {
     entries: entries,
@@ -8582,7 +8801,7 @@ function AdminPanel({
     className: "slabel"
   }, "\uD83D\uDC64 Access Requests", pendingList.length > 0 ? ` (${pendingList.length})` : ""), pendingList.length === 0 && /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.78rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       padding: "4px 0"
     }
@@ -8633,7 +8852,7 @@ function AdminPanel({
     }
   }, r.name || "(no name)"), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       overflow: "hidden",
       textOverflow: "ellipsis",
@@ -8641,7 +8860,7 @@ function AdminPanel({
     }
   }, r.email, " \xB7 ", relTime(r.requestedAt)), r.message && /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.74rem",
+      fontSize: "0.8rem",
       color: T.textSub,
       fontStyle: "italic",
       marginTop: 2
@@ -8654,7 +8873,7 @@ function AdminPanel({
       border: "none",
       background: "#2e7d32",
       color: "#fff",
-      fontSize: "0.75rem",
+      fontSize: "0.8rem",
       fontWeight: 600,
       cursor: "pointer",
       flexShrink: 0
@@ -8667,7 +8886,7 @@ function AdminPanel({
       border: "none",
       background: T.danger,
       color: "#fff",
-      fontSize: "0.75rem",
+      fontSize: "0.8rem",
       fontWeight: 600,
       cursor: "pointer",
       flexShrink: 0
@@ -8678,7 +8897,7 @@ function AdminPanel({
     className: "slabel"
   }, "\uD83D\uDCE7 Auto-approve emails"), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       marginBottom: 8,
       lineHeight: 1.5
@@ -8717,7 +8936,7 @@ function AdminPanel({
     }
   }, "Add")), allowlistList.length === 0 && /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.76rem",
+      fontSize: "0.8rem",
       color: T.textMuted
     }
   }, "No pre-approved emails yet."), allowlistList.map(([key, e]) => /*#__PURE__*/React.createElement("div", {
@@ -8772,7 +8991,7 @@ function AdminPanel({
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
-      fontSize: "0.75rem",
+      fontSize: "0.8rem",
       fontWeight: 700,
       flexShrink: 0
     }
@@ -8796,7 +9015,7 @@ function AdminPanel({
     title: "Remove admin"
   }, "\uD83D\uDDD1\uFE0F"))), approvedNotAdmin.length > 0 && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       margin: "9px 0 5px"
     }
@@ -8825,7 +9044,7 @@ function AdminPanel({
       border: `1px solid ${T.border}`,
       background: "transparent",
       color: T.accent,
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       fontWeight: 600,
       cursor: "pointer"
     }
@@ -8835,7 +9054,7 @@ function AdminPanel({
     className: "slabel"
   }, "\uD83D\uDCCA Firebase Usage"), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       marginBottom: 8,
       lineHeight: 1.5
@@ -8906,7 +9125,7 @@ function ConfigTools({
     color: T.text,
     fontFamily: "inherit",
     fontWeight: 600,
-    fontSize: "0.78rem",
+    fontSize: "0.8rem",
     cursor: "pointer",
     marginBottom: 6
   };
@@ -8926,7 +9145,7 @@ function ConfigTools({
       color: T.textMuted,
       fontFamily: "inherit",
       fontWeight: 600,
-      fontSize: "0.78rem",
+      fontSize: "0.8rem",
       cursor: "pointer"
     }
   }, "\uD83D\uDEE0\uFE0F ", label, " tools \u2014 export, import, reset\u2026") : /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
@@ -8967,7 +9186,7 @@ function ConfigTools({
     style: btn
   }, "\u2B07\uFE0F Export FACTORY defaults CSV (reference)"), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       margin: "2px 0 8px",
       lineHeight: 1.5
@@ -8977,7 +9196,7 @@ function ConfigTools({
     style: btn
   }, "\u2B06\uFE0F Import config CSV\u2026"), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       margin: "2px 0 8px",
       lineHeight: 1.5
@@ -9117,7 +9336,7 @@ function DataPanel({
     onClick: () => set(val),
     className: `tbtn${cur === val ? " on" : ""}`,
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       padding: "4px 9px",
       flexShrink: 0
     }
@@ -9176,7 +9395,7 @@ function DataPanel({
     }
   }, "\uD83E\uDE79 ", repairPlan.length, " ", repairPlan.length === 1 ? "entry needs" : "entries need", " repair"), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.74rem",
+      fontSize: "0.8rem",
       color: T.textSub,
       lineHeight: 1.6,
       marginBottom: 8
@@ -9206,7 +9425,7 @@ function DataPanel({
     style: {
       display: "flex",
       justifyContent: "space-between",
-      fontSize: "0.78rem",
+      fontSize: "0.8rem",
       color: T.text,
       lineHeight: 2
     }
@@ -9218,7 +9437,7 @@ function DataPanel({
     style: {
       display: "flex",
       justifyContent: "space-between",
-      fontSize: "0.78rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       lineHeight: 2
     }
@@ -9230,12 +9449,12 @@ function DataPanel({
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted
     }
   }, "\uD83D\uDCF1 Last device backup"), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.text,
       marginTop: 2
     }
@@ -9258,7 +9477,7 @@ function DataPanel({
     className: "card"
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.73rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       marginBottom: 8,
       lineHeight: 1.5
@@ -9298,7 +9517,7 @@ function DataPanel({
     className: "card"
   }, /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.73rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       marginBottom: 8,
       lineHeight: 1.5
@@ -9385,13 +9604,13 @@ function DataPanel({
       color: o.danger ? "#ef4444" : T.text,
       fontFamily: "inherit",
       fontWeight: 600,
-      fontSize: "0.78rem",
+      fontSize: "0.8rem",
       cursor: "pointer",
       textAlign: "left"
     }
   }, o.label, /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       fontWeight: 400,
       color: T.textMuted,
       marginTop: 2
@@ -9405,7 +9624,7 @@ function DataPanel({
       background: "transparent",
       color: T.textMuted,
       fontFamily: "inherit",
-      fontSize: "0.78rem",
+      fontSize: "0.8rem",
       cursor: "pointer"
     }
   }, "Cancel"))))), section === "restore" && /*#__PURE__*/React.createElement(DataSafetyCard, {
@@ -9483,7 +9702,7 @@ function MedicalPresetSetting({
     }
   }, /*#__PURE__*/React.createElement("span", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted
     }
   }, "Sort:"), /*#__PURE__*/React.createElement("button", {
@@ -9495,7 +9714,7 @@ function MedicalPresetSetting({
       background: "transparent",
       color: T.textMuted,
       cursor: "pointer",
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       fontFamily: "inherit"
     }
   }, "A\u2192Z"), /*#__PURE__*/React.createElement("button", {
@@ -9507,7 +9726,7 @@ function MedicalPresetSetting({
       background: "transparent",
       color: T.textMuted,
       cursor: "pointer",
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       fontFamily: "inherit"
     }
   }, "Z\u2192A")), (presets || []).map((p, i) => {
@@ -9550,7 +9769,7 @@ function MedicalPresetSetting({
     }, nm2, ut2 && /*#__PURE__*/React.createElement("span", {
       style: {
         color: T.textMuted,
-        fontSize: "0.75rem",
+        fontSize: "0.8rem",
         marginLeft: 6
       }
     }, "(", ut2, ")")), /*#__PURE__*/React.createElement(RenameBox, {
@@ -9691,7 +9910,7 @@ function MetricChip({
     style: {
       padding: "2px 9px",
       borderRadius: 20,
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       border: "1px solid",
       cursor: enabled ? "grab" : "pointer",
       touchAction: enabled ? "none" : "auto",
@@ -9769,9 +9988,9 @@ const ReorderBtns = ({
   disabled: i === 0,
   style: {
     padding: "2px 6px",
-    minWidth: 32,
-    minHeight: 22,
-    fontSize: "0.72rem",
+    minWidth: 44,
+    minHeight: 36,
+    fontSize: "0.8rem",
     opacity: i === 0 ? 0.2 : 1,
     lineHeight: 1.3
   }
@@ -9781,9 +10000,9 @@ const ReorderBtns = ({
   disabled: i === total - 1,
   style: {
     padding: "2px 6px",
-    minWidth: 32,
-    minHeight: 22,
-    fontSize: "0.72rem",
+    minWidth: 44,
+    minHeight: 36,
+    fontSize: "0.8rem",
     opacity: i === total - 1 ? 0.2 : 1,
     lineHeight: 1.3
   }
@@ -10045,7 +10264,7 @@ function EmojiPicker({
       border: `1px solid ${T.border}`,
       background: T.cardBg,
       color: T.text,
-      fontSize: "0.78rem",
+      fontSize: "0.8rem",
       fontFamily: "inherit"
     }
   }), /*#__PURE__*/React.createElement("div", {
@@ -10075,7 +10294,7 @@ function EmojiPicker({
     }
   }, em)) : /*#__PURE__*/React.createElement("span", {
     style: {
-      fontSize: "0.75rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       padding: "8px 4px",
       display: "block"
@@ -10136,7 +10355,7 @@ function EmojiPicker({
       background: "transparent",
       color: T.textMuted,
       cursor: "pointer",
-      fontSize: "0.75rem",
+      fontSize: "0.8rem",
       fontFamily: "inherit"
     }
   }, "\u2715 Clear (use auto)"), /*#__PURE__*/React.createElement("button", {
@@ -10149,7 +10368,7 @@ function EmojiPicker({
       background: "transparent",
       color: T.textMuted,
       cursor: "pointer",
-      fontSize: "0.75rem",
+      fontSize: "0.8rem",
       fontFamily: "inherit"
     }
   }, "Cancel")));
@@ -10214,7 +10433,7 @@ function MealTemplatesSettings({
     className: "slabel"
   }, "\uD83D\uDCCB Meal Templates"), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       margin: "0 0 8px",
       lineHeight: 1.5
@@ -10264,7 +10483,7 @@ function MealTemplatesSettings({
   }, t.name, " ", /*#__PURE__*/React.createElement("span", {
     style: {
       color: T.textMuted,
-      fontSize: "0.72rem"
+      fontSize: "0.8rem"
     }
   }, "(", t.items.length, " item", t.items.length === 1 ? "" : "s", ")")), /*#__PURE__*/React.createElement("button", {
     className: "ibtn",
@@ -10364,7 +10583,7 @@ function FoodSetting({
     }
   }, /*#__PURE__*/React.createElement("span", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted
     }
   }, "Sort:"), /*#__PURE__*/React.createElement("button", {
@@ -10376,7 +10595,7 @@ function FoodSetting({
       background: "transparent",
       color: T.textMuted,
       cursor: "pointer",
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       fontFamily: "inherit"
     }
   }, "A\u2192Z"), /*#__PURE__*/React.createElement("button", {
@@ -10388,7 +10607,7 @@ function FoodSetting({
       background: "transparent",
       color: T.textMuted,
       cursor: "pointer",
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       fontFamily: "inherit"
     }
   }, "Z\u2192A")), fi.map((item, i) => /*#__PURE__*/React.createElement("div", {
@@ -10426,7 +10645,7 @@ function FoodSetting({
   }, item.name), item.diet && /*#__PURE__*/React.createElement("span", {
     title: "Diet classification",
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       padding: "1px 6px",
       borderRadius: 10,
       marginRight: 4,
@@ -10450,7 +10669,7 @@ function FoodSetting({
     }),
     style: {
       width: "100%",
-      fontSize: "0.76rem",
+      fontSize: "0.8rem",
       padding: "4px 7px",
       marginBottom: ei === item.name ? 6 : 0,
       color: T.textSub
@@ -10487,7 +10706,7 @@ function FoodSetting({
       background: (item.diet || "") === v ? T.accentBg : "transparent",
       color: (item.diet || "") === v ? T.accent : T.textMuted,
       cursor: "pointer",
-      fontSize: "0.74rem",
+      fontSize: "0.8rem",
       fontFamily: "inherit",
       fontWeight: 600
     }
@@ -10534,7 +10753,7 @@ function FoodSetting({
     onChange: e => updSubNote(item.name, s.name, e.target.value),
     style: {
       width: "100%",
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       padding: "3px 6px",
       margin: "2px 0 3px",
       color: T.textSub
@@ -10624,7 +10843,7 @@ function DrinkSetting({
     }
   }, /*#__PURE__*/React.createElement("span", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted
     }
   }, "Sort:"), /*#__PURE__*/React.createElement("button", {
@@ -10636,7 +10855,7 @@ function DrinkSetting({
       background: "transparent",
       color: T.textMuted,
       cursor: "pointer",
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       fontFamily: "inherit"
     }
   }, "A\u2192Z"), /*#__PURE__*/React.createElement("button", {
@@ -10648,7 +10867,7 @@ function DrinkSetting({
       background: "transparent",
       color: T.textMuted,
       cursor: "pointer",
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       fontFamily: "inherit"
     }
   }, "Z\u2192A")), drinks.map((name, i) => /*#__PURE__*/React.createElement("div", {
@@ -10696,7 +10915,7 @@ function DrinkSetting({
     onChange: e => updNote(name, e.target.value),
     style: {
       width: "100%",
-      fontSize: "0.76rem",
+      fontSize: "0.8rem",
       padding: "4px 7px",
       marginBottom: ei === name ? 6 : 0,
       color: T.textSub
@@ -10753,7 +10972,7 @@ function DrinkSetting({
     onChange: e => updSubNote(name, s.name, e.target.value),
     style: {
       width: "100%",
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       padding: "3px 6px",
       margin: "2px 0 3px",
       color: T.textSub
@@ -10812,7 +11031,7 @@ function EList({
     }
   }, /*#__PURE__*/React.createElement("span", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted
     }
   }, "Sort:"), /*#__PURE__*/React.createElement("button", {
@@ -10824,7 +11043,7 @@ function EList({
       background: "transparent",
       color: T.textMuted,
       cursor: "pointer",
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       fontFamily: "inherit"
     }
   }, "A\u2192Z"), /*#__PURE__*/React.createElement("button", {
@@ -10836,7 +11055,7 @@ function EList({
       background: "transparent",
       color: T.textMuted,
       cursor: "pointer",
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       fontFamily: "inherit"
     }
   }, "Z\u2192A")), (items || []).map((item, i) => /*#__PURE__*/React.createElement("div", {
@@ -10965,7 +11184,7 @@ function ExerciseSetting({
     }
   }, "Add")), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted,
       marginTop: 5
     }
@@ -10978,7 +11197,7 @@ function ExerciseSetting({
     }
   }, /*#__PURE__*/React.createElement("span", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: T.textMuted
     }
   }, "Sort:"), /*#__PURE__*/React.createElement("button", {
@@ -10990,7 +11209,7 @@ function ExerciseSetting({
       background: "transparent",
       color: T.textMuted,
       cursor: "pointer",
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       fontFamily: "inherit"
     }
   }, "A\u2192Z"), /*#__PURE__*/React.createElement("button", {
@@ -11002,7 +11221,7 @@ function ExerciseSetting({
       background: "transparent",
       color: T.textMuted,
       cursor: "pointer",
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       fontFamily: "inherit"
     }
   }, "Z\u2192A")), types.map((t, i) => /*#__PURE__*/React.createElement("div", {
@@ -11070,7 +11289,7 @@ function ExerciseSetting({
     } : x)),
     style: {
       width: "100%",
-      fontSize: "0.76rem",
+      fontSize: "0.8rem",
       padding: "4px 7px",
       marginBottom: 3,
       color: T.textSub
@@ -11127,7 +11346,7 @@ function ExerciseSetting({
     onChange: e => updSubNote(i, s.name, e.target.value),
     style: {
       width: "100%",
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       padding: "3px 6px",
       margin: "2px 0 3px",
       color: T.textSub
@@ -11163,7 +11382,7 @@ function RenameBox({
       background: "transparent",
       color: T.textMuted,
       cursor: "pointer",
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       fontFamily: "inherit"
     }
   }, "\u270F\uFE0F Rename");
@@ -11188,7 +11407,7 @@ function RenameBox({
     placeholder: label || "New name",
     style: {
       flex: 1,
-      fontSize: "0.78rem",
+      fontSize: "0.8rem",
       padding: "4px 7px"
     },
     onKeyDown: e => {
@@ -11214,7 +11433,7 @@ function RenameBox({
       cursor: changed ? "pointer" : "not-allowed",
       fontFamily: "inherit",
       fontWeight: 600,
-      fontSize: "0.75rem"
+      fontSize: "0.8rem"
     }
   }, "Rename"), /*#__PURE__*/React.createElement("button", {
     onClick: () => {
@@ -11229,12 +11448,12 @@ function RenameBox({
       background: "transparent",
       color: T.textMuted,
       cursor: "pointer",
-      fontSize: "0.75rem",
+      fontSize: "0.8rem",
       fontFamily: "inherit"
     }
   }, "\u2716")), /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: "0.72rem",
+      fontSize: "0.8rem",
       color: hits > 0 ? T.waterBtnText : T.textMuted,
       lineHeight: 1.4
     }
@@ -11263,7 +11482,7 @@ function AddInline({
       }
     },
     style: {
-      fontSize: "0.78rem"
+      fontSize: "0.8rem"
     }
   }), /*#__PURE__*/React.createElement("button", {
     onClick: () => {
@@ -11273,7 +11492,7 @@ function AddInline({
     style: {
       flexShrink: 0,
       padding: "5px 9px",
-      fontSize: "0.78rem",
+      fontSize: "0.8rem",
       borderRadius: 8,
       border: "none",
       background: T.accentBtn,

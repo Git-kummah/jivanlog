@@ -1,0 +1,103 @@
+// JivanLog Realtime Database security rules.
+// Publish via Firebase Console > Build > Realtime Database > Rules.
+// This file is the version-controlled copy (audit S3) — keep it in sync with
+// what is published in the Console.
+//
+// SUPERADMIN_UID is hardcoded here in 8 places and must match the
+// SUPERADMIN_UID constant in index.html. Security-critical roles are never
+// derived from database state alone.
+//
+// v4.71: added self-reads at admins/$uid and pendingRequests/$uid. Without
+// them a non-admin's read of admins/{uid} was denied, which took down the
+// whole client access check (audit R1) — allowlist auto-approve never fired,
+// approved users on a fresh device were bounced to the waiting room, and
+// denial detection never worked. Each self-read exposes only the caller's
+// own record.
+//
+// v5.0 (R3/R4/R5, the last three items on the security roadmap):
+//   R3 — pendingRequests/$uid now has a .validate: email must equal the
+//        caller's own signed-in token email (can't file a request claiming
+//        someone else's identity), and only the fields the app actually
+//        writes are accepted. App Check (Enforced on Realtime Database) was
+//        already the main mitigation here; this closes the remaining gap
+//        for anyone who does get a valid App Check token.
+//   R4 — users/$uid/entries/$id now requires id, date, type, timestamp to be
+//        present. Self-harm only (a user can only corrupt their own data),
+//        but it's the exact class of malformed write that caused the
+//        original data-loss incident — cheap insurance to reject it
+//        server-side rather than trust the client never to send it.
+//   R5 — the allowlist key derivation now matches the CLIENT's, which
+//        already lowercases the email before deriving the key
+//        (email.trim().toLowerCase().replace(...)). The rule previously
+//        didn't lowercase, a latent mismatch that happened to not matter
+//        yet because Google account emails are normally already lowercase.
+//
+// The chained .replace('.','_') calls below are redundant, not load-bearing:
+// Firebase's rules-language String.replace() replaces ALL instances of the
+// substring, so the first call already sanitises the whole address. Left
+// as-is to match the previously published ruleset exactly.
+//
+// v5.27 (this audit): App Check enforcement on Realtime Database was turned
+// OFF after confirming the R3 .validate below already closes the one write
+// path (pendingRequests/$uid) App Check was the primary mitigation for.
+// These rules are now the ONLY protection layer on that path — there is no
+// longer a second gate behind them. See index.html's CSP comment and the
+// JivanLog Confirmatory Audit for the full reasoning. This makes committing
+// this file (closing S3) more important than it was before, not less: it is
+// now the single source of truth for the app's entire write-side security
+// model, and it still has no version history, diff, or rollback outside
+// whatever is manually pasted into the Firebase Console.
+
+{
+  "rules": {
+    "users": {
+      "$uid": {
+        ".read":  "auth != null && auth.uid === $uid && (root.child('approvedUsers').child($uid).child('allowed').val() === true || $uid === 'JVrBRWCGlUhlHrWO3U5rjC3E9GH3')",
+        ".write": "auth != null && auth.uid === $uid && (root.child('approvedUsers').child($uid).child('allowed').val() === true || $uid === 'JVrBRWCGlUhlHrWO3U5rjC3E9GH3')",
+        "entries": {
+          "$id": {
+            ".validate": "newData.hasChildren(['id','date','type','timestamp'])"
+          }
+        }
+      }
+    },
+
+    "approvedUsers": {
+      ".read": "auth != null && (root.child('admins').child(auth.uid).exists() || auth.uid === 'JVrBRWCGlUhlHrWO3U5rjC3E9GH3')",
+      "$uid": {
+        ".read":  "auth != null && auth.uid === $uid",
+        ".write": "auth != null && ( root.child('admins').child(auth.uid).exists() || auth.uid === 'JVrBRWCGlUhlHrWO3U5rjC3E9GH3' || ( auth.uid === $uid && root.child('allowlist').child(auth.token.email.toLowerCase().replace('.','_').replace('.','_').replace('.','_').replace('.','_').replace('.','_')).exists() ) )"
+      }
+    },
+
+    "admins": {
+      ".read": "auth != null && (root.child('admins').child(auth.uid).exists() || auth.uid === 'JVrBRWCGlUhlHrWO3U5rjC3E9GH3')",
+      "$uid": {
+        ".read":  "auth != null && auth.uid === $uid",
+        ".write": "auth != null && (auth.uid === 'JVrBRWCGlUhlHrWO3U5rjC3E9GH3' || root.child('admins').child(auth.uid).exists()) && $uid !== 'JVrBRWCGlUhlHrWO3U5rjC3E9GH3'"
+      }
+    },
+
+    "pendingRequests": {
+      ".read": "auth != null && (root.child('admins').child(auth.uid).exists() || auth.uid === 'JVrBRWCGlUhlHrWO3U5rjC3E9GH3')",
+      "$uid": {
+        ".read":  "auth != null && auth.uid === $uid",
+        ".write": "auth != null && (auth.uid === $uid || root.child('admins').child(auth.uid).exists() || auth.uid === 'JVrBRWCGlUhlHrWO3U5rjC3E9GH3')",
+        ".validate": "newData.hasChild('email')",
+        "name":        {".validate": "newData.isString() && newData.val().length<200"},
+        "email":       {".validate": "newData.val() === auth.token.email"},
+        "photoURL":    {".validate": "newData.isString() && newData.val().length<500"},
+        "message":     {".validate": "newData.isString() && newData.val().length<500"},
+        "requestedAt": {".validate": "newData.isNumber()"},
+        "$other":      {".validate": false}
+      }
+    },
+
+    "allowlist": {
+      ".read": "auth != null && (root.child('admins').child(auth.uid).exists() || auth.uid === 'JVrBRWCGlUhlHrWO3U5rjC3E9GH3')",
+      "$emailKey": {
+        ".write": "auth != null && (root.child('admins').child(auth.uid).exists() || auth.uid === 'JVrBRWCGlUhlHrWO3U5rjC3E9GH3')"
+      }
+    }
+  }
+}
