@@ -135,7 +135,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script>
-const APP_VERSION = "v5.31";
+const APP_VERSION = "v5.32";
 const {
   useState,
   useEffect,
@@ -2373,7 +2373,7 @@ function exerciseMetricParts(e, exerciseTypesConfig) {
 // N: mm:ss masked duration input. Digits only; the colon is inserted
 // programmatically at a fixed position (after 2 digits) so typing AND
 // backspacing both just work — no special-casing needed for either
-// direction. Validates both mm and ss to 0–59 per spec; legacy plain-minute
+// direction. Validates mm to 0–99 and ss to 0–59; legacy plain-minute
 // values from before this change (e.g. "15") are accepted and normalised to
 // mm:ss ("15:00") the moment they're edited.
 function TimeDurationInput({
@@ -2406,7 +2406,7 @@ function TimeDurationInput({
   const [mm, ss] = local.split(":");
   const mmN = mm !== undefined && mm !== "" ? parseInt(mm, 10) : null;
   const ssN = ss !== undefined && ss !== "" ? parseInt(ss, 10) : null;
-  const mmErr = mmN !== null && !isNaN(mmN) && mmN > 59;
+  const mmErr = mmN !== null && !isNaN(mmN) && mmN > 99;
   const ssErr = ssN !== null && !isNaN(ssN) && ssN > 59;
   const err = mmErr || ssErr;
   return /*#__PURE__*/React.createElement("div", {
@@ -2431,7 +2431,7 @@ function TimeDurationInput({
       color: T.danger,
       marginTop: 1
     }
-  }, mmErr ? "mm" : "ss", ">59"));
+  }, mmErr ? "mm>99" : "ss>59"));
 }
 
 // N: BP auto-slash. Digits only; once 3 digits are typed (covers the large
