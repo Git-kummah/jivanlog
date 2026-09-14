@@ -135,7 +135,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script>
-const APP_VERSION = "v5.34";
+const APP_VERSION = "v5.35";
 const {
   useState,
   useEffect,
@@ -2064,7 +2064,8 @@ function TimeBadge({
   const [editing, setEditing] = React.useState(false);
   if (editing) {
     return /*#__PURE__*/React.createElement("input", {
-      type: "time",
+      type: "text",
+      maxLength: 5,
       value: value,
       autoFocus: true,
       onChange: e => onChange(e.target.value),
@@ -2162,8 +2163,8 @@ function RepeatYesterdayChips({
     style: {
       display: "flex",
       flexWrap: "wrap",
-      alignItems: "baseline",
-      gap: "0 10px",
+      alignItems: "center",
+      gap: "4px 8px",
       lineHeight: 1.8,
       marginBottom: 6
     }
@@ -2191,7 +2192,8 @@ function RepeatYesterdayChips({
       fontSize: "11.5px",
       color: T.text,
       cursor: "pointer",
-      fontFamily: "inherit"
+      fontFamily: "inherit",
+      whiteSpace: "nowrap"
     }
   }, label)));
 }
@@ -4833,7 +4835,7 @@ function HomePage({
   };
   const handleDuplicate = React.useCallback(entry => {
     const newId = genId();
-    setPendingDup({ ...entry, id: newId, timestamp: new Date(new Date(entry.timestamp).getTime() + 1).toISOString() });
+    setPendingDup({ ...entry, id: newId, sourceId: entry.id, timestamp: new Date(new Date(entry.timestamp).getTime() + 1).toISOString() });
     setEditingId(null);
   }, []);
   const confirmSaveTemplate = () => {
@@ -4934,19 +4936,7 @@ function HomePage({
     showToast: showToast,
     setPage: setPage,
     T: T
-  }), pendingDup && /*#__PURE__*/React.createElement("div", {
-    style: { marginTop: 10, marginBottom: 4 }
-  }, /*#__PURE__*/React.createElement(EditEntry, {
-    key: "pending-dup",
-    entry: pendingDup,
-    settings: settings,
-    T: T,
-    label: "\u29C9 Duplicate — unsaved",
-    onSave: d => { onAddDirect({ ...pendingDup, ...d }); setPendingDup(null); },
-    onCancel: () => setPendingDup(null),
-    onDelete: null,
-    onDuplicate: null
-  })), /*#__PURE__*/React.createElement("div", {
+  }), /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 14
     }
@@ -4959,13 +4949,17 @@ function HomePage({
       padding: "4px 0"
     }
   }, /*#__PURE__*/React.createElement("div", {
-    style: { textAlign: "center", fontSize: "0.7rem", color: T.textMuted, letterSpacing: "0.1em", fontWeight: 600, marginBottom: 3 }
-  }, "TODAY’S LOG"), /*#__PURE__*/React.createElement("div", {
-    style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 3 }
+    style: { display: "flex", alignItems: "stretch" }
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => { const d = new Date(viewDate + "T12:00:00"); d.setDate(d.getDate()-1); setViewDate(d.toISOString().slice(0,10)); },
-    style: { background: "none", border: "none", fontSize: "1.1rem", cursor: "pointer", color: T.textMuted, padding: "2px 5px", lineHeight: 1 }
-  }, "‹"), /*#__PURE__*/React.createElement("button", {
+    style: { background: "none", border: "none", fontSize: "1.5rem", cursor: "pointer", color: T.textMuted, padding: "0 10px", lineHeight: 1, alignSelf: "center" }
+  }, "\u25C4"), /*#__PURE__*/React.createElement("div", {
+    style: { textAlign: "center", flex: 1 }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: { fontSize: "0.62rem", color: T.textMuted, letterSpacing: "0.1em", fontWeight: 600, marginBottom: 2 }
+  }, "TODAY’S LOG"), /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 2 }
+  }, /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowCal(sc => !sc),
     style: { background: "none", border: "none", cursor: "pointer", fontSize: "0.85rem", fontWeight: 600, color: T.text, padding: "0 3px", fontFamily: "inherit" }
   }, (function(d){ const p=d.split("-"); const mn=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]; return (+p[2])+"-"+mn[+p[1]-1]+"-"+p[0]; })(viewDate)), viewDate === today() && /*#__PURE__*/React.createElement("span", {
@@ -4973,11 +4967,19 @@ function HomePage({
   }, "TODAY"), viewDate !== today() && /*#__PURE__*/React.createElement("span", {
     onClick: () => setViewDate(today()),
     style: { background: T.border, color: T.text, fontSize: "0.62rem", fontWeight: 600, padding: "1px 6px", borderRadius: 8, cursor: "pointer", verticalAlign: "middle" }
-  }, "TODAY"), /*#__PURE__*/React.createElement("button", {
+  }, "TODAY")), !selectMode && todayMeals.length > 0 && /*#__PURE__*/React.createElement("button", {
+    onClick: () => setSelectMode(true),
+    title: "Select meal entries to save as a template",
+    "aria-label": "Select meal entries to save as a template",
+    style: { background: "none", border: "none", color: T.textMuted, cursor: "pointer", fontSize: "0.75rem", fontWeight: 600, padding: "2px 4px", fontFamily: "inherit" }
+  }, "\uD83D\uDCCB Save as template"), selectMode && /*#__PURE__*/React.createElement("button", {
+    onClick: exitSelectMode,
+    style: { background: "none", border: "none", color: T.textMuted, cursor: "pointer", fontSize: "0.75rem", fontWeight: 600, padding: "2px 4px", fontFamily: "inherit" }
+  }, "Cancel")), /*#__PURE__*/React.createElement("button", {
     onClick: () => { const d = new Date(viewDate+"T12:00:00"); d.setDate(d.getDate()+1); const nd=d.toISOString().slice(0,10); if(nd<=today()) setViewDate(nd); },
-    style: { background: "none", border: "none", fontSize: "1.1rem", cursor: "pointer", color: viewDate < today() ? T.textMuted : T.border, padding: "2px 5px", lineHeight: 1 }
-  }, "›")), showCal && /*#__PURE__*/React.createElement("div", {
-    style: { textAlign: "center", marginBottom: 6, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }
+    style: { background: "none", border: "none", fontSize: "1.5rem", cursor: "pointer", color: viewDate < today() ? T.textMuted : T.border, padding: "0 10px", lineHeight: 1, alignSelf: "center" }
+  }, "\u25BA")), showCal && /*#__PURE__*/React.createElement("div", {
+    style: { position: "absolute", left: 0, right: 0, top: "100%", background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: 8, padding: "8px", zIndex: 20, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }
   }, /*#__PURE__*/React.createElement("input", {
     type: "date", value: viewDate, max: today(),
     onChange: e => { setViewDate(e.target.value); setShowCal(false); },
@@ -4985,31 +4987,7 @@ function HomePage({
   }), /*#__PURE__*/React.createElement("button", {
     onClick: () => { setViewDate(today()); setShowCal(false); },
     style: { background: "none", border: "none", color: T.accent, cursor: "pointer", fontSize: "0.8rem", fontWeight: 600, fontFamily: "inherit" }
-  }, "Jump to Today")), !selectMode && todayMeals.length > 0 && /*#__PURE__*/React.createElement("button", {
-    onClick: () => setSelectMode(true),
-    title: "Select meal entries to save as a template",
-    "aria-label": "Select meal entries to save as a template",
-    style: {
-      background: "none",
-      border: "none",
-      color: T.textMuted,
-      cursor: "pointer",
-      fontSize: "0.8rem",
-      fontWeight: 600,
-      padding: "3px 6px"
-    }
-  }, "\uD83D\uDCCB Save as template"), selectMode && /*#__PURE__*/React.createElement("button", {
-    onClick: exitSelectMode,
-    style: {
-      background: "none",
-      border: "none",
-      color: T.textMuted,
-      cursor: "pointer",
-      fontSize: "0.8rem",
-      fontWeight: 600,
-      padding: "3px 6px"
-    }
-  }, "Cancel")), selectMode && /*#__PURE__*/React.createElement("div", {
+  }, "Jump to Today"))), selectMode && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: "0.8rem",
       color: T.textMuted,
@@ -5076,8 +5054,9 @@ function HomePage({
         T: T
       })));
     }
-    return /*#__PURE__*/React.createElement("div", {
-      key: e.id,
+    return /*#__PURE__*/React.createElement(React.Fragment, {
+      key: e.id
+    }, /*#__PURE__*/React.createElement("div", {
       style: selectMode ? {
         opacity: 0.4
       } : undefined
@@ -5086,7 +5065,18 @@ function HomePage({
       settings: settings,
       onEdit: () => setEditingId(e.id),
       T: T
-    }));
+    })), pendingDup && pendingDup.sourceId === e.id && /*#__PURE__*/React.createElement("div", {
+      style: { marginTop: 6, marginBottom: 4 }
+    }, /*#__PURE__*/React.createElement(EditEntry, {
+      entry: pendingDup,
+      settings: settings,
+      T: T,
+      label: "\u29C9 Duplicate \u2014 unsaved",
+      onSave: d => { onAddDirect({ ...pendingDup, ...d }); setPendingDup(null); },
+      onCancel: () => setPendingDup(null),
+      onDelete: null,
+      onDuplicate: null
+    })));
   })), selectMode && selectedIds.length > 0 && !namingTemplate && /*#__PURE__*/React.createElement("button", {
     onClick: () => setNamingTemplate(true),
     style: {
