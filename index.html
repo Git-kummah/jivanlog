@@ -135,7 +135,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script>
-const APP_VERSION = "v5.41";
+const APP_VERSION = "v5.42";
 const {
   useState,
   useEffect,
@@ -2105,6 +2105,27 @@ function repeatChipLabel(e, settings) {
   }
 }
 
+// Grouping key for Recent chips — same as repeatChipLabel but WITHOUT the
+// variable measured quantity (qty/ml/value/metric parts), so e.g. "Curd"
+// logged at 250g, 300g, 270g all collapse into one chip instead of three.
+function repeatChipKey(e, settings) {
+  switch (e.type) {
+    case "meal":
+      return [e.food, e.foodSubType].filter(v => v && v !== "—" && v !== "–" && v.trim() !== "-").join(" · ") || e.mealType || "Meal";
+    case "liquid":
+    case "water":
+      return [e.liquidType, e.liquidSubType].filter(Boolean).join(" · ") || "Liquid";
+    case "exercise":
+      return [e.exType, e.subType].filter(Boolean).join(" · ") || "Exercise";
+    case "medical":
+      return e.readingType || "Medical";
+    case "medication":
+      return [e.med, e.timing].filter(Boolean).join(" · ") || "Medication";
+    default:
+      return "";
+  }
+}
+
 // Section A: top 4–6 most-used entries for this category over the last 30 days,
 // rendered as plain inline text (no chips/borders) with a "Recent" label.
 function RepeatYesterdayChips({
@@ -2120,25 +2141,26 @@ function RepeatYesterdayChips({
     const cutoffStr = cutoff.toISOString().slice(0, 10);
     const matches = e => e.type === type || type === "liquid" && e.type === "water";
     const relevant = entries.filter(e => !e.deleted && matches(e) && e.date >= cutoffStr);
-    // Group by label, count occurrences, keep most recent entry per label
-    const labelMap = {};
+    // Group by key (food/subcat etc., WITHOUT qty/ml/value), count occurrences,
+    // keep most recent entry per key; display label is computed from that
+    // most-recent entry so it always shows its actual logged quantity.
+    const groupMap = {};
     for (const e of relevant) {
-      const label = repeatChipLabel(e, settings);
-      if (!label) continue;
-      if (!labelMap[label]) {
-        labelMap[label] = {
-          label: label,
+      const key = repeatChipKey(e, settings);
+      if (!key) continue;
+      if (!groupMap[key]) {
+        groupMap[key] = {
           count: 0,
           entry: e
         };
       }
-      labelMap[label].count++;
-      if (new Date(e.timestamp) > new Date(labelMap[label].entry.timestamp)) {
-        labelMap[label].entry = e;
+      groupMap[key].count++;
+      if (new Date(e.timestamp) > new Date(groupMap[key].entry.timestamp)) {
+        groupMap[key].entry = e;
       }
     }
-    return Object.values(labelMap).sort((a, b) => b.count - a.count).slice(0, 6).map(x => ({
-      label: x.label,
+    return Object.values(groupMap).sort((a, b) => b.count - a.count).slice(0, 6).map(x => ({
+      label: repeatChipLabel(x.entry, settings),
       entry: x.entry
     }));
   }, [entries, type, settings]);
