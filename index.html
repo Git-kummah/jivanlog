@@ -135,7 +135,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script>
-const APP_VERSION = "v5.42";
+const APP_VERSION = "v5.43";
 const {
   useState,
   useEffect,
@@ -2170,7 +2170,7 @@ function RepeatYesterdayChips({
       display: "flex",
       flexWrap: "wrap",
       alignItems: "center",
-      gap: "4px 6px",
+      gap: "4px 10px",
       lineHeight: "normal",
       marginBottom: 6
     }
@@ -2193,14 +2193,10 @@ function RepeatYesterdayChips({
     title: label,
     style: {
       display: "inline-block",
-      background: T.inputBg,
-      border: `1px solid ${T.accentBtn}`,
-      borderRadius: 6,
-      padding: "2px 8px",
-      fontSize: "13px",
+      fontSize: "12px",
       lineHeight: "1.5",
-      fontWeight: 600,
-      color: T.accent,
+      fontWeight: 400,
+      color: T.textMuted,
       cursor: "pointer",
       fontFamily: "inherit",
       whiteSpace: "nowrap",
