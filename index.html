@@ -135,7 +135,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script>
-const APP_VERSION = "v5.32";
+const APP_VERSION = "v5.33";
 const {
   useState,
   useEffect,
@@ -2017,31 +2017,37 @@ function pastNoteSuggestions(entries, matchFn, limit = 4) {
 function NoteSuggestChips({
   suggestions,
   onPick,
+  visible,
   T
 }) {
-  if (!suggestions || !suggestions.length) return null;
+  if (!visible || !suggestions || !suggestions.length) return null;
   return /*#__PURE__*/React.createElement("div", {
     style: {
-      display: "flex",
-      gap: 5,
-      flexWrap: "wrap",
-      margin: "2px 0 5px"
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: "1px 8px",
+      padding: "5px 8px",
+      marginTop: 2,
+      border: `1.5px solid ${T.accentBtn}`,
+      borderTop: "none",
+      borderRadius: "0 0 9px 9px",
+      background: T.cardBg
     }
   }, suggestions.map((s, i) => /*#__PURE__*/React.createElement("button", {
     key: i,
     type: "button",
+    onMouseDown: ev => ev.preventDefault(),
     onClick: () => onPick(s),
     title: s,
     style: {
-      padding: "3px 9px",
-      borderRadius: 20,
-      border: `1px solid ${T.border}`,
-      background: T.inputBg,
-      color: T.textSub,
+      background: "none",
+      border: "none",
+      padding: "3px 0",
+      fontSize: "11.5px",
+      color: T.textMuted,
       cursor: "pointer",
-      fontSize: "0.8rem",
       fontFamily: "inherit",
-      maxWidth: 180,
+      textAlign: "left",
       overflow: "hidden",
       textOverflow: "ellipsis",
       whiteSpace: "nowrap"
@@ -2049,10 +2055,50 @@ function NoteSuggestChips({
   }, s)));
 }
 
-// E4: a short, human-readable label for one entry, used by the "repeat
-// yesterday" chips below. Deliberately separate from the fuller TLE/
-// ManageRow formatting (subType, notes, etc. all included there) — this is
-// meant to fit on a small chip, just enough to recognize which entry it is.
+// C1: inline time badge in section header — neutral gray, click to edit in place
+function TimeBadge({
+  value,
+  onChange,
+  T
+}) {
+  const [editing, setEditing] = React.useState(false);
+  if (editing) {
+    return /*#__PURE__*/React.createElement("input", {
+      type: "time",
+      value: value,
+      autoFocus: true,
+      onChange: e => onChange(e.target.value),
+      onBlur: () => setEditing(false),
+      style: {
+        fontSize: "12px",
+        padding: "2px 6px",
+        borderRadius: 6,
+        border: `1px solid ${T.border}`,
+        fontFamily: "'DM Mono',monospace",
+        width: 88,
+        background: T.inputBg,
+        color: T.text
+      }
+    });
+  }
+  return /*#__PURE__*/React.createElement("span", {
+    onClick: () => setEditing(true),
+    title: "Edit time",
+    style: {
+      fontSize: "12px",
+      color: T.textMuted,
+      background: "none",
+      border: `1px solid ${T.border}`,
+      borderRadius: 6,
+      padding: "2px 8px",
+      cursor: "pointer",
+      fontFamily: "'DM Mono',monospace",
+      userSelect: "none"
+    }
+  }, value);
+}
+
+// A short, human-readable label for one entry used by RecentChips.
 function repeatChipLabel(e, settings) {
   switch (e.type) {
     case "meal":
@@ -2074,12 +2120,8 @@ function repeatChipLabel(e, settings) {
   }
 }
 
-// E4: up to 4 of yesterday's entries for this module, closest to the
-// CURRENT time first — "what did I log around now, yesterday" is the whole
-// point, not strict chronological order. Tapping one re-adds it immediately
-// with today's date and the current time (onAdd/addEntry always overwrites
-// id/timestamp/date regardless of what's passed in, so the rest of the
-// entry can be handed through unchanged).
+// Section A: top 4–6 most-used entries for this category over the last 30 days,
+// rendered as plain inline text (no chips/borders) with a "Recent" label.
 function RepeatYesterdayChips({
   entries,
   type,
@@ -2087,67 +2129,69 @@ function RepeatYesterdayChips({
   onAdd,
   T
 }) {
-  const yList = useMemo(() => {
-    const yd = yesterday();
-    const nowMin = (() => {
-      const d = new Date();
-      return d.getHours() * 60 + d.getMinutes();
-    })();
-    const minsOf = ts => {
-      const d = new Date(ts);
-      return d.getHours() * 60 + d.getMinutes();
-    };
-    // Liquids historically also used the type string "water" for some
-    // entries — matched here the same way usageCounts/pastNoteSuggestions
-    // already do elsewhere, so a legacy-typed entry from yesterday isn't
-    // silently missed from the chips.
+  const recentList = useMemo(() => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
     const matches = e => e.type === type || type === "liquid" && e.type === "water";
-    return entries.filter(e => e.date === yd && !e.deleted && matches(e)).sort((a, b) => Math.abs(minsOf(a.timestamp) - nowMin) - Math.abs(minsOf(b.timestamp) - nowMin)).slice(0, 4);
-  }, [entries, type]);
-  if (!yList.length) return null;
+    const relevant = entries.filter(e => !e.deleted && matches(e) && e.date >= cutoffStr);
+    // Group by label, count occurrences, keep most recent entry per label
+    const labelMap = {};
+    for (const e of relevant) {
+      const label = repeatChipLabel(e, settings);
+      if (!label) continue;
+      if (!labelMap[label]) {
+        labelMap[label] = {
+          count: 0,
+          entry: e
+        };
+      }
+      labelMap[label].count++;
+      if (new Date(e.timestamp) > new Date(labelMap[label].entry.timestamp)) {
+        labelMap[label].entry = e;
+      }
+    }
+    return Object.values(labelMap).sort((a, b) => b.count - a.count).slice(0, 6).map(x => ({
+      label: x.label,
+      entry: x.entry
+    }));
+  }, [entries, type, settings]);
+  if (!recentList.length) return null;
   return /*#__PURE__*/React.createElement("div", {
     style: {
+      display: "flex",
+      flexWrap: "wrap",
+      alignItems: "baseline",
+      gap: "0 10px",
+      lineHeight: 1.8,
       marginBottom: 6
     }
-  }, /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", {
     style: {
-      fontSize: "0.8rem",
+      fontSize: "11.5px",
       color: T.textMuted,
-      marginBottom: 3
+      whiteSpace: "nowrap"
     }
-  }, "\uD83D\uDD01 Repeat from yesterday"), /*#__PURE__*/React.createElement("div", {
+  }, "Recent"), recentList.map(({
+    label,
+    entry
+  }) => /*#__PURE__*/React.createElement("button", {
+    key: label,
+    type: "button",
+    onClick: () => onAdd({
+      ...entry
+    }),
+    title: label,
     style: {
-      display: "flex",
-      gap: 5,
-      flexWrap: "wrap"
+      background: "none",
+      border: "none",
+      padding: 0,
+      fontSize: "11.5px",
+      color: T.textMuted,
+      cursor: "pointer",
+      fontFamily: "inherit"
     }
-  }, yList.map(e => {
-    const label = repeatChipLabel(e, settings);
-    if (!label) return null;
-    return /*#__PURE__*/React.createElement("button", {
-      key: e.id,
-      type: "button",
-      onClick: () => onAdd({
-        ...e
-      }),
-      title: label,
-      style: {
-        padding: "3px 9px",
-        borderRadius: 20,
-        border: `1px solid ${T.accentBtn}`,
-        background: T.accentBg,
-        color: T.accent,
-        cursor: "pointer",
-        fontSize: "0.8rem",
-        fontFamily: "inherit",
-        fontWeight: 600,
-        maxWidth: 200,
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        whiteSpace: "nowrap"
-      }
-    }, label);
-  })));
+  }, label)));
 }
 
 // E5: meal templates — a named, reusable bundle of items (built via
@@ -4455,12 +4499,14 @@ function App() {
     entries: entries,
     settings: settings,
     onAdd: addEntry,
+    onAddDirect: addEntryDirect,
     onUpdate: updateEntry,
     onDelete: deleteEntry,
     entryTime: entryTime,
     setEntryTime: setEntryTime,
     onSaveMealTemplate: onSaveMealTemplate,
     showToast: showToast,
+    setPage: setPage,
     T: T
   }), page === "manage" && /*#__PURE__*/React.createElement(ManagePage, {
     entries: entries,
@@ -4523,7 +4569,7 @@ function App() {
       flexShrink: 0,
       alignItems: "center"
     }
-  }, [["home", "🏠", "Home"], ["manage", "📋", "Manage"], ["reports", "📊", "Reports"], ["settings", "⚙️", "Settings"]].map(([p, ic, lb]) => /*#__PURE__*/React.createElement("button", {
+  }, [["home", "🏠", "Home"], ["reports", "📊", "Charts"], ["settings", "⚙️", "Settings"]].map(([p, ic, lb]) => /*#__PURE__*/React.createElement("button", {
     key: p,
     title: lb,
     "aria-label": lb,
@@ -4719,16 +4765,27 @@ function HomePage({
   entries,
   settings,
   onAdd,
+  onAddDirect,
   onUpdate,
   onDelete,
   entryTime,
   setEntryTime,
   onSaveMealTemplate,
   showToast,
+  setPage,
   T
 }) {
   const [active, setActive] = useState("meal");
-  const todayE = entries.filter(e => e.date === today()).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  const [viewDate, setViewDate] = React.useState(today);
+  const [showCal, setShowCal] = React.useState(false);
+  const doAdd = React.useCallback(data => {
+    if (viewDate === today()) { onAdd(data); }
+    else {
+      const ts = timestampForLogicalDate(viewDate, entryTime).toISOString();
+      onAddDirect({ ...data, id: genId(), date: viewDate, timestamp: ts });
+    }
+  }, [viewDate, onAdd, onAddDirect, entryTime]);
+  const viewDateE = entries.filter(e => e.date === viewDate).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
   // N: entry time previously refreshed to "now" only on switching the top-level
   // tab. Selecting the meal type or the Level-1 category (food item, liquid
   // type, exercise type, medical reading, medication) now refreshes it too —
@@ -4763,7 +4820,7 @@ function HomePage({
   const [selectedIds, setSelectedIds] = useState([]);
   const [namingTemplate, setNamingTemplate] = useState(false);
   const [templateName, setTemplateName] = useState("");
-  const todayMeals = todayE.filter(e => e.type === "meal");
+  const todayMeals = viewDateE.filter(e => e.type === "meal");
   const toggleSelect = id => setSelectedIds(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
   const exitSelectMode = () => {
     setSelectMode(false);
@@ -4771,6 +4828,12 @@ function HomePage({
     setNamingTemplate(false);
     setTemplateName("");
   };
+  const handleDuplicate = React.useCallback(entry => {
+    const newId = genId();
+    const newEntry = { ...entry, id: newId, timestamp: new Date(new Date(entry.timestamp).getTime() + 1).toISOString() };
+    onAddDirect(newEntry);
+    setEditingId(newId);
+  }, [onAddDirect]);
   const confirmSaveTemplate = () => {
     const nm = templateName.trim();
     if (!nm) {
@@ -4788,6 +4851,46 @@ function HomePage({
     exitSelectMode();
   };
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 4,
+      marginBottom: 8
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      const d = new Date(viewDate + "T12:00:00");
+      d.setDate(d.getDate() - 1);
+      setViewDate(d.toISOString().slice(0, 10));
+    },
+    style: { background: "none", border: "none", fontSize: "1.15rem", cursor: "pointer", color: T.textMuted, padding: "2px 6px", lineHeight: 1 }
+  }, "‹"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowCal(c => !c),
+    style: { background: "none", border: `1px solid ${T.border}`, cursor: "pointer", fontSize: "0.82rem", fontWeight: 600, color: T.text, padding: "2px 10px", borderRadius: 7, fontFamily: "inherit" }
+  }, viewDate === today() ? "Today" : viewDate), /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      const d = new Date(viewDate + "T12:00:00");
+      d.setDate(d.getDate() + 1);
+      const nd = d.toISOString().slice(0, 10);
+      if (nd <= today()) setViewDate(nd);
+    },
+    style: { background: "none", border: "none", fontSize: "1.15rem", cursor: "pointer", color: viewDate < today() ? T.textMuted : T.border, padding: "2px 6px", lineHeight: 1 }
+  }, "›"), viewDate !== today() && /*#__PURE__*/React.createElement("button", {
+    onClick: () => setViewDate(today()),
+    style: { background: "none", border: "none", fontSize: "0.75rem", cursor: "pointer", color: T.accent, padding: "2px 4px", fontFamily: "inherit", fontWeight: 600 }
+  }, "Today")), showCal && /*#__PURE__*/React.createElement("div", {
+    style: { textAlign: "center", marginBottom: 8, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: viewDate,
+    max: today(),
+    onChange: e => { setViewDate(e.target.value); setShowCal(false); },
+    style: { fontSize: "0.85rem", borderRadius: 6, border: `1px solid ${T.border}`, padding: "4px 8px", fontFamily: "inherit", background: T.inputBg, color: T.text }
+  }), /*#__PURE__*/React.createElement("button", {
+    onClick: () => { setViewDate(today()); setShowCal(false); },
+    style: { background: "none", border: "none", color: T.accent, cursor: "pointer", fontSize: "0.8rem", fontWeight: 600, fontFamily: "inherit" }
+  }, "Jump to Today")), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 5,
@@ -4822,47 +4925,52 @@ function HomePage({
   }, ic)))), active === "meal" && /*#__PURE__*/React.createElement(MealEntry, {
     settings: settings,
     entries: entries,
-    onAdd: onAdd,
+    onAdd: doAdd,
     entryTime: entryTime,
     setEntryTime: onTimeEdit,
     refreshTime: refreshTime,
     showToast: showToast,
+    setPage: setPage,
     T: T
   }), active === "liquid" && /*#__PURE__*/React.createElement(LiquidEntry, {
     settings: settings,
     entries: entries,
-    onAdd: onAdd,
+    onAdd: doAdd,
     entryTime: entryTime,
     setEntryTime: onTimeEdit,
     refreshTime: refreshTime,
     showToast: showToast,
+    setPage: setPage,
     T: T
   }), active === "exercise" && /*#__PURE__*/React.createElement(ExerciseEntry, {
     settings: settings,
     entries: entries,
-    onAdd: onAdd,
+    onAdd: doAdd,
     entryTime: entryTime,
     setEntryTime: onTimeEdit,
     refreshTime: refreshTime,
     showToast: showToast,
+    setPage: setPage,
     T: T
   }), active === "medical" && /*#__PURE__*/React.createElement(MedicalEntry, {
     settings: settings,
     entries: entries,
-    onAdd: onAdd,
+    onAdd: doAdd,
     entryTime: entryTime,
     setEntryTime: onTimeEdit,
     refreshTime: refreshTime,
     showToast: showToast,
+    setPage: setPage,
     T: T
   }), active === "medication" && /*#__PURE__*/React.createElement(MedEntry, {
     settings: settings,
     entries: entries,
-    onAdd: onAdd,
+    onAdd: doAdd,
     entryTime: entryTime,
     setEntryTime: onTimeEdit,
     refreshTime: refreshTime,
     showToast: showToast,
+    setPage: setPage,
     T: T
   }), /*#__PURE__*/React.createElement("div", {
     style: {
@@ -4884,7 +4992,7 @@ function HomePage({
     style: {
       marginBottom: 0
     }
-  }, "Today's Log"), !selectMode && todayMeals.length > 0 && /*#__PURE__*/React.createElement("button", {
+  }, viewDate === today() ? "Today’s Log" : "Log — " + viewDate), !selectMode && todayMeals.length > 0 && /*#__PURE__*/React.createElement("button", {
     onClick: () => setSelectMode(true),
     title: "Select meal entries to save as a template",
     "aria-label": "Select meal entries to save as a template",
@@ -4914,19 +5022,19 @@ function HomePage({
       color: T.textMuted,
       margin: "0 0 6px"
     }
-  }, "Tap meal entries below to select, then save them as a reusable template."), todayE.length === 0 ? /*#__PURE__*/React.createElement("div", {
+  }, "Tap meal entries below to select, then save them as a reusable template."), viewDateE.length === 0 ? /*#__PURE__*/React.createElement("div", {
     style: {
       color: T.textMuted,
       fontSize: "0.8rem",
       textAlign: "center",
       padding: "18px 0"
     }
-  }, "No entries yet today") : /*#__PURE__*/React.createElement("div", {
+  }, viewDate === today() ? "No entries yet today" : "No entries for " + viewDate) : /*#__PURE__*/React.createElement("div", {
     className: "card",
     style: {
       padding: "8px 11px"
     }
-  }, todayE.map(e => {
+  }, viewDateE.map(e => {
     if (editingId === e.id) return /*#__PURE__*/React.createElement(EditEntry, {
       key: e.id,
       entry: e,
@@ -4941,7 +5049,8 @@ function HomePage({
       onDelete: () => {
         onDelete && onDelete(e.id);
         setEditingId(null);
-      }
+      },
+      onDuplicate: () => handleDuplicate(e)
     });
     if (selectMode && e.type === "meal") {
       const checked = selectedIds.includes(e.id);
@@ -5147,6 +5256,7 @@ function MealEntry({
   setEntryTime,
   refreshTime,
   showToast,
+  setPage,
   T
 }) {
   const [mt, setMt] = useState(autoMeal);
@@ -5192,6 +5302,7 @@ function MealEntry({
     if (food) setNotes(noteFor(food, foodSub));
   }, [settings]);
   const noteSuggestions = useMemo(() => food ? pastNoteSuggestions(entries, e => e.type === "meal" && e.food === food && (foodSub ? e.foodSubType === foodSub : true)) : [], [entries, food, foodSub]);
+  const [notesFocused, setNotesFocused] = useState(false);
   const save = () => {
     // B8: was a bare silent return — tapping Save with a field missing did
     // nothing visible at all. Now names the specific missing field.
@@ -5218,8 +5329,24 @@ function MealEntry({
   return /*#__PURE__*/React.createElement("div", {
     className: "card"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "slabel"
-  }, "\uD83C\uDF7D\uFE0F Meal"), /*#__PURE__*/React.createElement("div", {
+    className: "slabel",
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between"
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83C\uDF7D\uFE0F Meal"), /*#__PURE__*/React.createElement("span", {
+    style: {display: "flex", alignItems: "center", gap: 4}
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: () => setPage("settings"),
+    title: "Settings",
+    style: {background: "none", border: "none", cursor: "pointer", color: T.textMuted, fontSize: "0.95rem", padding: "0 2px", lineHeight: 1, fontFamily: "inherit"}
+  }, "⚙️"), /*#__PURE__*/React.createElement(TimeBadge, {
+    value: entryTime,
+    onChange: setEntryTime,
+    T: T
+  }))), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 5,
@@ -5298,13 +5425,12 @@ function MealEntry({
       gap: 6,
       alignItems: "center"
     }
-  }, /*#__PURE__*/React.createElement(TimeInput, {
-    value: entryTime,
-    onChange: setEntryTime
-  }), /*#__PURE__*/React.createElement("input", {
+  }, /*#__PURE__*/React.createElement("input", {
     placeholder: "Notes (optional)",
     value: notes,
     onChange: e => setNotes(e.target.value),
+    onFocus: () => setNotesFocused(true),
+    onBlur: () => setNotesFocused(false),
     style: {
       flex: 1
     }
@@ -5315,6 +5441,7 @@ function MealEntry({
   })), /*#__PURE__*/React.createElement(NoteSuggestChips, {
     suggestions: noteSuggestions,
     onPick: setNotes,
+    visible: notesFocused,
     T: T
   }));
 }
@@ -5326,6 +5453,7 @@ function LiquidEntry({
   setEntryTime,
   refreshTime,
   showToast,
+  setPage,
   T
 }) {
   const allTypes = settings.liquidTypes || FD.liquidTypes || [];
@@ -5363,6 +5491,7 @@ function LiquidEntry({
     setNotes(noteFor(liqType, liqSub));
   }, [settings, liqType]);
   const noteSuggestions = useMemo(() => liqType ? pastNoteSuggestions(entries, e => (e.type === "liquid" || e.type === "water") && (e.liquidType || e.waterTemp) === liqType && (liqSub ? e.liquidSubType === liqSub : true)) : [], [entries, liqType, liqSub]);
+  const [notesFocused, setNotesFocused] = useState(false);
   const save = () => {
     // B8: was a bare silent return.
     if (!ml || +ml <= 0) {
@@ -5385,8 +5514,24 @@ function LiquidEntry({
   return /*#__PURE__*/React.createElement("div", {
     className: "card"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "slabel"
-  }, "\uD83D\uDCA7 Liquids"), /*#__PURE__*/React.createElement("div", {
+    className: "slabel",
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between"
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDCA7 Liquids"), /*#__PURE__*/React.createElement("span", {
+    style: {display: "flex", alignItems: "center", gap: 4}
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: () => setPage("settings"),
+    title: "Settings",
+    style: {background: "none", border: "none", cursor: "pointer", color: T.textMuted, fontSize: "0.95rem", padding: "0 2px", lineHeight: 1, fontFamily: "inherit"}
+  }, "⚙️"), /*#__PURE__*/React.createElement(TimeBadge, {
+    value: entryTime,
+    onChange: setEntryTime,
+    T: T
+  }))), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 5,
@@ -5450,13 +5595,12 @@ function LiquidEntry({
       gap: 5,
       alignItems: "center"
     }
-  }, /*#__PURE__*/React.createElement(TimeInput, {
-    value: entryTime,
-    onChange: setEntryTime
-  }), /*#__PURE__*/React.createElement("input", {
+  }, /*#__PURE__*/React.createElement("input", {
     placeholder: "Notes (optional)",
     value: notes,
     onChange: e => setNotes(e.target.value),
+    onFocus: () => setNotesFocused(true),
+    onBlur: () => setNotesFocused(false),
     style: {
       flex: 1
     }
@@ -5477,6 +5621,7 @@ function LiquidEntry({
   }, fl ? "✔" : "Save")), /*#__PURE__*/React.createElement(NoteSuggestChips, {
     suggestions: noteSuggestions,
     onPick: setNotes,
+    visible: notesFocused,
     T: T
   }));
 }
@@ -5488,6 +5633,7 @@ function ExerciseEntry({
   setEntryTime,
   refreshTime,
   showToast,
+  setPage,
   T
 }) {
   const [et, setEt] = useState("");
@@ -5543,6 +5689,7 @@ function ExerciseEntry({
     if (et) setNotes(noteFor(et, sub));
   }, [settings]);
   const noteSuggestions = useMemo(() => et ? pastNoteSuggestions(entries, e => e.type === "exercise" && e.exType === et && (sub ? e.subType === sub : true)) : [], [entries, et, sub]);
+  const [notesFocused, setNotesFocused] = useState(false);
   const save = () => {
     // B8: was a bare silent return.
     if (!et || hasSub && !sub) {
@@ -5577,8 +5724,24 @@ function ExerciseEntry({
   return /*#__PURE__*/React.createElement("div", {
     className: "card"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "slabel"
-  }, "\uD83C\uDFC3 Exercise"), /*#__PURE__*/React.createElement("div", {
+    className: "slabel",
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between"
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83C\uDFC3 Exercise"), /*#__PURE__*/React.createElement("span", {
+    style: {display: "flex", alignItems: "center", gap: 4}
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: () => setPage("settings"),
+    title: "Settings",
+    style: {background: "none", border: "none", cursor: "pointer", color: T.textMuted, fontSize: "0.95rem", padding: "0 2px", lineHeight: 1, fontFamily: "inherit"}
+  }, "⚙️"), /*#__PURE__*/React.createElement(TimeBadge, {
+    value: entryTime,
+    onChange: setEntryTime,
+    T: T
+  }))), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 5,
@@ -5642,13 +5805,12 @@ function ExerciseEntry({
       gap: 6,
       alignItems: "center"
     }
-  }, /*#__PURE__*/React.createElement(TimeInput, {
-    value: entryTime,
-    onChange: setEntryTime
-  }), /*#__PURE__*/React.createElement("input", {
+  }, /*#__PURE__*/React.createElement("input", {
     placeholder: "Notes (optional)",
     value: notes,
     onChange: e => setNotes(e.target.value),
+    onFocus: () => setNotesFocused(true),
+    onBlur: () => setNotesFocused(false),
     style: {
       flex: 1
     }
@@ -5659,6 +5821,7 @@ function ExerciseEntry({
   })), /*#__PURE__*/React.createElement(NoteSuggestChips, {
     suggestions: noteSuggestions,
     onPick: setNotes,
+    visible: notesFocused,
     T: T
   }));
 }
@@ -5670,6 +5833,7 @@ function MedicalEntry({
   setEntryTime,
   refreshTime,
   showToast,
+  setPage,
   T
 }) {
   const [rt, setRt] = useState("");
@@ -5681,6 +5845,7 @@ function MedicalEntry({
   const rankedPresets = byUsage(presets, rtCounts, p => p.name || p);
   const unit = (presets.find(p => (p.name || p) === rt) || {}).unit || "";
   const noteSuggestions = useMemo(() => rt ? pastNoteSuggestions(entries, e => e.type === "medical" && e.readingType === rt) : [], [entries, rt]);
+  const [notesFocused, setNotesFocused] = useState(false);
   const save = () => {
     // B8: was a bare silent return.
     if (!rt || !val) {
@@ -5702,8 +5867,24 @@ function MedicalEntry({
   return /*#__PURE__*/React.createElement("div", {
     className: "card"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "slabel"
-  }, "\uD83E\uDE7A Medical Reading"), /*#__PURE__*/React.createElement("div", {
+    className: "slabel",
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between"
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83E\uDE7A Medical Reading"), /*#__PURE__*/React.createElement("span", {
+    style: {display: "flex", alignItems: "center", gap: 4}
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: () => setPage("settings"),
+    title: "Settings",
+    style: {background: "none", border: "none", cursor: "pointer", color: T.textMuted, fontSize: "0.95rem", padding: "0 2px", lineHeight: 1, fontFamily: "inherit"}
+  }, "⚙️"), /*#__PURE__*/React.createElement(TimeBadge, {
+    value: entryTime,
+    onChange: setEntryTime,
+    T: T
+  }))), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 5,
@@ -5773,13 +5954,12 @@ function MedicalEntry({
       display: "flex",
       gap: 6
     }
-  }, /*#__PURE__*/React.createElement(TimeInput, {
-    value: entryTime,
-    onChange: setEntryTime
-  }), /*#__PURE__*/React.createElement("input", {
+  }, /*#__PURE__*/React.createElement("input", {
     placeholder: "Notes (optional)",
     value: notes,
     onChange: e => setNotes(e.target.value),
+    onFocus: () => setNotesFocused(true),
+    onBlur: () => setNotesFocused(false),
     style: {
       flex: 1
     }
@@ -5801,6 +5981,7 @@ function MedicalEntry({
   }, fl ? "✔" : "Save")), /*#__PURE__*/React.createElement(NoteSuggestChips, {
     suggestions: noteSuggestions,
     onPick: setNotes,
+    visible: notesFocused,
     T: T
   }));
 }
@@ -5825,6 +6006,7 @@ function MedEntry({
   setEntryTime,
   refreshTime,
   showToast,
+  setPage,
   T
 }) {
   const [med, setMed] = useState("");
@@ -5838,6 +6020,7 @@ function MedEntry({
   const rankedMeds = byUsage(settings.medications || [], medCounts, m => m);
   useEffect(() => setTiming(autoMedTiming(entryTime)), [entryTime]);
   const noteSuggestions = useMemo(() => med ? pastNoteSuggestions(entries, e => e.type === "medication" && e.med === med) : [], [entries, med]);
+  const [notesFocused, setNotesFocused] = useState(false);
   const save = () => {
     // B8: was a bare silent return.
     if (!med) {
@@ -5858,8 +6041,24 @@ function MedEntry({
   return /*#__PURE__*/React.createElement("div", {
     className: "card"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "slabel"
-  }, "\uD83D\uDC8A Medication"), /*#__PURE__*/React.createElement("div", {
+    className: "slabel",
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between"
+    }
+  }, /*#__PURE__*/React.createElement("span", null, "\uD83D\uDC8A Medication"), /*#__PURE__*/React.createElement("span", {
+    style: {display: "flex", alignItems: "center", gap: 4}
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    onClick: () => setPage("settings"),
+    title: "Settings",
+    style: {background: "none", border: "none", cursor: "pointer", color: T.textMuted, fontSize: "0.95rem", padding: "0 2px", lineHeight: 1, fontFamily: "inherit"}
+  }, "⚙️"), /*#__PURE__*/React.createElement(TimeBadge, {
+    value: entryTime,
+    onChange: setEntryTime,
+    T: T
+  }))), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 5,
@@ -5901,13 +6100,12 @@ function MedEntry({
       display: "flex",
       gap: 6
     }
-  }, /*#__PURE__*/React.createElement(TimeInput, {
-    value: entryTime,
-    onChange: setEntryTime
-  }), /*#__PURE__*/React.createElement("input", {
+  }, /*#__PURE__*/React.createElement("input", {
     placeholder: "Notes (optional)",
     value: notes,
     onChange: e => setNotes(e.target.value),
+    onFocus: () => setNotesFocused(true),
+    onBlur: () => setNotesFocused(false),
     style: {
       flex: 1
     }
@@ -5918,6 +6116,7 @@ function MedEntry({
   })), /*#__PURE__*/React.createElement(NoteSuggestChips, {
     suggestions: noteSuggestions,
     onPick: setNotes,
+    visible: notesFocused,
     T: T
   }));
 }
@@ -6429,6 +6628,7 @@ function EditEntry({
   onSave,
   onCancel,
   onDelete,
+  onDuplicate,
   label,
   T
 }) {
@@ -6464,9 +6664,17 @@ function EditEntry({
     className: "slabel",
     style: {
       color: T.accent,
-      marginBottom: 7
+      marginBottom: 7,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between"
     }
-  }, label || "✏️ Editing"), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("span", null, label || "✏️ Editing"), onDelete && /*#__PURE__*/React.createElement("button", {
+    onClick: () => { if (confirm("Delete this entry?")) onDelete(); },
+    title: "Delete entry",
+    "aria-label": "Delete entry",
+    style: { background: "none", border: "none", cursor: "pointer", color: T.danger, fontSize: "1.1rem", padding: 0, lineHeight: 1, fontFamily: "inherit" }
+  }, "\uD83D\uDDD1\uFE0F")), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 5,
@@ -6748,9 +6956,25 @@ function EditEntry({
       border: `1px solid ${T.border}`,
       background: "transparent",
       color: T.textMuted,
-      cursor: "pointer"
+      cursor: "pointer",
+      fontFamily: "inherit"
     }
-  }, "Cancel"), /*#__PURE__*/React.createElement("button", {
+  }, "Cancel"), onDuplicate && /*#__PURE__*/React.createElement("button", {
+    onClick: onDuplicate,
+    title: "Duplicate entry",
+    "aria-label": "Duplicate entry",
+    style: {
+      flexShrink: 0,
+      padding: "7px 11px",
+      borderRadius: 8,
+      border: `1px solid ${T.border}`,
+      background: "transparent",
+      color: T.textMuted,
+      cursor: "pointer",
+      fontFamily: "inherit",
+      fontSize: "0.95rem"
+    }
+  }, "\u29C9"), /*#__PURE__*/React.createElement("button", {
     onClick: doSave,
     style: {
       flex: 1,
@@ -6760,24 +6984,10 @@ function EditEntry({
       background: T.accentBtn,
       color: "#fff",
       cursor: "pointer",
-      fontWeight: 600
+      fontWeight: 600,
+      fontFamily: "inherit"
     }
-  }, "Save Changes"), onDelete && /*#__PURE__*/React.createElement("button", {
-    onClick: () => {
-      if (confirm("Delete this entry?")) onDelete();
-    },
-    title: "Delete",
-    "aria-label": "Delete entry",
-    style: {
-      flexShrink: 0,
-      padding: "7px 11px",
-      borderRadius: 8,
-      border: `1px solid ${T.danger}`,
-      background: "transparent",
-      color: T.danger,
-      cursor: "pointer"
-    }
-  }, "\uD83D\uDDD1\uFE0F")));
+  }, "Save Changes")));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
