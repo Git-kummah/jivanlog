@@ -4985,9 +4985,7 @@ function HomePage({
   }), /*#__PURE__*/React.createElement("button", {
     onClick: () => { setViewDate(today()); setShowCal(false); },
     style: { background: "none", border: "none", color: T.accent, cursor: "pointer", fontSize: "0.8rem", fontWeight: 600, fontFamily: "inherit" }
-  }, "Jump to Today")), /*#__PURE__*/React.createElement("div", {
-    style: { display: "flex", justifyContent: "flex-end", paddingBottom: 2 }
-  }, !selectMode && todayMeals.length > 0 && /*#__PURE__*/React.createElement("button", {
+  }, "Jump to Today")), !selectMode && todayMeals.length > 0 && /*#__PURE__*/React.createElement("button", {
     onClick: () => setSelectMode(true),
     title: "Select meal entries to save as a template",
     "aria-label": "Select meal entries to save as a template",
@@ -5334,7 +5332,7 @@ function MealEntry({
     value: entryTime,
     onChange: setEntryTime,
     T: T
-  }), /*#__PURE__*/React.createElement("div", {
+  })), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 5,
@@ -5512,7 +5510,7 @@ function LiquidEntry({
     value: entryTime,
     onChange: setEntryTime,
     T: T
-  }), /*#__PURE__*/React.createElement("div", {
+  })), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 5,
@@ -5715,7 +5713,7 @@ function ExerciseEntry({
     value: entryTime,
     onChange: setEntryTime,
     T: T
-  }), /*#__PURE__*/React.createElement("div", {
+  })), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 5,
@@ -5851,7 +5849,7 @@ function MedicalEntry({
     value: entryTime,
     onChange: setEntryTime,
     T: T
-  }), /*#__PURE__*/React.createElement("div", {
+  })), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 5,
@@ -6018,7 +6016,7 @@ function MedEntry({
     value: entryTime,
     onChange: setEntryTime,
     T: T
-  }), /*#__PURE__*/React.createElement("div", {
+  })), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 5,
