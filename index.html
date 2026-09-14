@@ -135,7 +135,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script>
-const APP_VERSION = "v5.38";
+const APP_VERSION = "v5.39";
 const {
   useState,
   useEffect,
@@ -2147,8 +2147,8 @@ function RepeatYesterdayChips({
       display: "flex",
       flexWrap: "wrap",
       alignItems: "center",
-      gap: "4px 8px",
-      lineHeight: 1.8,
+      gap: "4px 6px",
+      lineHeight: "normal",
       marginBottom: 6
     }
   }, /*#__PURE__*/React.createElement("span", {
@@ -2160,24 +2160,28 @@ function RepeatYesterdayChips({
   }, "Recent"), recentList.map(({
     label,
     entry
-  }) => /*#__PURE__*/React.createElement("button", {
+  }) => /*#__PURE__*/React.createElement("span", {
     key: label,
-    type: "button",
+    role: "button",
+    tabIndex: 0,
     onClick: () => onAdd({
       ...entry
     }),
     title: label,
     style: {
+      display: "inline-block",
       background: T.inputBg,
-      border: `1px solid ${T.border}`,
+      border: `1px solid ${T.accentBtn}`,
       borderRadius: 6,
       padding: "2px 8px",
       fontSize: "13px",
-      fontWeight: 500,
-      color: T.text,
+      lineHeight: "1.5",
+      fontWeight: 600,
+      color: T.accent,
       cursor: "pointer",
       fontFamily: "inherit",
-      whiteSpace: "nowrap"
+      whiteSpace: "nowrap",
+      userSelect: "none"
     }
   }, label)));
 }
