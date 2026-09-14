@@ -135,7 +135,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script>
-const APP_VERSION = "v5.40";
+const APP_VERSION = "v5.41";
 const {
   useState,
   useEffect,
@@ -2127,6 +2127,7 @@ function RepeatYesterdayChips({
       if (!label) continue;
       if (!labelMap[label]) {
         labelMap[label] = {
+          label: label,
           count: 0,
           entry: e
         };
@@ -2183,7 +2184,7 @@ function RepeatYesterdayChips({
       whiteSpace: "nowrap",
       userSelect: "none"
     }
-  }, "[" + label.length + "]" + JSON.stringify(label))));
+  }, label)));
 }
 
 // E5: meal templates — a named, reusable bundle of items (built via
