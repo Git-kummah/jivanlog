@@ -135,7 +135,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script>
-const APP_VERSION = "v5.35";
+const APP_VERSION = "v5.36";
 const {
   useState,
   useEffect,
@@ -2061,43 +2061,23 @@ function TimeBadge({
   onChange,
   T
 }) {
-  const [editing, setEditing] = React.useState(false);
-  if (editing) {
-    return /*#__PURE__*/React.createElement("input", {
-      type: "text",
-      maxLength: 5,
-      value: value,
-      autoFocus: true,
-      onChange: e => onChange(e.target.value),
-      onBlur: () => setEditing(false),
-      style: {
-        fontSize: "12px",
-        padding: "2px 6px",
-        borderRadius: 6,
-        border: `1px solid ${T.border}`,
-        fontFamily: "'DM Mono',monospace",
-        width: 88,
-        background: T.inputBg,
-        color: T.text
-      }
-    });
-  }
-  return /*#__PURE__*/React.createElement("span", {
-    onClick: () => setEditing(true),
-    title: "Edit time",
+  return /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    maxLength: 5,
+    value: value,
+    onChange: e => onChange(e.target.value),
     style: {
       fontSize: "12px",
-      color: T.textMuted,
-      background: "none",
-      border: `1px solid ${T.border}`,
+      padding: "2px 4px",
       borderRadius: 6,
-      padding: "2px 8px",
-      cursor: "pointer",
+      border: `1px solid ${T.border}`,
       fontFamily: "'DM Mono',monospace",
-      userSelect: "none",
-      fontWeight: 400
+      width: 60,
+      textAlign: "center",
+      background: T.inputBg,
+      color: T.text
     }
-  }, value);
+  });
 }
 
 // A short, human-readable label for one entry used by RecentChips.
@@ -2189,7 +2169,8 @@ function RepeatYesterdayChips({
       border: `1px solid ${T.border}`,
       borderRadius: 6,
       padding: "2px 8px",
-      fontSize: "11.5px",
+      fontSize: "13px",
+      fontWeight: 500,
       color: T.text,
       cursor: "pointer",
       fontFamily: "inherit",
@@ -4952,13 +4933,13 @@ function HomePage({
     style: { display: "flex", alignItems: "stretch" }
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => { const d = new Date(viewDate + "T12:00:00"); d.setDate(d.getDate()-1); setViewDate(d.toISOString().slice(0,10)); },
-    style: { background: "none", border: "none", fontSize: "1.5rem", cursor: "pointer", color: T.textMuted, padding: "0 10px", lineHeight: 1, alignSelf: "center" }
+    style: { background: "none", border: "none", fontSize: "1.5rem", cursor: "pointer", color: T.textMuted, padding: "0 10px", lineHeight: 1, alignSelf: "stretch", display: "flex", alignItems: "center" }
   }, "\u25C4"), /*#__PURE__*/React.createElement("div", {
     style: { textAlign: "center", flex: 1 }
   }, /*#__PURE__*/React.createElement("div", {
     style: { fontSize: "0.62rem", color: T.textMuted, letterSpacing: "0.1em", fontWeight: 600, marginBottom: 2 }
   }, "TODAY’S LOG"), /*#__PURE__*/React.createElement("div", {
-    style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 2 }
+    style: { display: "flex", alignItems: "center", justifyContent: "center", flexWrap: "wrap", gap: "2px 6px" }
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => setShowCal(sc => !sc),
     style: { background: "none", border: "none", cursor: "pointer", fontSize: "0.85rem", fontWeight: 600, color: T.text, padding: "0 3px", fontFamily: "inherit" }
@@ -4967,7 +4948,7 @@ function HomePage({
   }, "TODAY"), viewDate !== today() && /*#__PURE__*/React.createElement("span", {
     onClick: () => setViewDate(today()),
     style: { background: T.border, color: T.text, fontSize: "0.62rem", fontWeight: 600, padding: "1px 6px", borderRadius: 8, cursor: "pointer", verticalAlign: "middle" }
-  }, "TODAY")), !selectMode && todayMeals.length > 0 && /*#__PURE__*/React.createElement("button", {
+  }, "TODAY"), !selectMode && todayMeals.length > 0 && /*#__PURE__*/React.createElement("button", {
     onClick: () => setSelectMode(true),
     title: "Select meal entries to save as a template",
     "aria-label": "Select meal entries to save as a template",
@@ -4975,9 +4956,9 @@ function HomePage({
   }, "\uD83D\uDCCB Save as template"), selectMode && /*#__PURE__*/React.createElement("button", {
     onClick: exitSelectMode,
     style: { background: "none", border: "none", color: T.textMuted, cursor: "pointer", fontSize: "0.75rem", fontWeight: 600, padding: "2px 4px", fontFamily: "inherit" }
-  }, "Cancel")), /*#__PURE__*/React.createElement("button", {
+  }, "Cancel"))), /*#__PURE__*/React.createElement("button", {
     onClick: () => { const d = new Date(viewDate+"T12:00:00"); d.setDate(d.getDate()+1); const nd=d.toISOString().slice(0,10); if(nd<=today()) setViewDate(nd); },
-    style: { background: "none", border: "none", fontSize: "1.5rem", cursor: "pointer", color: viewDate < today() ? T.textMuted : T.border, padding: "0 10px", lineHeight: 1, alignSelf: "center" }
+    style: { background: "none", border: "none", fontSize: "1.5rem", cursor: "pointer", color: viewDate < today() ? T.textMuted : T.border, padding: "0 10px", lineHeight: 1, alignSelf: "stretch", display: "flex", alignItems: "center" }
   }, "\u25BA")), showCal && /*#__PURE__*/React.createElement("div", {
     style: { position: "absolute", left: 0, right: 0, top: "100%", background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: 8, padding: "8px", zIndex: 20, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }
   }, /*#__PURE__*/React.createElement("input", {
