@@ -135,7 +135,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script>
-const APP_VERSION = "v5.37";
+const APP_VERSION = "v5.38";
 const {
   useState,
   useEffect,
@@ -4746,6 +4746,65 @@ function App() {
   }, "\uD83D\uDDD1\uFE0F Sign out & wipe device")))));
 }
 
+function CalendarOverlay({viewDate, calMonth, setCalMonth, setViewDate, setShowCal, T}) {
+  const MN = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const parts = calMonth.split("-");
+  const cy = +parts[0], cm = +parts[1];
+  const label = MN[cm-1] + " " + cy;
+  const todayStr = today();
+  const canNext = calMonth < todayStr.slice(0,7);
+  const prevMo = () => { const d = new Date(cy, cm-2, 1); setCalMonth(d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")); };
+  const nextMo = () => { if (canNext) { const d = new Date(cy, cm, 1); setCalMonth(d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")); } };
+  const firstDow = new Date(cy, cm-1, 1).getDay();
+  const daysInMo = new Date(cy, cm, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= daysInMo; d++) cells.push(calMonth + "-" + String(d).padStart(2, "0"));
+  return /*#__PURE__*/React.createElement("div", {
+    style: { position: "absolute", left: 0, right: 0, top: "100%", background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: 8, padding: "10px 12px 12px", zIndex: 20, boxShadow: "0 4px 16px rgba(0,0,0,0.12)" }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: { display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: prevMo,
+    style: { background: "none", border: "none", fontSize: "1rem", cursor: "pointer", color: T.text, padding: "0 8px", fontFamily: "inherit" }
+  }, "◄"), /*#__PURE__*/React.createElement("span", {
+    style: { fontWeight: 700, fontSize: "0.9rem", color: T.text }
+  }, label), /*#__PURE__*/React.createElement("button", {
+    onClick: nextMo,
+    style: { background: "none", border: "none", fontSize: "1rem", cursor: "pointer", color: canNext ? T.text : T.border, padding: "0 8px", fontFamily: "inherit" }
+  }, "►")), /*#__PURE__*/React.createElement("div", {
+    style: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", textAlign: "center", marginBottom: 4 }
+  }, ["Su","Mo","Tu","We","Th","Fr","Sa"].map(function(day) { return /*#__PURE__*/React.createElement("div", {
+    key: day,
+    style: { fontSize: "0.65rem", fontWeight: 700, color: T.textMuted, padding: "2px 0" }
+  }, day); })), /*#__PURE__*/React.createElement("div", {
+    style: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, textAlign: "center" }
+  }, cells.map(function(ds, i) {
+    if (!ds) return /*#__PURE__*/React.createElement("div", { key: "e"+i });
+    const isToday = ds === todayStr;
+    const isSel = ds === viewDate;
+    const isFuture = ds > todayStr;
+    return /*#__PURE__*/React.createElement("div", {
+      key: ds,
+      onClick: isFuture ? null : function() { setViewDate(ds); setShowCal(false); },
+      style: {
+        fontSize: "0.78rem",
+        padding: "4px 2px",
+        borderRadius: 6,
+        cursor: isFuture ? "default" : "pointer",
+        background: isSel ? T.accentBtn : "none",
+        color: isFuture ? T.border : isSel ? "#fff" : T.text,
+        border: isToday && !isSel ? `2px solid ${T.accentBtn}` : "2px solid transparent",
+        fontWeight: isSel || isToday ? 700 : 400,
+        opacity: isFuture ? 0.4 : 1
+      }
+    }, +ds.slice(-2));
+  })), /*#__PURE__*/React.createElement("button", {
+    onClick: function() { setViewDate(todayStr); setCalMonth(todayStr.slice(0,7)); setShowCal(false); },
+    style: { marginTop: 10, width: "100%", background: "none", border: `1px solid ${T.accentBtn}`, borderRadius: 8, color: T.accentBtn, fontSize: "0.8rem", fontWeight: 700, padding: "6px 0", cursor: "pointer", fontFamily: "inherit" }
+  }, "Jump to Today"));
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // HOME
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -4767,6 +4826,7 @@ function HomePage({
   const [viewDate, setViewDate] = React.useState(today);
   const [pendingDup, setPendingDup] = React.useState(null);
   const [showCal, setShowCal] = React.useState(false);
+  const [calMonth, setCalMonth] = React.useState(today().slice(0,7));
   const doAdd = React.useCallback(data => {
     if (viewDate === today()) { onAdd(data); }
     else {
@@ -4944,7 +5004,7 @@ function HomePage({
   }, "TODAY’S LOG"), /*#__PURE__*/React.createElement("div", {
     style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }
   }, /*#__PURE__*/React.createElement("button", {
-    onClick: () => setShowCal(sc => !sc),
+    onClick: () => { setShowCal(sc => { if (!sc) setCalMonth(viewDate.slice(0,7)); return !sc; }); },
     style: { background: "none", border: "none", cursor: "pointer", fontSize: "0.85rem", fontWeight: 600, color: T.text, padding: "0 3px", fontFamily: "inherit" }
   }, (function(d){ const p=d.split("-"); const mn=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]; return (+p[2])+"-"+mn[+p[1]-1]+"-"+p[0]; })(viewDate)), viewDate === today() && /*#__PURE__*/React.createElement("span", {
     style: { background: T.accentBtn, color: "#fff", fontSize: "0.62rem", fontWeight: 700, padding: "1px 6px", borderRadius: 8, letterSpacing: "0.05em", verticalAlign: "middle" }
@@ -4964,16 +5024,7 @@ function HomePage({
   }, "\uD83D\uDCCB template"), selectMode && /*#__PURE__*/React.createElement("button", {
     onClick: exitSelectMode,
     style: { background: "none", border: "none", color: T.textMuted, cursor: "pointer", fontSize: "0.58rem", fontWeight: 600, padding: "0 4px 2px", fontFamily: "inherit" }
-  }, "Cancel"))), showCal && /*#__PURE__*/React.createElement("div", {
-    style: { position: "absolute", left: 0, right: 0, top: "100%", background: T.cardBg, border: `1px solid ${T.border}`, borderRadius: 8, padding: "8px", zIndex: 20, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }
-  }, /*#__PURE__*/React.createElement("input", {
-    type: "date", value: viewDate, max: today(),
-    onChange: e => { setViewDate(e.target.value); setShowCal(false); },
-    style: { fontSize: "0.85rem", borderRadius: 6, border: `1px solid ${T.border}`, padding: "4px 8px", fontFamily: "inherit", background: T.inputBg, color: T.text }
-  }), /*#__PURE__*/React.createElement("button", {
-    onClick: () => { setViewDate(today()); setShowCal(false); },
-    style: { background: "none", border: "none", color: T.accent, cursor: "pointer", fontSize: "0.8rem", fontWeight: 600, fontFamily: "inherit" }
-  }, "Jump to Today"))), selectMode && /*#__PURE__*/React.createElement("div", {
+  }, "Cancel"))), showCal && /*#__PURE__*/React.createElement(CalendarOverlay, { viewDate, calMonth, setCalMonth, setViewDate, setShowCal, T })), selectMode && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: "0.8rem",
       color: T.textMuted,
