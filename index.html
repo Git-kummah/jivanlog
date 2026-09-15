@@ -135,7 +135,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script>
-const APP_VERSION = "v5.45";
+const APP_VERSION = "v5.46";
 const {
   useState,
   useEffect,
@@ -397,6 +397,19 @@ const yesterday = () => {
   const dt = new Date(y, mo - 1, d);
   dt.setDate(dt.getDate() - 1);
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+};
+// E5: human relative-day label for the day-nav header — TODAY / YESTERDAY /
+// DAY BEFORE YESTERDAY / N DAYS BEFORE YESTERDAY going back, and the mirror
+// image (TOMORROW / DAY AFTER TOMORROW / N DAYS AFTER TOMORROW) going forward.
+const relDayLabel = viewDate => {
+  const diffDays = Math.round((new Date(today() + "T12:00:00") - new Date(viewDate + "T12:00:00")) / 86400000);
+  if (diffDays === 0) return "TODAY";
+  if (diffDays === 1) return "YESTERDAY";
+  if (diffDays === -1) return "TOMORROW";
+  if (diffDays === 2) return "DAY BEFORE YESTERDAY";
+  if (diffDays === -2) return "DAY AFTER TOMORROW";
+  if (diffDays > 2) return `${diffDays - 1} DAYS BEFORE YESTERDAY`;
+  return `${-diffDays - 1} DAYS AFTER TOMORROW`;
 };
 const normDate = s => {
   if (!s) return s;
@@ -5032,16 +5045,14 @@ function HomePage({
   }, /*#__PURE__*/React.createElement("svg", { width: 18, height: 18, viewBox: "0 0 24 24", fill: "none" }, /*#__PURE__*/React.createElement("path", { d: "M15 6l-6 6 6 6", stroke: "currentColor", strokeWidth: 2.5, strokeLinecap: "round", strokeLinejoin: "round" }))), /*#__PURE__*/React.createElement("div", {
     style: { textAlign: "center", flex: 1 }
   }, /*#__PURE__*/React.createElement("div", {
-    style: { display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }
+    style: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => { setShowCal(sc => { if (!sc) setCalMonth(viewDate.slice(0,7)); return !sc; }); },
-    style: { background: "none", border: "none", cursor: "pointer", fontSize: "0.85rem", fontWeight: 600, color: T.text, padding: "0 3px", fontFamily: "inherit" }
-  }, (function(d){ const p=d.split("-"); const mn=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]; return (+p[2])+"-"+mn[+p[1]-1]+"-"+p[0]; })(viewDate)), viewDate === today() && /*#__PURE__*/React.createElement("span", {
-    style: { background: T.accentBtn, color: "#fff", fontSize: "0.62rem", fontWeight: 700, padding: "1px 6px", borderRadius: 8, letterSpacing: "0.05em", verticalAlign: "middle" }
-  }, "TODAY"), viewDate !== today() && /*#__PURE__*/React.createElement("span", {
-    onClick: () => setViewDate(today()),
-    style: { background: T.border, color: T.text, fontSize: "0.62rem", fontWeight: 600, padding: "1px 6px", borderRadius: 8, cursor: "pointer", verticalAlign: "middle" }
-  }, "TODAY"))), /*#__PURE__*/React.createElement("div", {
+    style: { background: "none", border: "none", cursor: "pointer", fontSize: "1.15rem", fontWeight: 700, color: T.text, padding: "0 3px", fontFamily: "inherit" }
+  }, (function(d){ const p=d.split("-"); const mn=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]; return (+p[2])+"-"+mn[+p[1]-1]+"-"+p[0]; })(viewDate)), /*#__PURE__*/React.createElement("span", {
+    onClick: viewDate === today() ? undefined : () => setViewDate(today()),
+    style: { background: viewDate === today() ? T.accentBtn : T.border, color: viewDate === today() ? "#fff" : T.text, fontSize: "0.62rem", fontWeight: 700, padding: "2px 9px", borderRadius: 8, letterSpacing: "0.05em", cursor: viewDate === today() ? "default" : "pointer" }
+  }, relDayLabel(viewDate)))), /*#__PURE__*/React.createElement("div", {
     style: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4 }
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => { const d = new Date(viewDate+"T12:00:00"); d.setDate(d.getDate()+1); const nd=d.toISOString().slice(0,10); if(nd<=today()) setViewDate(nd); },
