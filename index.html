@@ -135,7 +135,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script>
-const APP_VERSION = "v5.48";
+const APP_VERSION = "v5.49";
 const {
   useState,
   useEffect,
@@ -448,7 +448,6 @@ const fmtShort = s => {
 const sysDark = () => window.matchMedia?.("(prefers-color-scheme:dark)").matches;
 // ── Food item helpers — handles both old string format and new {name,note} ────
 const foodName = f => typeof f === "string" ? f : f?.name || "";
-const foodNote = f => typeof f === "string" ? "" : f?.note || "";
 const foodItems = arr => (arr || []).map(f => typeof f === "string" ? {
   name: f,
   note: "",
@@ -1119,7 +1118,6 @@ const saveTodayCache = (uid, allEntries) => {
 // ── FIREBASE ──────────────────────────────────────────────────────────────────
 const dbRef = (uid, key) => fbDb.ref(`users/${uid}/${key}`);
 const dbSet = (uid, key, val) => dbRef(uid, key).set(val);
-const dbDel = (uid, key) => dbRef(uid, key).remove();
 
 // ── REPORT HELPERS ────────────────────────────────────────────────────────────
 // E7: out-of-range check for Sugar/BP. Deliberately a rough VISUAL cue, not a
@@ -4878,7 +4876,7 @@ function HomePage({
       onAddDirect({ ...data, id: genId(), date: viewDate, timestamp: ts });
     }
   }, [viewDate, onAdd, onAddDirect, entryTime]);
-  const viewDateE = entries.filter(e => e.date === viewDate).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  const viewDateE = useMemo(() => entries.filter(e => e.date === viewDate).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)), [entries, viewDate]);
   // N: entry time previously refreshed to "now" only on switching the top-level
   // tab. Selecting the meal type or the Level-1 category (food item, liquid
   // type, exercise type, medical reading, medication) now refreshes it too —
@@ -6318,11 +6316,11 @@ function ManagePage({
   isOnline,
   T
 }) {
-  const allDates = (() => {
+  const allDates = useMemo(() => {
     const s = new Set(entries.map(e => e.date).filter(Boolean));
     s.add(today());
     return Array.from(s).sort().reverse();
-  })();
+  }, [entries]);
   const [sel, setSel] = useState(today);
   const [eid, setEid] = useState(null);
   // B7: duplicating used to write the copy to Firebase IMMEDIATELY, before
@@ -6354,7 +6352,7 @@ function ManagePage({
     setDupSourceId(e.id);
     setEid(newId);
   };
-  const dayE = entries.filter(e => e.date === effectiveSel).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  const dayE = useMemo(() => entries.filter(e => e.date === effectiveSel).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)), [entries, effectiveSel]);
   const idx = allDates.indexOf(effectiveSel);
   // Navigating away from the date a pending duplicate belongs to abandons it
   // — otherwise it would silently reappear if the user navigated back,
@@ -7074,10 +7072,6 @@ function isoWeek(dateStr) {
 function isoMonth(dateStr) {
   return dateStr.slice(0, 7);
 }
-function isoYear(dateStr) {
-  return dateStr.slice(0, 4);
-}
-
 // Build {label, values:[]} series for a given metric, range and aggregation
 function buildTrendSeries(entries, metricName, rangeKey, aggMode) {
   // Filter medical entries for this metric
@@ -7541,7 +7535,7 @@ function TrendsPanel({
   }, [metric, range, agg, entries, T]);
 
   // Count data points for selected metric
-  const dataCount = entries.filter(e => e.type === "medical" && (e.readingType || e.detail1) === metric).length;
+  const dataCount = useMemo(() => entries.filter(e => e.type === "medical" && (e.readingType || e.detail1) === metric).length, [entries, metric]);
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "card",
     style: {
@@ -7640,10 +7634,10 @@ function ReportsPage({
   // renders and React unmounted the whole tree ("Rendered fewer hooks than expected").
   // The offline notice now lives at the bottom, after all hooks have been called.
   const [tab, setTab] = useState("view");
-  const mostRecentDate = (() => {
+  const mostRecentDate = useMemo(() => {
     const ds = entries.map(e => e.date).filter(Boolean).sort();
     return ds.length ? ds[ds.length - 1] : today();
-  })();
+  }, [entries]);
   const [vd, setVd] = useState(mostRecentDate);
   const [cd, setCd] = useState([today()]);
   const [ad, setAd] = useState(today());
@@ -7654,11 +7648,11 @@ function ReportsPage({
   const [rTo, setRTo] = useState(today());
   const [rMode, setRMode] = useState("summary"); // summary | full
   // Build date list from all entries + today, so imported historical data appears
-  const allDates = (() => {
+  const allDates = useMemo(() => {
     const s = new Set(entries.map(e => e.date).filter(Boolean));
     s.add(today());
     return Array.from(s).sort().reverse();
-  })();
+  }, [entries]);
   const medPresets = settings.medicalPresets || FD.medicalPresets;
   const medNames = medPresets.map(p => typeof p === "string" ? p : p.name);
   // E7: isOutOfRange is now shared at top-level scope (also used by
