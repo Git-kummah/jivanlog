@@ -135,7 +135,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script>
-const APP_VERSION = "v5.43";
+const APP_VERSION = "v5.44";
 const {
   useState,
   useEffect,
@@ -2133,20 +2133,25 @@ function RepeatYesterdayChips({
   type,
   settings,
   onAdd,
-  T
+  T,
+  extraFilter,
+  keyOverride
 }) {
   const recentList = useMemo(() => {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 30);
     const cutoffStr = cutoff.toISOString().slice(0, 10);
     const matches = e => e.type === type || type === "liquid" && e.type === "water";
-    const relevant = entries.filter(e => !e.deleted && matches(e) && e.date >= cutoffStr);
+    const relevant = entries.filter(e => !e.deleted && matches(e) && e.date >= cutoffStr && (!extraFilter || extraFilter(e)));
     // Group by key (food/subcat etc., WITHOUT qty/ml/value), count occurrences,
     // keep most recent entry per key; display label is computed from that
     // most-recent entry so it always shows its actual logged quantity.
+    // keyOverride lets a caller narrow grouping granularity based on current
+    // form context (e.g. group by food name alone before a food is picked,
+    // then by food+subtype once it is — see MealEntry).
     const groupMap = {};
     for (const e of relevant) {
-      const key = repeatChipKey(e, settings);
+      const key = keyOverride ? keyOverride(e) : repeatChipKey(e, settings);
       if (!key) continue;
       if (!groupMap[key]) {
         groupMap[key] = {
@@ -2163,7 +2168,7 @@ function RepeatYesterdayChips({
       label: repeatChipLabel(x.entry, settings),
       entry: x.entry
     }));
-  }, [entries, type, settings]);
+  }, [entries, type, settings, extraFilter, keyOverride]);
   if (!recentList.length) return null;
   return /*#__PURE__*/React.createElement("div", {
     style: {
@@ -5330,6 +5335,22 @@ function MealEntry({
     setFoodSub("");
     setNotes(noteFor(name, ""));
   };
+  // Recent chips context: before a food is picked, scope suggestions to the
+  // currently selected meal type and group by food name only; once a food is
+  // picked, scope to that food and let the default food+subtype key surface
+  // its logged subtype/quantity variants instead.
+  const recentExtraFilter = useMemo(() => {
+    if (food) {
+      const mtVal = mt;
+      return e => e.food === food && (!mtVal || e.mealType === mtVal);
+    }
+    if (mt) {
+      const mtVal = mt;
+      return e => e.mealType === mtVal;
+    }
+    return null;
+  }, [food, mt]);
+  const recentKeyOverride = useMemo(() => food ? undefined : e => e.food || e.mealType || "Meal", [food]);
   // N: meal type (B/L/S/D) auto-derives from entryTime, same pattern MedEntry
   // already used for medication timing. Re-fires only when entryTime itself
   // changes value, so a manual override of mt (after time is set) survives
@@ -5449,7 +5470,9 @@ function MealEntry({
     type: "meal",
     settings: settings,
     onAdd: onAdd,
-    T: T
+    T: T,
+    extraFilter: recentExtraFilter,
+    keyOverride: recentKeyOverride
   }), /*#__PURE__*/React.createElement(MealTemplateChips, {
     settings: settings,
     mt: mt,
