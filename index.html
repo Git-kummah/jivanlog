@@ -135,7 +135,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script>
-const APP_VERSION = "v5.49";
+const APP_VERSION = "v5.50";
 const {
   useState,
   useEffect,
@@ -2175,7 +2175,7 @@ function RepeatYesterdayChips({
         groupMap[key].entry = e;
       }
     }
-    return Object.values(groupMap).sort((a, b) => b.count - a.count).slice(0, 6).map(x => ({
+    return Object.values(groupMap).sort((a, b) => b.count - a.count).slice(0, 4).map(x => ({
       label: repeatChipLabel(x.entry, settings),
       entry: x.entry
     }));
@@ -2221,7 +2221,7 @@ function RepeatYesterdayChips({
       borderRadius: 5,
       padding: "1px 6px"
     }
-  }, label)));
+  }, label.length > 22 ? label.slice(0, 22) + "…" : label)));
 }
 
 // E5: meal templates — a named, reusable bundle of items (built via
