@@ -2541,6 +2541,8 @@ function App() {
   const [authError, setAuthError] = useState(null);
   const [user, setUser] = useState(null);
   const [page, setPage] = useState("home");
+  const lastHomeTap = React.useRef(0);
+  const [homeResetSignal, setHomeResetSignal] = useState(0);
   const [locked, setLocked] = useState(false);
   // S6: `locked` can't read the persisted flag directly in useState's
   // initializer above — `user` isn't known yet at that point in the
@@ -4537,7 +4539,8 @@ function App() {
     onSaveMealTemplate: onSaveMealTemplate,
     showToast: showToast,
     setPage: setPage,
-    T: T
+    T: T,
+    homeResetSignal: homeResetSignal
   }), page === "manage" && /*#__PURE__*/React.createElement(ManagePage, {
     entries: entries,
     settings: settings,
@@ -4604,7 +4607,14 @@ function App() {
     title: lb,
     "aria-label": lb,
     "aria-current": page === p ? "page" : undefined,
-    onClick: () => setPage(p),
+    onClick: () => {
+      if (p === "home" && page === "home") {
+        var _now = Date.now();
+        if (_now - lastHomeTap.current < 400) setHomeResetSignal(function(s) { return s + 1; });
+        lastHomeTap.current = _now;
+      }
+      setPage(p);
+    },
     style: {
       flex: 1,
       padding: "9px 0 7px",
@@ -4862,10 +4872,14 @@ function HomePage({
   onSaveMealTemplate,
   showToast,
   setPage,
-  T
+  T,
+  homeResetSignal
 }) {
   const [active, setActive] = useState("meal");
   const [viewDate, setViewDate] = React.useState(today);
+  React.useEffect(function() {
+    if (homeResetSignal) setViewDate(today());
+  }, [homeResetSignal]);
   const [pendingDup, setPendingDup] = React.useState(null);
   const [showCal, setShowCal] = React.useState(false);
   const [calMonth, setCalMonth] = React.useState(today().slice(0,7));
