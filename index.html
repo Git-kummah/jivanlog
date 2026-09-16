@@ -135,7 +135,7 @@ const googleProvider=new firebase.auth.GoogleAuthProvider();
 </script>
 
 <script>
-const APP_VERSION = "v5.51";
+const APP_VERSION = "v5.52";
 const {
   useState,
   useEffect,
@@ -2541,7 +2541,6 @@ function App() {
   const [authError, setAuthError] = useState(null);
   const [user, setUser] = useState(null);
   const [page, setPage] = useState("home");
-  const lastHomeTap = React.useRef(0);
   const [homeResetSignal, setHomeResetSignal] = useState(0);
   const [locked, setLocked] = useState(false);
   // S6: `locked` can't read the persisted flag directly in useState's
@@ -4608,11 +4607,7 @@ function App() {
     "aria-label": lb,
     "aria-current": page === p ? "page" : undefined,
     onClick: () => {
-      if (p === "home" && page === "home") {
-        var _now = Date.now();
-        if (_now - lastHomeTap.current < 400) setHomeResetSignal(function(s) { return s + 1; });
-        lastHomeTap.current = _now;
-      }
+      if (p === "home") setHomeResetSignal(function(s) { return s + 1; });
       setPage(p);
     },
     style: {
